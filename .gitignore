@@ -1,0 +1,12 @@
+.DS_Store
+*.token
+*.swp
+
+# built commands
+/hear
+/sez
+/tap
+/dist/
+
+# rb delegation specs: local working material, not part of the tool
+/.rb/

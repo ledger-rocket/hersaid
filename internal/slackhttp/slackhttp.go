@@ -1,0 +1,75 @@
+// Package slackhttp builds the only HTTP client the hersaid commands use.
+//
+// http.DefaultClient and http.DefaultTransport are never used: DefaultTransport
+// honours HTTP_PROXY/HTTPS_PROXY and the default client follows redirects, so
+// ambient configuration could point an Authorization header at a host of
+// someone else's choosing.
+package slackhttp
+
+import (
+	"crypto/tls"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+)
+
+// DefaultTimeout bounds every request.
+const DefaultTimeout = 20 * time.Second
+
+// TimeoutEnvVar overrides DefaultTimeout, in whole seconds.
+const TimeoutEnvVar = "HERSAID_TIMEOUT"
+
+// New returns a client whose requests cannot be redirected or proxied. A
+// non-positive timeout is replaced by DefaultTimeout rather than honoured:
+// zero would mean no bound at all, which is never what was wanted.
+func New(timeout time.Duration) *http.Client {
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: newTransport(),
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return fmt.Errorf("slackhttp: refusing redirect to %s", req.URL.Redacted())
+		},
+	}
+}
+
+// TimeoutFromEnv resolves HERSAID_TIMEOUT, in whole seconds. An unset variable
+// yields DefaultTimeout; a value that is not a positive integer is an error
+// rather than a silently disabled timeout.
+func TimeoutFromEnv() (time.Duration, error) {
+	v, ok := os.LookupEnv(TimeoutEnvVar)
+	if !ok || v == "" {
+		return DefaultTimeout, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("%s=%q: not a whole number of seconds", TimeoutEnvVar, v)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("%s=%d: a request timeout must be positive", TimeoutEnvVar, n)
+	}
+	return time.Duration(n) * time.Second, nil
+}
+
+func newTransport() *http.Transport {
+	return &http.Transport{
+		// nil, not ProxyFromEnvironment: no environment variable may route a
+		// request carrying a bearer token through a host of its choosing.
+		Proxy: nil,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          4,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
+	}
+}

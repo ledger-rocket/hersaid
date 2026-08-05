@@ -1,0 +1,129 @@
+name: CI
+'on':
+  push:
+    branches:
+      - main
+      - go-port
+  pull_request: null
+permissions:
+  contents: read
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The build stamps the version from git; a shallow clone with no tags
+          # would report every build as untagged.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "ok - gofmt clean"
+      - name: go vet
+        run: go vet ./...
+      # Builds the artifacts a release builds, with the flags a release passes.
+      # That the flags reach their variables is asserted by cmd/hear's
+      # TestReleaseLinkerFlagsReachTheirVariables, not here: the linker ignores
+      # an -X it cannot resolve, and the build stamp would still produce a
+      # plausible --version line.
+      - name: Build every command
+        run: |
+          pkg=github.com/ledger-rocket/hersaid/internal/version
+          # Empty until the first tag: --always would substitute the commit,
+          # and a version that is just the commit printed twice says nothing.
+          ldflags="-X $pkg.version=$(git describe --tags --dirty 2>/dev/null || true)"
+          ldflags="$ldflags -X $pkg.commit=$(git rev-parse HEAD)"
+          ldflags="$ldflags -X $pkg.date=$(git log -1 --format=%cI)"
+          for cmd in hear sez tap hersaid-setup; do
+            go build -ldflags "$ldflags" -o "dist/$cmd" "./cmd/$cmd"
+            "./dist/$cmd" --version
+          done
+      # A runner has no Secret Service, so this exercises the headless-Linux
+      # path the file credential fallback exists for.
+      - name: Test
+        run: go test ./... -race -count=1
+      # The installed commands must not depend on dist/, which is build output
+      # and gitignored: a link into it dangles the moment the tree is cleaned,
+      # and reports only "command not found".
+      - name: Installed commands outlive a cleaned tree
+        run: |
+          prefix="$(mktemp -d)"
+          PREFIX="$prefix" ./install.sh >/dev/null
+          rm -rf dist
+          for cmd in hear sez tap hersaid-setup; do
+            "$prefix/$cmd" --version >/dev/null
+          done
+          echo "ok - installed commands outlive dist/"
+  shell:
+    name: Installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Syntax-check and lint the installer
+        run: |
+          bash -n install.sh
+          shellcheck --shell=bash install.sh
+          echo "ok - install.sh"
+      # The branch a release-binary user takes: no Go, dist/ already populated.
+      # Nothing else exercises it — the Go job has a toolchain, so install.sh
+      # always builds there and this half never runs.
+      - name: Install with no Go toolchain
+        run: |
+          prefix="$(mktemp -d)"
+          # A PATH holding everything but go: a runner has go in /usr/bin, so
+          # naming a short PATH is not enough to leave the toolchain out.
+          nogo="$(mktemp -d)"
+          for d in /usr/bin /bin; do ln -s "$d"/* "$nogo/" 2>/dev/null || true; done
+          rm -f "$nogo/go" "$nogo/gofmt"
+          # Without this the step passes by building, proving nothing.
+          if env -i PATH="$nogo" sh -c 'command -v go' >/dev/null 2>&1; then
+            echo "go is still reachable; this would not test the branch"
+            exit 1
+          fi
+          rm -rf dist
+          if env -i HOME="$HOME" PATH="$nogo" PREFIX="$prefix" ./install.sh; then
+            echo "an empty dist/ must fail the install"
+            exit 1
+          fi
+          mkdir -p dist
+          for cmd in hear sez tap hersaid-setup; do
+            printf '#!/bin/sh\necho ok\n' > "dist/$cmd"
+            chmod +x "dist/$cmd"
+          done
+          env -i HOME="$HOME" PATH="$nogo" PREFIX="$prefix" ./install.sh >/dev/null
+          rm -rf dist
+          for cmd in hear sez tap hersaid-setup; do
+            test -x "$prefix/$cmd" || { echo "$cmd was not installed"; exit 1; }
+            "$prefix/$cmd" >/dev/null || { echo "$cmd does not run"; exit 1; }
+          done
+          echo "ok - installs from dist/ without a toolchain"
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs:
+      - go
+      - shell
+    if: always()
+    steps:
+      - name: Check that every required job passed
+        run: |
+          for r in "${{ needs.go.result }}" "${{ needs.shell.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "a required job did not succeed: $r"
+              exit 1
+            fi
+          done
+          echo "all required jobs passed"
