@@ -1,0 +1,71 @@
+# Two channels: GitHub Releases and `go install`. A Homebrew tap and a
+# container wait until there is someone asking for them.
+version: 2
+
+project_name: hersaid
+
+builds:
+  - id: hear
+    main: ./cmd/hear
+    binary: hear
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: &stamp
+      # v{{ .Version }} rather than the bare template: goreleaser strips the
+      # tag's v, a `go install` build reports the canonical module version with
+      # it, and both channels must answer --version identically.
+      - -s -w
+      - -X github.com/ledger-rocket/hersaid/internal/version.version=v{{ .Version }}
+      - -X github.com/ledger-rocket/hersaid/internal/version.commit={{ .FullCommit }}
+      - -X github.com/ledger-rocket/hersaid/internal/version.date={{ .CommitDate }}
+  - id: sez
+    main: ./cmd/sez
+    binary: sez
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: *stamp
+  - id: tap
+    main: ./cmd/tap
+    binary: tap
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: *stamp
+  - id: hersaid-setup
+    main: ./cmd/hersaid-setup
+    binary: hersaid-setup
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: *stamp
+
+archives:
+  # One archive per platform holding all four commands: install.sh expects
+  # them together in ./dist, and three of the four are useless alone.
+  - id: tarballs
+    formats: [tar.gz]
+    name_template: "hersaid_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # An explicit list replaces the default globs, which would also sweep in
+    # anything named changelog*.
+    files:
+      - LICENSE
+      - README.md
+      - install.sh
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  # The draft body stays empty and a human writes the notes. A generated
+  # commit list reads as noise to the person deciding whether to upgrade.
+  disable: true
+
+release:
+  # Draft: the archives are built and attached, and a human presses publish.
+  draft: true

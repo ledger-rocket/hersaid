@@ -1,0 +1,73 @@
+---
+name: Release
+
+# Cutting a `v*` tag builds the cross-compiled archives with goreleaser and
+# opens a **draft** GitHub release (`.goreleaser.yaml` sets `release.draft`), so
+# a human still presses publish. Public, SHA-pinned actions only; the sole
+# credential is the run's own GITHUB_TOKEN, and `contents: write` is scoped to
+# the release job.
+
+'on':
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  # The release ref must prove itself: CI gates main, not tags.
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      # The tag is what the archives are named after and what --version
+      # reports. Reject a malformed one here rather than shipping it.
+      - name: Verify the tag is v<semver>
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF_NAME" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "Release tag must be v<major>.<minor>.<patch>, got $GITHUB_REF_NAME" >&2
+              exit 1
+              ;;
+          esac
+      - run: go build ./...
+      - run: go vet ./...
+      - name: Gofmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite: $unformatted"
+            exit 1
+          fi
+      - run: go test -race -count=1 ./...
+
+  release:
+    needs: gates
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # goreleaser creates the draft release and uploads archives
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          # goreleaser derives the version from tag history.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
