@@ -15,8 +15,15 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DIST="$SRC/dist"
 COMMANDS=(hear sez tap hersaid-setup)
+
+# Where the built commands are. A source checkout builds them into ./dist; a
+# release archive holds them beside this script, so both layouts are accepted
+# and neither has to know about the other.
+DIST="$SRC/dist"
+if [[ ! -x "$DIST/hear" && -x "$SRC/hear" ]]; then
+  DIST="$SRC"
+fi
 
 say()  { printf '%s\n' "$*"; }
 warn() { printf '\033[33m%s\033[0m\n' "$*" >&2; }

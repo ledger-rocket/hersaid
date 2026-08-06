@@ -110,6 +110,26 @@ jobs:
             "$prefix/$cmd" >/dev/null || { echo "$cmd does not run"; exit 1; }
           done
           echo "ok - installs from dist/ without a toolchain"
+      # The layout a release archive has: the commands sit beside install.sh,
+      # not under dist/. The two were built and tested separately and did not
+      # fit — an extracted archive could not install itself.
+      - name: Install from a release-archive layout
+        run: |
+          arch="$(mktemp -d)"; prefix="$(mktemp -d)"
+          nogo="$(mktemp -d)"
+          for d in /usr/bin /bin; do ln -s "$d"/* "$nogo/" 2>/dev/null || true; done
+          rm -f "$nogo/go" "$nogo/gofmt"
+          cp install.sh "$arch/"
+          for cmd in hear sez tap hersaid-setup; do
+            printf '#!/bin/sh\necho ok\n' > "$arch/$cmd"
+            chmod +x "$arch/$cmd"
+          done
+          env -i HOME="$HOME" PATH="$nogo" PREFIX="$prefix" sh -c "cd '$arch' && ./install.sh" >/dev/null
+          for cmd in hear sez tap hersaid-setup; do
+            test -x "$prefix/$cmd" || { echo "$cmd was not installed"; exit 1; }
+            "$prefix/$cmd" >/dev/null || { echo "$cmd does not run"; exit 1; }
+          done
+          echo "ok - an extracted archive installs itself"
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
