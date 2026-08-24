@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ledger-rocket/hersaid/internal/cache"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
@@ -127,6 +128,9 @@ func WriteTranscript(w io.Writer, msgs []slackread.Message, names Names, opts Op
 		if len(m.Reactions) > 0 {
 			fmt.Fprintf(&b, "\n%s%s", continuation, reactionsLine(m.Reactions, names, opts.SelfID))
 		}
+		if len(m.Files) > 0 {
+			fmt.Fprintf(&b, "\n%s%s", continuation, filesLine(m.Files))
+		}
 		if m.ReplyCount > 0 && opts.ThreadCommand != "" {
 			fmt.Fprintf(&b, "\n%s⤷ %d replies — %s %s",
 				continuation, m.ReplyCount, opts.ThreadCommand, m.TS)
@@ -136,6 +140,68 @@ func WriteTranscript(w io.Writer, msgs []slackread.Message, names Names, opts Op
 		}
 	}
 	return nil
+}
+
+// filesLine names the attachments on a message, so a reader can see there is
+// something to fetch and what `hear files` would write.
+//
+// Every file is named, however many there are: the count alone would say a
+// message has attachments without saying whether any of them is the one being
+// looked for.
+func filesLine(files []slackread.File) string {
+	noun := "files"
+	if len(files) == 1 {
+		noun = "file"
+	}
+	parts := make([]string, 0, len(files))
+	for _, f := range files {
+		parts = append(parts, fmt.Sprintf("%s (%s)", FileLabel(f), HumanSize(f.Size)))
+	}
+	return fmt.Sprintf("⤷ %d %s: %s", len(files), noun, strings.Join(parts, ", "))
+}
+
+// FileLabel is what to call a file: its name, else the title Slack shows for
+// one that has none, else its id.
+//
+// The result is stripped of control characters. A filename is chosen by whoever
+// uploaded it, and one carrying a newline or an escape sequence would otherwise
+// break the transcript apart or drive the terminal it is printed to.
+func FileLabel(f slackread.File) string {
+	label := f.Name
+	if label == "" {
+		label = f.Title
+	}
+	if label == "" {
+		return f.ID
+	}
+	return strings.Map(func(r rune) rune {
+		// Controls and the Unicode format characters alike: U+202E renders the
+		// rest of the label right-to-left, so "annex\u202Efdp.scr" reads as
+		// "annexrcs.pdf" in a transcript nobody would think to distrust.
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, label)
+}
+
+// HumanSize renders a byte count for a person: whole bytes below a kilobyte and
+// one decimal place above it. The steps are 1024 rather than 1000, so 1024
+// bytes reads as 1.0 KB.
+func HumanSize(n int64) string {
+	const step = 1024
+	if n < step {
+		return fmt.Sprintf("%d B", n)
+	}
+	value, unit := float64(n)/step, ""
+	for _, u := range []string{"KB", "MB", "GB", "TB"} {
+		unit = u
+		if value < step {
+			break
+		}
+		value /= step
+	}
+	return fmt.Sprintf("%.1f %s", value, unit)
 }
 
 // reactionsLine renders a message's reactions as "one per reaction joined by
@@ -236,6 +302,29 @@ func WriteSearch(w io.Writer, matches []slackread.SearchMatch, names Names, opts
 		b.WriteString("  ")
 		b.WriteString(names.Text(m.Text))
 		if _, err := fmt.Fprintln(w, b.String()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// WriteFiles writes one line per attachment: what happened to it, and either
+// where it landed or why it did not.
+//
+// A skipped file gets a line of its own rather than being left out. The absence
+// of a line would be indistinguishable from a message that never carried the
+// file, and the reason — a link to someone else's storage, a size limit — is
+// the part a reader needs in order to decide what to do next.
+func WriteFiles(w io.Writer, results []FileResult) error {
+	for _, r := range results {
+		var line string
+		switch r.Status {
+		case "written":
+			line = fmt.Sprintf("%-7s %s (%s)", "wrote", r.Path, HumanSize(r.Bytes))
+		default:
+			line = fmt.Sprintf("%-7s %s — %s", r.Status, r.Name, r.Reason)
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
 			return err
 		}
 	}

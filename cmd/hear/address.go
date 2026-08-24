@@ -102,6 +102,40 @@ var sinceUnits = map[string]time.Duration{
 	"w": 7 * 24 * time.Hour,
 }
 
+// sizeUnit is a byte count written the way a person says it: a number, an
+// optional multiplier, and an optional B that carries no meaning of its own so
+// that both 100M and 100MB are the same size.
+var sizeUnit = regexp.MustCompile(`^([0-9]+)([KMGkmg]?)[Bb]?$`)
+
+// The steps are 1024, matching how a file's size is reported everywhere else.
+var sizeUnits = map[string]int64{
+	"":  1,
+	"k": 1 << 10,
+	"m": 1 << 20,
+	"g": 1 << 30,
+}
+
+// parseSize reads a per-file ceiling. Zero is refused: it asks for no bytes at
+// all, which would skip every file and report each one as too large.
+func parseSize(v string) (int64, error) {
+	m := sizeUnit.FindStringSubmatch(v)
+	if m == nil {
+		return 0, fmt.Errorf("--max-size %s: not a size — try 512K, 100M or 2G", v)
+	}
+	n, err := strconv.ParseInt(m[1], 10, 64)
+	unit := sizeUnits[strings.ToLower(m[2])]
+	// Not >: the ceiling has to stay one below the maximum, because the download
+	// bounds itself by reading one byte past it to tell a file of exactly the
+	// limit from one that overruns.
+	if err != nil || n >= math.MaxInt64/unit {
+		return 0, fmt.Errorf("--max-size %s: that is larger than any file Slack stores", v)
+	}
+	if n == 0 {
+		return 0, fmt.Errorf("--max-size %s: a limit must be larger than nothing", v)
+	}
+	return n * unit, nil
+}
+
 // parseSince reads a window width. A non-positive one is refused: it asks for
 // no messages at all, which is never what someone meant to type.
 func parseSince(v string) (time.Duration, error) {

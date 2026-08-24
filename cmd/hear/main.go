@@ -16,6 +16,7 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/cli"
 	"github.com/ledger-rocket/hersaid/internal/cred"
 	"github.com/ledger-rocket/hersaid/internal/resolve"
+	"github.com/ledger-rocket/hersaid/internal/slackfiles"
 	"github.com/ledger-rocket/hersaid/internal/slackhttp"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
@@ -33,6 +34,7 @@ const usage = `usage: hear <command> [options]
     dms [filter]                  list people you have a 1:1 DM with
     read <address> [n]            last n messages (default 20)
     thread <address> <ts>         replies in a thread
+    files <address> <ts>          download the files attached to one message
     search <query...>             search messages across the workspace
     refresh                       clear the channel/user cache
 
@@ -50,6 +52,10 @@ const usage = `usage: hear <command> [options]
                       Pages to the end of the window, or to the newest 5000
                       messages in it, whichever comes first — --json reports
                       which by "complete". Read only, and not combinable with n.
+        --out DIR     where files writes; the message's own directory is made
+                      inside it. Default: the current directory
+        --max-size N  largest file to fetch, e.g. 512K, 100M, 2G. Default 100M.
+                      A file above it is skipped and named, never truncated
         --            stop reading options; what follows is literal
     -h, --help        print this help and exit 0
         --version     print the version and exit 0
@@ -63,8 +69,14 @@ const usage = `usage: hear <command> [options]
   answered entirely from the cache — channels, dms, refresh — resolves no
   credential at all.
 
+  files writes each attachment into <out>/<channel>-<ts>/, refusing to overwrite
+  and never taking a name Slack sent as a path. A file with no bytes behind it —
+  a link to storage elsewhere, a deleted one — is skipped and said so. Exit is 1
+  when any file was skipped or failed, whatever else was written. Needs the
+  files:read scope on the read app.
+
   JSON: one object, tagged with "kind": identity, channels, dms, transcript,
-  search or refresh. A transcript carries "channel", "messages" and
+  search, files or refresh. A transcript carries "channel", "messages" and
   "complete"; "complete": false means Slack held more messages than were read.
   Each message has ts, time (RFC3339), author, user, text, and text_rendered —
   the same text with <@U…> mentions resolved. Diagnostics stay on stderr, so
@@ -99,6 +111,12 @@ const pageSize = 200
 // here until the process is killed.
 const maxPages = 1000
 
+// downloadTimeoutFactor is how much longer a file may take than an API call.
+// HERSAID_TIMEOUT bounds a request that returns a small JSON document; a body
+// of up to --max-size held to the same bound would fail on size alone, on a
+// link that is working perfectly well.
+const downloadTimeoutFactor = 10
+
 // maxWindow bounds what --since may collect. Unlike a count, a duration says
 // nothing about how much there is: a busy channel and a wide window can name
 // far more than a transcript is any use as, and all of it is held in memory
@@ -113,9 +131,22 @@ const maxWindow = 5000
 // that hangs where there is no Secret Service.
 var resolveRead = cred.ResolveRead
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, slackread.SlackAPI)) }
+// endpoints is everywhere a command may send the read credential: the API, and
+// the hosts a file may be downloaded from. The two travel together so that
+// naming one cannot leave the other to a default, which is the same reason
+// slackread.SlackAPI is a parameter rather than a package default.
+type endpoints struct {
+	api   string
+	files slackfiles.Hosts
+}
 
-func run(args []string, stdout, stderr io.Writer, baseURL string) int {
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, endpoints{
+		api: slackread.SlackAPI, files: slackfiles.SlackHosts,
+	}))
+}
+
+func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 	// First, and with no side effects: --help and --version are answered here,
 	// before the filesystem, the cache or any credential. They are handled by
 	// the parser rather than by cli.Intercept because hear has options of its
@@ -133,11 +164,14 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 	if f.since != 0 && verb != "read" {
 		return cli.Usage(stderr, name, usage, "--since applies to read")
 	}
+	if (f.out != "" || f.maxSize != 0) && verb != "files" {
+		return cli.Usage(stderr, name, usage, "--out and --max-size apply to files")
+	}
 
 	// The client is built on first use rather than up front, so the commands
 	// the cache can answer by itself — channels, dms with a warm cache, and
 	// refresh — never resolve a credential, and a warm cache makes no call.
-	src := &source{baseURL: baseURL}
+	src := &source{where: where}
 	h := &hear{
 		flags:  f,
 		store:  cache.Filling(src),
@@ -172,6 +206,8 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 		return h.read(rest)
 	case "thread":
 		return h.thread(rest)
+	case "files":
+		return h.files(rest)
 	case "search":
 		if len(rest) == 0 {
 			return cli.Usage(stderr, name, usage, "search needs a query")
@@ -225,8 +261,9 @@ func (h *hear) fail(err error) int {
 // It is memoised, so an invocation resolves the credential at most once: on a
 // locked keychain a second resolution is a second modal prompt for one command.
 type source struct {
-	baseURL string
-	client  *slackread.Client
+	where  endpoints
+	client *slackread.Client
+	files  *slackfiles.Client
 	// key identifies the credential the client was built from, so a fact
 	// cached under a different one can be told apart from a current fact.
 	key  string
@@ -235,11 +272,16 @@ type source struct {
 }
 
 func (s *source) get() (*slackread.Client, error) {
-	if !s.done {
-		s.done = true
-		s.client, s.key, s.err = newClient(s.baseURL)
-	}
+	s.resolve()
 	return s.client, s.err
+}
+
+// downloader is the file client, built from the same credential as the read
+// client and at the same moment, so a command that reads a message and then
+// fetches its attachments still resolves once.
+func (s *source) downloader() (*slackfiles.Client, error) {
+	s.resolve()
+	return s.files, s.err
 }
 
 // credentialKey is the key of the credential already resolved, or empty when
@@ -247,16 +289,24 @@ func (s *source) get() (*slackread.Client, error) {
 // is in use must not be the reason one gets loaded.
 func (s *source) credentialKey() string { return s.key }
 
-func newClient(baseURL string) (*slackread.Client, string, error) {
+func (s *source) resolve() {
+	if s.done {
+		return
+	}
+	s.done = true
 	c, err := resolveRead()
 	if err != nil {
-		return nil, "", err
+		s.err = err
+		return
 	}
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
-		return nil, "", err
+		s.err = err
+		return
 	}
-	return slackread.New(c, slackhttp.New(timeout), baseURL), c.Key(), nil
+	s.client = slackread.New(c, slackhttp.New(timeout), s.where.api)
+	s.files = slackfiles.New(c, timeout*downloadTimeoutFactor, s.where.files)
+	s.key = c.Key()
 }
 
 // ConversationsList and UsersList make source a cache.Source, so a cold cache
@@ -302,6 +352,10 @@ type flags struct {
 	asJSON bool
 	// since is the width of the window to read, zero when unset.
 	since time.Duration
+	// out is the directory files writes into, empty when unset.
+	out string
+	// maxSize is the largest file to fetch in bytes, zero when unset.
+	maxSize int64
 	// rest is everything that was not an option, in order: the verb, then its
 	// arguments.
 	rest []string
@@ -342,6 +396,33 @@ func parseArgs(args []string, stdout, stderr io.Writer) (f flags, done bool, cod
 				return f, true, cli.Usage(stderr, name, usage, err.Error())
 			}
 			f.since = d
+		case a == "--out" || strings.HasPrefix(a, "--out="):
+			v, ok := strings.CutPrefix(a, "--out=")
+			if !ok {
+				if i+1 >= len(args) {
+					return f, true, cli.Usage(stderr, name, usage, "--out needs a directory")
+				}
+				i++
+				v = args[i]
+			}
+			if v == "" {
+				return f, true, cli.Usage(stderr, name, usage, "--out needs a directory")
+			}
+			f.out = v
+		case a == "--max-size" || strings.HasPrefix(a, "--max-size="):
+			v, ok := strings.CutPrefix(a, "--max-size=")
+			if !ok {
+				if i+1 >= len(args) {
+					return f, true, cli.Usage(stderr, name, usage, "--max-size needs a size")
+				}
+				i++
+				v = args[i]
+			}
+			n, err := parseSize(v)
+			if err != nil {
+				return f, true, cli.Usage(stderr, name, usage, err.Error())
+			}
+			f.maxSize = n
 		// Answered only while they lead, which is what cli.Intercept does for a
 		// command with no options of its own. Past the verb they are arguments
 		// like any other, and the verb refuses them by arity: `hear whoami

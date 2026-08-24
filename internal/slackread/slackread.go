@@ -85,13 +85,34 @@ type Message struct {
 	Text       string     `json:"text"`
 	ReplyCount int        `json:"reply_count"`
 	Reactions  []Reaction `json:"reactions"`
-	// Blocks, Attachments and Files are kept as raw JSON because only their
-	// presence is used: a message built from blocks carries text that is a
-	// fallback or empty, so a consumer that treats Text as the whole message
-	// would be reading something a person never saw.
+	// Blocks and Attachments are kept as raw JSON because only their presence is
+	// used: a message built from blocks carries text that is a fallback or
+	// empty, so a consumer that treats Text as the whole message would be
+	// reading something a person never saw.
 	Blocks      json.RawMessage `json:"blocks"`
 	Attachments json.RawMessage `json:"attachments"`
-	Files       json.RawMessage `json:"files"`
+	// Files is decoded rather than kept raw because the transcript names its
+	// entries and `hear files` addresses them.
+	Files []File `json:"files"`
+}
+
+// File is one entry of a message's files array, narrowed to what naming and
+// downloading it need.
+type File struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Title    string `json:"title"`
+	Mimetype string `json:"mimetype"`
+	// Size is what Slack says the file is, which is metadata about the file and
+	// not a promise about the response: a download bounds itself on the bytes it
+	// actually reads.
+	Size int64 `json:"size"`
+	// Mode says whether there are bytes to fetch at all. "hosted" and "snippet"
+	// are stored by Slack; "external" lives in storage Slack only links to,
+	// "tombstone" is a file that has been deleted, and "email" is a mail body.
+	Mode               string `json:"mode"`
+	IsExternal         bool   `json:"is_external"`
+	URLPrivateDownload string `json:"url_private_download"`
 }
 
 // HasUnrenderedContent reports whether the message carries content the
@@ -108,7 +129,7 @@ type Message struct {
 // generated rather than authored content, and chat.update retains them where
 // it drops blocks.
 func (m Message) HasUnrenderedContent() bool {
-	if len(m.Files) > 0 && string(m.Files) != "null" && string(m.Files) != "[]" {
+	if len(m.Files) > 0 {
 		return true
 	}
 	var blocks []struct {
@@ -221,6 +242,10 @@ type HistoryOptions struct {
 	// Cursor continues a previous page: it is the NextCursor that page
 	// returned. Empty starts at the newest message in the window.
 	Cursor string
+	// Inclusive keeps the messages at Oldest and Latest in the result. It is
+	// what makes a window of one timestamp mean that message rather than
+	// nothing.
+	Inclusive bool
 }
 
 // HistoryPage is one page of a transcript.
@@ -246,6 +271,51 @@ type HistoryPage struct {
 // beginning, so NextCursor is returned rather than discarded.
 func (c *Client) History(ctx context.Context, channelID string, opts HistoryOptions) (HistoryPage, error) {
 	return c.transcript(ctx, "conversations.history", url.Values{}, channelID, opts)
+}
+
+// Message returns the single message at ts, or an error naming the timestamp
+// when the conversation holds no such message.
+//
+// Two endpoints are needed because neither answers for every message. A
+// conversation's history is its channel-level messages: a reply inside a thread
+// is not one of them and never appears there, however the window is drawn.
+// conversations.replies does take a reply's own timestamp, but it answers for a
+// thread, so it is not the way to ask about an ordinary message. A caller
+// holding a ts — from a transcript, or from a permalink someone pasted — cannot
+// tell which kind it has, so it is asked as a channel message first and as a
+// thread member second.
+func (c *Client) Message(ctx context.Context, channelID, ts string) (Message, error) {
+	page, err := c.History(ctx, channelID, HistoryOptions{
+		Limit: 1, Oldest: ts, Latest: ts, Inclusive: true,
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	if m, ok := findTS(page.Messages, ts); ok {
+		return m, nil
+	}
+
+	// Not found as a channel message, so it is a thread reply or nothing. The
+	// failure is named for what was being looked for rather than for the missing
+	// message it usually means: a rate limit or an expired token takes this
+	// branch too, and neither is evidence that the message does not exist.
+	page, err = c.Replies(ctx, channelID, ts, HistoryOptions{Limit: pageSize})
+	if err != nil {
+		return Message{}, fmt.Errorf("looking for ts %s: %w", ts, err)
+	}
+	if m, ok := findTS(page.Messages, ts); ok {
+		return m, nil
+	}
+	return Message{}, fmt.Errorf("no message at ts %s", ts)
+}
+
+func findTS(msgs []Message, ts string) (Message, bool) {
+	for _, m := range msgs {
+		if m.TS == ts {
+			return m, true
+		}
+	}
+	return Message{}, false
 }
 
 // Replies returns one page of a thread's messages, oldest first, beginning with
@@ -274,6 +344,9 @@ func (c *Client) transcript(ctx context.Context, method string, params url.Value
 	}
 	if opts.Cursor != "" {
 		params.Set("cursor", opts.Cursor)
+	}
+	if opts.Inclusive {
+		params.Set("inclusive", "true")
 	}
 	var out struct {
 		envelope

@@ -102,6 +102,7 @@ Read app — **User Token Scopes**:
 - `mpim:history`, `mpim:read`
 - `users:read`
 - `search:read`
+- `files:read`
 
 Write app — **User Token Scopes**:
 
@@ -357,10 +358,24 @@ The HTTP client is built explicitly and is never `http.DefaultClient`:
 - `Proxy` is nil, not `ProxyFromEnvironment`. `HTTP_PROXY` / `HTTPS_PROXY` /
   `NO_PROXY` cannot route a request carrying a bearer token through a host of
   their choosing.
-- Redirects are refused rather than followed.
+- Redirects to the API are refused rather than followed.
 - TLS is pinned to a 1.2 minimum.
 - Every request carries its own deadline as well as the client timeout, so a
   hung connection cannot block a command indefinitely.
+
+A file download is the one request that may be redirected, because Slack serves
+file bytes from a host that can hand off to storage it does not serve itself. It
+is the credential that is refused rather than the hop:
+
+- The bearer token is dropped as soon as the host changes. A pre-signed URL
+  carries its own authorisation in the query string, so the token is both
+  unnecessary there and exactly what must not leak. Go's own rule compares
+  domains and would carry the header across a change of port; this drops it on
+  any change of host, and a test holds it to that.
+- The target must be a host Slack serves files from, or the download is refused
+  before the request is made.
+- A downgrade from `https` is refused, and the chain is bounded at three hops so
+  a loop cannot be spun.
 
 ### One attempt, and an outcome that admits doubt
 
@@ -430,6 +445,7 @@ usage: hear <command> [options]
     dms [filter]                  list people you have a 1:1 DM with
     read <address> [n]            last n messages (default 20)
     thread <address> <ts>         replies in a thread
+    files <address> <ts>          download the files attached to one message
     search <query...>             search messages across the workspace
     refresh                       clear the channel/user cache
 
@@ -441,6 +457,10 @@ usage: hear <command> [options]
                       Pages to the end of the window, or to the newest 5000
                       messages in it, whichever comes first — --json reports
                       which by "complete". Read only, not combinable with n.
+        --out DIR     where files writes; the message's own directory is made
+                      inside it. Default: the current directory
+        --max-size N  largest file to fetch, e.g. 512K, 100M, 2G. Default 100M.
+                      A file above it is skipped and named, never truncated
         --            stop reading options; what follows is literal
     -h, --help        print this help and exit 0
         --version     print the version and exit 0
@@ -503,6 +523,14 @@ $ hear read '#alerts' --since 2h
 $ hear thread '#eng-standup' 1722500000.123456
 $ hear search deploy failed
 #eng-standup  jane  looks like the deploy failed on the last run
+
+$ hear read '#eng' --ts 1
+1785708834.862009  08-01 09:12  jane  here's the trace
+                                        ⤷ 2 files: trace.pdf (1.2 MB), out.log (14.0 KB)
+
+$ hear files '#eng' 1785708834.862009
+wrote   eng-1785708834.862009/trace.pdf (1.2 MB)
+wrote   eng-1785708834.862009/out.log (14.0 KB)
 ```
 
 `<@U…>` mentions are rewritten to `@display-name` (or the real name, or the
@@ -513,6 +541,36 @@ A search query is passed through as written, so Slack's own syntax works —
 including `-term` exclusion, since a single-dash word is not read as an option.
 `--` stops option parsing for a query that really does begin with two dashes.
 
+`hear files` writes each attachment into `<out>/<channel>-<ts>/`, one directory
+per message, so two messages' files cannot collide. It is best effort and says
+what happened to each file:
+
+- A file with no bytes behind it is **skipped** with the reason named — a link
+  to Google Drive or another external store, a file that has been deleted, an
+  email body. So is one larger than `--max-size`.
+- Anything skipped or failed makes the **exit status 1**, whatever else was
+  written, so a script can tell it got less than it asked for.
+- A name Slack sent is never taken as a path. It is reduced to its last element
+  and replaced by the file id if what is left could not be a filename, so an
+  upload called `../../.ssh/authorized_keys` writes `authorized_keys` inside the
+  message directory and nowhere else.
+- An existing file is **never overwritten**; that file fails and the one on disk
+  is left alone. Two attachments sharing a name both land, the second gaining
+  its file id before the extension.
+- Bytes go to a temporary file and are linked into place only once the whole
+  body has arrived, so an interrupted download leaves nothing that looks
+  complete.
+
+Downloading is the one request that may be redirected — Slack serves file bytes
+from a host that can hand off to storage. The bearer token does not go with it:
+it is dropped the moment the host changes, the target must be a host Slack
+serves files from, and the chain is bounded. See
+[No ambient configuration can alter a request](#no-ambient-configuration-can-alter-a-request).
+
+Without `files:read` Slack answers a file request with HTTP 200 and a sign-in
+page rather than an error. `hear files` refuses a web page where a file was
+expected and names the missing scope, so that page never lands as a `.pdf`.
+
 `hear refresh` deletes every `*.json` in `~/.cache/hersaid/`; the next command
 that needs the lists rebuilds them. `channels`, `dms` and `refresh` are
 answered from the cache when it is warm, and resolve no credential at all.
@@ -520,8 +578,18 @@ answered from the cache when it is warm, and resolve no credential at all.
 ### hear --json
 
 `--json` writes exactly one JSON object per invocation, indented, tagged with
-`kind`: `identity`, `channels`, `dms`, `transcript`, `search` or `refresh`.
-Diagnostics stay on stderr, so stdout is parseable whatever happens.
+`kind`: `identity`, `channels`, `dms`, `transcript`, `search`, `files` or
+`refresh`. Diagnostics stay on stderr, so stdout is parseable whatever happens.
+
+A `files` object carries `channel`, `ts`, the `dir` written to — absent when
+nothing was — and one entry per attachment whose `status` is `written`,
+`skipped` or `failed`, with `path` on the first and `reason` on the other two.
+
+A message in a `transcript` carries a `files` array when it has attachments —
+`id`, `name`, `size`, `mimetype` and `mode` — so a consumer can see what there
+is to fetch and pass that message's `ts` to `hear files` without reading the
+human transcript. `mode` says whether there are bytes behind it: `hosted` and
+`snippet` can be downloaded, `external` is a link to storage elsewhere.
 
 ```console
 $ hear channels --json
@@ -895,6 +963,14 @@ action, never the wording.
 - The channel and user lists are cached and reused: a channel created, renamed
   or archived afterwards won't appear, or will resolve wrongly, until
   `hear refresh`.
+- `hear files` fetches only what Slack stores. A file living in Google Drive,
+  Dropbox or another external store is a link in Slack's model, and following it
+  would mean holding a credential for that service — which is a different
+  program.
+- A download may take ten times `HERSAID_TIMEOUT`, since a body of up to
+  `--max-size` cannot be held to the bound that suits a small JSON reply. The
+  bound is on the whole transfer, not on a stall within it, so a link that
+  crawls fails late rather than early.
 - Editing and deleting messages are out of scope. They need new scopes,
   read-before-write across both credentials, different audit guarantees and new
   irreversible failure modes.

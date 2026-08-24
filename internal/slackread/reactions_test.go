@@ -72,7 +72,8 @@ func TestOnlyContentTextCannotStandForCounts(t *testing.T) {
 		{"link unfurl", Message{Text: "hi", Attachments: []byte(`[{"title":"a page"}]`)}, false},
 		{"section block", Message{Blocks: []byte(`[{"type":"section"}]`)}, true},
 		{"image beside rich_text", Message{Blocks: []byte(`[{"type":"rich_text"},{"type":"image"}]`)}, true},
-		{"a file", Message{Files: []byte(`[{"id":"F1"}]`)}, true},
+		{"a file", Message{Files: []File{{ID: "F1"}}}, true},
+		{"an empty files array", Message{Text: "hi", Files: []File{}}, false},
 		{"empty list", Message{Blocks: []byte(`[]`)}, false},
 		{"undecodable", Message{Blocks: []byte(`{"unexpected":1}`)}, true},
 	} {

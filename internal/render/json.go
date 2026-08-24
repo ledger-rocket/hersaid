@@ -22,6 +22,7 @@ const (
 	KindTranscript = "transcript"
 	KindSearch     = "search"
 	KindRefresh    = "refresh"
+	KindFiles      = "files"
 )
 
 // Identity is `hear whoami --json`.
@@ -88,6 +89,10 @@ type Message struct {
 	TextRendered string     `json:"text_rendered"`
 	ReplyCount   int        `json:"reply_count,omitempty"`
 	Reactions    []Reaction `json:"reactions,omitempty"`
+	// Files names the attachments, so a consumer can see there is something to
+	// fetch and pass this message's ts to `hear files`. Partial alone would not
+	// say so: it is also set by blocks, which cannot be downloaded.
+	Files []FileRef `json:"files,omitempty"`
 	// Partial marks a message whose Text is not the whole of it — one carrying
 	// blocks, attachments or files, which the transcript does not render. A
 	// consumer acting on the text of such a message is acting on something the
@@ -106,6 +111,39 @@ type Transcript struct {
 	// than are listed — a count that filled up, or a page bound that was hit.
 	// Without it a truncated transcript would look exactly like a whole one.
 	Complete bool `json:"complete"`
+}
+
+// FileRef is one attachment as a transcript reports it. Mode says whether there
+// are bytes behind it: "hosted" and "snippet" can be downloaded, "external" is
+// a link to storage elsewhere.
+type FileRef struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	Mimetype string `json:"mimetype,omitempty"`
+	Mode     string `json:"mode,omitempty"`
+}
+
+// FileResult is what became of one attachment. Status is "written", "skipped"
+// or "failed"; Reason is set on the latter two and Path only on the first.
+type FileResult struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Size   int64  `json:"size"`
+	Status string `json:"status"`
+	Path   string `json:"path,omitempty"`
+	Bytes  int64  `json:"bytes,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// Files is `hear files --json`. Dir is where the message's files were written,
+// empty when none of them were.
+type Files struct {
+	Kind    string       `json:"kind"`
+	Channel ChannelRef   `json:"channel"`
+	TS      string       `json:"ts"`
+	Dir     string       `json:"dir,omitempty"`
+	Files   []FileResult `json:"files"`
 }
 
 // SearchHit is one search result.
@@ -159,7 +197,21 @@ func Messages(msgs []slackread.Message, names Names) []Message {
 			TextRendered: names.Text(m.Text),
 			ReplyCount:   m.ReplyCount,
 			Reactions:    reactions,
+			Files:        fileRefs(m.Files),
 			Partial:      m.HasUnrenderedContent(),
+		})
+	}
+	return out
+}
+
+func fileRefs(files []slackread.File) []FileRef {
+	if len(files) == 0 {
+		return nil
+	}
+	out := make([]FileRef, 0, len(files))
+	for _, f := range files {
+		out = append(out, FileRef{
+			ID: f.ID, Name: FileLabel(f), Size: f.Size, Mimetype: f.Mimetype, Mode: f.Mode,
 		})
 	}
 	return out

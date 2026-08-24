@@ -15,6 +15,7 @@ import (
 
 	"github.com/ledger-rocket/hersaid/internal/cache"
 	"github.com/ledger-rocket/hersaid/internal/render"
+	"github.com/ledger-rocket/hersaid/internal/slackfiles"
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
@@ -34,10 +35,17 @@ func newEnv(t *testing.T) *env {
 	return &env{t: t, home: home, srv: slacktest.New(t)}
 }
 
+// testEndpoints points the API at the fake Slack and permits the loopback host
+// its file server answers on — the same shape production has, where the API is
+// Slack's and the permitted hosts are the ones Slack serves files from.
+func testEndpoints(api string) endpoints {
+	return endpoints{api: api, files: slackfiles.Allow("127.0.0.1")}
+}
+
 func (e *env) run(args ...string) (stdout, stderr string, code int) {
 	e.t.Helper()
 	var o, s bytes.Buffer
-	code = run(args, &o, &s, e.srv.URL)
+	code = run(args, &o, &s, testEndpoints(e.srv.URL))
 	return o.String(), s.String(), code
 }
 
@@ -1149,7 +1157,7 @@ func TestHelpDocumentsEveryVerbAndOption(t *testing.T) {
 	s := slacktest.New(t)
 
 	var help bytes.Buffer
-	if code := run([]string{"--help"}, &help, io.Discard, s.URL); code != 0 {
+	if code := run([]string{"--help"}, &help, io.Discard, testEndpoints(s.URL)); code != 0 {
 		t.Fatalf("exit = %d", code)
 	}
 	for _, want := range []string{

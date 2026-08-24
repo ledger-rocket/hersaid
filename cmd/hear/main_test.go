@@ -30,7 +30,7 @@ func TestWhoamiFormatIsStable(t *testing.T) {
 	s.Reply("auth.test", `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0123ABCD"}`)
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"whoami"}, &stdout, &stderr, s.URL); code != 0 {
+	if code := run([]string{"whoami"}, &stdout, &stderr, testEndpoints(s.URL)); code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr.String())
 	}
 	if want := "stepan @ LedgerRocket  (U0123ABCD)\n"; stdout.String() != want {
@@ -50,7 +50,7 @@ func TestWhoamiWithNoCredential(t *testing.T) {
 	s := slacktest.New(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"whoami"}, &stdout, &stderr, s.URL); code != 1 {
+	if code := run([]string{"whoami"}, &stdout, &stderr, testEndpoints(s.URL)); code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
 	if got := s.Hits(); got != 0 {
@@ -71,7 +71,7 @@ func TestNonPositiveTimeoutIsRejected(t *testing.T) {
 	s := slacktest.New(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"whoami"}, &stdout, &stderr, s.URL); code == 0 {
+	if code := run([]string{"whoami"}, &stdout, &stderr, testEndpoints(s.URL)); code == 0 {
 		t.Fatal("exit code = 0; HERSAID_TIMEOUT=0 must be refused")
 	}
 	if got := s.Hits(); got != 0 {
@@ -93,7 +93,7 @@ func TestHelpAndVersionTouchNothing(t *testing.T) {
 			s := slacktest.New(t)
 
 			var stdout, stderr bytes.Buffer
-			code := run([]string{flag}, &stdout, &stderr, s.URL)
+			code := run([]string{flag}, &stdout, &stderr, testEndpoints(s.URL))
 
 			if code != 0 {
 				t.Errorf("exit code = %d, want 0 — it was asked for, so it is output", code)
@@ -125,8 +125,8 @@ func TestHelpDocumentsTheCommandsAndFlags(t *testing.T) {
 	s := slacktest.New(t)
 
 	var help, version bytes.Buffer
-	run([]string{"--help"}, &help, io.Discard, s.URL)
-	run([]string{"--version"}, &version, io.Discard, s.URL)
+	run([]string{"--help"}, &help, io.Discard, testEndpoints(s.URL))
+	run([]string{"--version"}, &version, io.Discard, testEndpoints(s.URL))
 
 	for _, want := range []string{"whoami", "--help", "--version", "SLACK_READ_TOKEN", "HERSAID_TIMEOUT"} {
 		if !strings.Contains(help.String(), want) {
@@ -153,7 +153,7 @@ func TestWhoamiRejectsTrailingArguments(t *testing.T) {
 			s := slacktest.New(t)
 
 			var stdout, stderr bytes.Buffer
-			code := run(args, &stdout, &stderr, s.URL)
+			code := run(args, &stdout, &stderr, testEndpoints(s.URL))
 
 			if *consulted {
 				t.Error("a credential was resolved for an invocation the command cannot honour")
@@ -188,7 +188,7 @@ func TestUsageErrorsAreDiagnostics(t *testing.T) {
 			s := slacktest.New(t)
 
 			var stdout, stderr bytes.Buffer
-			if code := run(tc.args, &stdout, &stderr, s.URL); code != 2 {
+			if code := run(tc.args, &stdout, &stderr, testEndpoints(s.URL)); code != 2 {
 				t.Errorf("exit code = %d, want 2", code)
 			}
 			if stdout.Len() != 0 {

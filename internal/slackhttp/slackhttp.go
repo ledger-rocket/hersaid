@@ -38,6 +38,15 @@ func New(timeout time.Duration) *http.Client {
 	}
 }
 
+// Transport returns the transport every client in this module is built on: no
+// proxy, a TLS 1.2 floor, and a bounded dial and handshake.
+//
+// New is what a caller wants. This exists for the one client that cannot use
+// New — a file download, which must be allowed to follow a redirect under
+// bounds of its own — so that its ground rules are still these ones rather than
+// a second set that has to be kept in step by hand.
+func Transport() *http.Transport { return newTransport() }
+
 // TimeoutFromEnv resolves HERSAID_TIMEOUT, in whole seconds. An unset variable
 // yields DefaultTimeout; a value that is not a positive integer is an error
 // rather than a silently disabled timeout.
