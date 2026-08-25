@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +40,8 @@ const (
 	methodRemoveReaction = "reactions.remove"
 	methodUpdate         = "chat.update"
 	methodDelete         = "chat.delete"
+	methodGetUploadURL   = "files.getUploadURLExternal"
+	methodCompleteUpload = "files.completeUploadExternal"
 )
 
 const maxBody = 4 << 20
@@ -85,6 +88,31 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string { return e.Method + ": " + e.Code }
+
+// scopeNames maps each endpoint to the user token scope it needs, so a
+// missing_scope refusal can name the scope actually missing rather than
+// re-granting one the token already holds. It is fixed at compile time: a
+// value out of a response must not be interpolated into instructions telling
+// somebody what to grant.
+var scopeNames = map[string]string{
+	methodPostMessage:    "chat:write",
+	methodUpdate:         "chat:write",
+	methodDelete:         "chat:write",
+	methodAddReaction:    "reactions:write",
+	methodRemoveReaction: "reactions:write",
+	methodGetUploadURL:   "files:write",
+	methodCompleteUpload: "files:write",
+}
+
+// Scope returns the user token scope the endpoint that produced err needs, or
+// "" when err is nil or is not an *APIError.
+func Scope(err error) string {
+	var api *APIError
+	if !errors.As(err, &api) {
+		return ""
+	}
+	return scopeNames[api.Method]
+}
 
 // ErrNoCredential is a client built with the zero credential. cred.Write{} is
 // constructible in any package and ResolveWrite returns one alongside its
@@ -297,6 +325,128 @@ func (c *Client) reaction(ctx context.Context, method, channel, timestamp, emoji
 
 	var out envelope
 	return c.post(ctx, method, form, &out)
+}
+
+// UploadTicket is files.getUploadURLExternal's reply: the token for the next
+// leg.
+type UploadTicket struct {
+	// FileID names the staged upload for the completion leg.
+	FileID string
+	// UploadURL is where the bytes go, with its credential in the query string.
+	UploadURL string
+}
+
+// GetUploadURL declares a file to be uploaded, returning the upload ticket. It
+// is leg one of a three-leg upload: nothing is visible to anyone until the
+// completion leg runs. It is attempted at most once.
+//
+// A reply that passes the envelope but carries an empty file_id or an empty
+// upload_url is refused here, while the phase is still "nothing has been
+// staged", rather than two legs later where the failure would be about a URL
+// that never was.
+func (c *Client) GetUploadURL(ctx context.Context, filename string, length int64) (*UploadTicket, error) {
+	const method = methodGetUploadURL
+	form := url.Values{}
+	form.Set("filename", filename)
+	form.Set("length", strconv.FormatInt(length, 10))
+
+	var out struct {
+		envelope
+		FileID    string `json:"file_id"`
+		UploadURL string `json:"upload_url"`
+	}
+	if err := c.post(ctx, method, form, &out); err != nil {
+		return nil, err
+	}
+	if out.FileID == "" || out.UploadURL == "" {
+		return nil, &APIError{Method: method, Code: CodeMalformed}
+	}
+	return &UploadTicket{FileID: out.FileID, UploadURL: out.UploadURL}, nil
+}
+
+// CompleteRequest is files.completeUploadExternal's argument set.
+type CompleteRequest struct {
+	// Files are the staged uploads, shared in the order given.
+	Files []CompleteFile
+	// ChannelID is the conversation the files appear in.
+	ChannelID string
+	// ThreadTS, when set, threads the message.
+	ThreadTS string
+	// Comment is the message carried alongside the files.
+	Comment string
+}
+
+// CompleteFile names one staged upload for completion.
+type CompleteFile struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// Completion is files.completeUploadExternal's reply.
+type Completion struct {
+	Files []SharedFile
+}
+
+// SharedFile is one file's view of the completion.
+type SharedFile struct {
+	ID     string `json:"id"`
+	Shares Shares `json:"shares"`
+}
+
+// Shares reports where a file landed. Slack files a share under public or
+// private according to the channel, so both maps must be read.
+type Shares struct {
+	Public  map[string][]Share `json:"public"`
+	Private map[string][]Share `json:"private"`
+}
+
+// Share is one message that a file appears in.
+type Share struct {
+	TS string `json:"ts"`
+}
+
+// TimestampsFor returns every timestamp for channel from both maps, skipping
+// empty ones. Returning only the first would disable the caller's consensus
+// check, which exists to notice a reply describing more than one message.
+func (s Shares) TimestampsFor(channel string) []string {
+	var ts []string
+	for _, shares := range []map[string][]Share{s.Public, s.Private} {
+		for _, sh := range shares[channel] {
+			if sh.TS != "" {
+				ts = append(ts, sh.TS)
+			}
+		}
+	}
+	return ts
+}
+
+// CompleteUpload shares the staged files, making them visible, and returns the
+// reply. It is leg three of a three-leg upload; it is the only leg that makes
+// anything visible. It is attempted at most once.
+func (c *Client) CompleteUpload(ctx context.Context, req CompleteRequest) (*Completion, error) {
+	const method = methodCompleteUpload
+	form := url.Values{}
+	form.Set("channel_id", req.ChannelID)
+	if req.ThreadTS != "" {
+		form.Set("thread_ts", req.ThreadTS)
+	}
+	if req.Comment != "" {
+		form.Set("initial_comment", req.Comment)
+	}
+	files, err := json.Marshal(req.Files)
+	if err != nil {
+		return nil, &PreflightError{Method: method, Err: err}
+	}
+	form.Set("files", string(files))
+
+	var out struct {
+		envelope
+		Files []SharedFile `json:"files"`
+	}
+	if err := c.post(ctx, method, form, &out); err != nil {
+		return nil, err
+	}
+	return &Completion{Files: out.Files}, nil
 }
 
 // envelope is the part of every Slack reply that decides success.

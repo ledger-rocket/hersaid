@@ -153,25 +153,6 @@ func TestAFileRefFallsBackToTheTitleAndTheID(t *testing.T) {
 	}
 }
 
-func TestHumanSize(t *testing.T) {
-	for _, c := range []struct {
-		in   int64
-		want string
-	}{
-		{0, "0 B"},
-		{411, "411 B"},
-		{1023, "1023 B"},
-		{1024, "1.0 KB"},
-		{14336, "14.0 KB"},
-		{1258291, "1.2 MB"},
-		{3328599654, "3.1 GB"},
-	} {
-		if got := HumanSize(c.in); got != c.want {
-			t.Errorf("HumanSize(%d) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
 // A skipped file gets a line of its own: no line would be indistinguishable
 // from a message that never carried the file.
 func TestWriteFilesReportsEveryOutcome(t *testing.T) {

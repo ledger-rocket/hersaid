@@ -177,3 +177,45 @@ func TestNewClampsANonPositiveTimeout(t *testing.T) {
 		}
 	}
 }
+
+// The parser is the only place that can bound HERSAID_TIMEOUT, because every
+// consumer multiplies it again: hear takes ten times it for a download, sez
+// takes twice it for the hear subprocess it runs, and an upload takes ten times
+// it as a floor. A cap that only kept the seconds-to-Duration conversion in
+// range would still let all three overflow into a negative duration, and a
+// negative timeout fails every request instantly.
+func TestTimeoutFromEnvIsCappedSoItsConsumersCannotOverflow(t *testing.T) {
+	t.Setenv(TimeoutEnvVar, "86400")
+	max, err := TimeoutFromEnv()
+	if err != nil {
+		t.Fatalf("TimeoutFromEnv() at the cap error = %v, want it accepted", err)
+	}
+	if max != 24*time.Hour {
+		t.Fatalf("TimeoutFromEnv() = %v, want 24h", max)
+	}
+	for _, factor := range []time.Duration{2, 10} {
+		if scaled := max * factor; scaled <= 0 {
+			t.Errorf("%v × %d = %v; every consumer's multiple must stay positive",
+				max, factor, scaled)
+		}
+	}
+
+	t.Setenv(TimeoutEnvVar, "86401")
+	if _, err := TimeoutFromEnv(); err == nil {
+		t.Fatal("TimeoutFromEnv() one second above the cap = nil error, want a refusal")
+	}
+}
+
+// The value that used to overflow silently. int64 seconds this large wraps when
+// multiplied by time.Second, and the result was a negative timeout that failed
+// every request before it was made.
+func TestTimeoutFromEnvRefusesAValueThatWouldWrap(t *testing.T) {
+	t.Setenv(TimeoutEnvVar, "9223372036854")
+	got, err := TimeoutFromEnv()
+	if err == nil {
+		t.Fatalf("TimeoutFromEnv() = %v, nil error; want a refusal", got)
+	}
+	if got > 0 {
+		t.Fatalf("TimeoutFromEnv() = %v alongside its error, want the zero duration", got)
+	}
+}

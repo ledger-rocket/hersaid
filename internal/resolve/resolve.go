@@ -69,6 +69,11 @@ var (
 	// Slack as a channel name and is refused — after the render has already
 	// succeeded, which is the confusion the read gate exists to remove.
 	ForEdit = Capability{}
+	// ForUpload is `sez --file`: files.completeUploadExternal takes a
+	// conversation id in channel_id, so it resolves no #name and opens no DM —
+	// and an unresolved target would stage every byte of every file before
+	// failing on the last leg.
+	ForUpload = Capability{}
 )
 
 // Target is a resolved address.
@@ -132,6 +137,21 @@ func resolveChannel(ctx context.Context, cat Catalog, can Capability, target str
 				return t, nil
 			}
 		}
+	}
+
+	// A bare U… that matched no channel name is a person this caller cannot hand
+	// to Slack as a user id — only an endpoint that opens DMs may — so its DM
+	// must already exist. The userID form, never a prefix test, so a channel
+	// whose name merely begins with U is still a channel, resolved above.
+	if userID.MatchString(bare) && !can.OpensDM {
+		for _, c := range convs {
+			if c.IsIM && c.User == bare {
+				t.UserID, t.Name = bare, ""
+				t.ID, t.Resolved = c.ID, true
+				return t, nil
+			}
+		}
+		return t, fmt.Errorf("%w with %s (open one in Slack first)", ErrNoOpenDM, target)
 	}
 
 	if !can.PassThroughName {

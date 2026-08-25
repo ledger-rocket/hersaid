@@ -29,6 +29,7 @@ import (
 	"unicode"
 
 	"github.com/ledger-rocket/hersaid/internal/cred"
+	"github.com/ledger-rocket/hersaid/internal/slackhosts"
 	"github.com/ledger-rocket/hersaid/internal/slackhttp"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
@@ -43,48 +44,6 @@ const maxHops = 3
 // here rather than in each caller's control flow.
 var ErrNoCredential = errors.New("no read credential")
 
-// Hosts is where a download may go. The two roles are held apart on purpose: a
-// host that may serve bytes is not thereby a host the credential may be sent
-// to.
-type Hosts struct {
-	bearer      []string
-	viaRedirect []string
-}
-
-// Allow builds a Hosts whose suffixes may both receive the bearer and be
-// redirected to. A host matches a suffix exactly or as a subdomain of it, never
-// as a plain substring, so "not-slack.com" does not match "slack.com".
-func Allow(suffixes ...string) Hosts { return Hosts{bearer: suffixes} }
-
-// AndViaRedirect returns h extended with hosts a redirect may land on but a
-// request carrying the bearer may never be sent to.
-func (h Hosts) AndViaRedirect(suffixes ...string) Hosts {
-	h.viaRedirect = append(append([]string(nil), h.viaRedirect...), suffixes...)
-	return h
-}
-
-// PermitsBearer reports whether a request carrying the credential may be sent
-// to host.
-func (h Hosts) PermitsBearer(host string) bool { return matches(host, h.bearer) }
-
-// PermitsRedirect reports whether a redirect may land on host. Everywhere the
-// bearer may go is somewhere a redirect may go; the reverse does not hold.
-func (h Hosts) PermitsRedirect(host string) bool {
-	return matches(host, h.bearer) || matches(host, h.viaRedirect)
-}
-
-func matches(host string, suffixes []string) bool {
-	if host == "" {
-		return false
-	}
-	for _, s := range suffixes {
-		if host == s || strings.HasSuffix(host, "."+s) {
-			return true
-		}
-	}
-	return false
-}
-
 // SlackHosts is where Slack serves file bytes from: its own hosts, and the
 // object storage its pre-signed URLs point at.
 //
@@ -93,7 +52,7 @@ func matches(host string, suffixes []string) bool {
 // travels there: the bearer is dropped the moment the host changes, and a
 // pre-signed URL carries its own authorisation in the query string. What such a
 // host can do is serve bytes, which is what was asked for.
-var SlackHosts = Allow("slack.com", "slack-files.com").AndViaRedirect("amazonaws.com")
+var SlackHosts = slackhosts.Allow("slack.com", "slack-files.com").AndViaRedirect("amazonaws.com")
 
 // Status is what became of one file.
 type Status string
@@ -118,14 +77,14 @@ type Result struct {
 type Client struct {
 	hc    *http.Client
 	cred  cred.Read
-	hosts Hosts
+	hosts slackhosts.Hosts
 }
 
 // New returns a client authenticating as c, following redirects only within
 // hosts. The host set is a parameter rather than a default so that no code path
 // can widen where a request carrying a bearer may be sent without saying so at
 // the call site.
-func New(c cred.Read, timeout time.Duration, hosts Hosts) *Client {
+func New(c cred.Read, timeout time.Duration, hosts slackhosts.Hosts) *Client {
 	cl := &Client{cred: c, hosts: hosts}
 	cl.hc = &http.Client{
 		Timeout:       timeout,

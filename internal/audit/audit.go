@@ -109,6 +109,54 @@ type Post struct {
 	// made. An edit destroys the previous wording as surely as a delete
 	// destroys the message, and it is the only record of what was there.
 	PreviousText string
+	// Files are the attachments an upload carried. Empty for every other kind
+	// of record.
+	Files []File
+}
+
+// File is one attachment, as an upload record names it.
+//
+// It is an object rather than a bare id because the intent line is written
+// before any id exists and must still say what was about to go out. ID fills in
+// as each file is staged.
+//
+// Path holds the bytes of the path only insofar as they are valid UTF-8: a Unix
+// path is a byte string and a JSON string is Unicode, so encoding/json replaces
+// an invalid sequence with U+FFFD. That loss is accepted rather than worked
+// around, a second base64 field on every record costing more than it returns.
+type File struct {
+	Path     string
+	Name     string
+	Size     int64
+	Mimetype string
+	// ID is Slack's file id, known only once the file has been staged.
+	ID string
+}
+
+// fileWire pins one attachment's field set and key order, as postWire does for
+// the record around it.
+type fileWire struct {
+	Path     string  `json:"path"`
+	Name     string  `json:"name"`
+	Size     int64   `json:"size"`
+	Mimetype string  `json:"mimetype"`
+	ID       *string `json:"id"`
+}
+
+// files renders the attachment list, or nil for a record with none — which
+// marshals to null, like every other absent post field.
+func files(in []File) []fileWire {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]fileWire, 0, len(in))
+	for _, f := range in {
+		out = append(out, fileWire{
+			Path: f.Path, Name: f.Name, Size: f.Size,
+			Mimetype: f.Mimetype, ID: null(f.ID),
+		})
+	}
+	return out
 }
 
 // nullAction renders an unset action as JSON null, matching how every other
@@ -142,6 +190,8 @@ type postWire struct {
 	// Nullable rather than omitted: a post record's field set is deliberately
 	// fixed, so a consumer reads the same keys on every line.
 	PreviousText *string `json:"previous_text"`
+	// Files is null on every record that carries none, for the same reason.
+	Files []fileWire `json:"files"`
 }
 
 // MarshalJSON emits a post record's field set, in order.
@@ -162,6 +212,7 @@ func (p Post) MarshalJSON() ([]byte, error) {
 		Text:         null(p.Text),
 		SlackText:    null(p.SlackText),
 		PreviousText: null(p.PreviousText),
+		Files:        files(p.Files),
 	})
 }
 
@@ -197,6 +248,8 @@ const (
 	Update Action = "message.update"
 	// Delete is a chat.delete, a destruction.
 	Delete Action = "message.delete"
+	// Upload is a file upload completed as a message.
+	Upload Action = "message.upload"
 )
 
 // reactionWire pins the field set and the key order of a reaction record. It

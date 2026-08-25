@@ -17,6 +17,7 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/cred"
 	"github.com/ledger-rocket/hersaid/internal/resolve"
 	"github.com/ledger-rocket/hersaid/internal/slackfiles"
+	"github.com/ledger-rocket/hersaid/internal/slackhosts"
 	"github.com/ledger-rocket/hersaid/internal/slackhttp"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
@@ -137,7 +138,7 @@ var resolveRead = cred.ResolveRead
 // slackread.SlackAPI is a parameter rather than a package default.
 type endpoints struct {
 	api   string
-	files slackfiles.Hosts
+	files slackhosts.Hosts
 }
 
 func main() {

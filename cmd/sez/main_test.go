@@ -19,6 +19,7 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/cache"
 	"github.com/ledger-rocket/hersaid/internal/cred"
 	"github.com/ledger-rocket/hersaid/internal/resolve"
+	"github.com/ledger-rocket/hersaid/internal/slackhosts"
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
@@ -1395,6 +1396,10 @@ func TestHelperProcess(t *testing.T) {
 	if os.Getenv(helperEnv) != "1" {
 		return
 	}
+	// The upload tests transfer to a local sink, which the production host set
+	// does not permit. Only this test binary can reach here: the variable is
+	// unexported and nothing in the shipped command reassigns it.
+	uploadHosts = slackhosts.Allow("127.0.0.1", "localhost")
 	code := run(strings.Split(os.Getenv(helperArgsEnv), "\x1f"),
 		strings.NewReader(""), os.Stdout, os.Stderr, os.Getenv(helperURLEnv))
 	os.Exit(code)

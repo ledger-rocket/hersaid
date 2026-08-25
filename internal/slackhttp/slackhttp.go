@@ -47,6 +47,12 @@ func New(timeout time.Duration) *http.Client {
 // a second set that has to be kept in step by hand.
 func Transport() *http.Transport { return newTransport() }
 
+// maxTimeoutSeconds bounds HERSAID_TIMEOUT. A day is chosen so that every
+// multiple taken downstream — hear's ten times for a download, sez's twice for
+// its subprocess, an upload's ten times as a floor — stays far inside range,
+// not because a day is a sensible request timeout.
+const maxTimeoutSeconds = 86400
+
 // TimeoutFromEnv resolves HERSAID_TIMEOUT, in whole seconds. An unset variable
 // yields DefaultTimeout; a value that is not a positive integer is an error
 // rather than a silently disabled timeout.
@@ -61,6 +67,10 @@ func TimeoutFromEnv() (time.Duration, error) {
 	}
 	if n <= 0 {
 		return 0, fmt.Errorf("%s=%d: a request timeout must be positive", TimeoutEnvVar, n)
+	}
+	if n > maxTimeoutSeconds {
+		return 0, fmt.Errorf("%s=%d: a request timeout is capped at %d seconds",
+			TimeoutEnvVar, n, maxTimeoutSeconds)
 	}
 	return time.Duration(n) * time.Second, nil
 }

@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/ledger-rocket/hersaid/internal/cache"
+	"github.com/ledger-rocket/hersaid/internal/humansize"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
 
@@ -155,7 +156,7 @@ func filesLine(files []slackread.File) string {
 	}
 	parts := make([]string, 0, len(files))
 	for _, f := range files {
-		parts = append(parts, fmt.Sprintf("%s (%s)", FileLabel(f), HumanSize(f.Size)))
+		parts = append(parts, fmt.Sprintf("%s (%s)", FileLabel(f), humansize.Bytes(f.Size)))
 	}
 	return fmt.Sprintf("⤷ %d %s: %s", len(files), noun, strings.Join(parts, ", "))
 }
@@ -183,25 +184,6 @@ func FileLabel(f slackread.File) string {
 		}
 		return r
 	}, label)
-}
-
-// HumanSize renders a byte count for a person: whole bytes below a kilobyte and
-// one decimal place above it. The steps are 1024 rather than 1000, so 1024
-// bytes reads as 1.0 KB.
-func HumanSize(n int64) string {
-	const step = 1024
-	if n < step {
-		return fmt.Sprintf("%d B", n)
-	}
-	value, unit := float64(n)/step, ""
-	for _, u := range []string{"KB", "MB", "GB", "TB"} {
-		unit = u
-		if value < step {
-			break
-		}
-		value /= step
-	}
-	return fmt.Sprintf("%.1f %s", value, unit)
 }
 
 // reactionsLine renders a message's reactions as "one per reaction joined by
@@ -320,7 +302,7 @@ func WriteFiles(w io.Writer, results []FileResult) error {
 		var line string
 		switch r.Status {
 		case "written":
-			line = fmt.Sprintf("%-7s %s (%s)", "wrote", r.Path, HumanSize(r.Bytes))
+			line = fmt.Sprintf("%-7s %s (%s)", "wrote", r.Path, humansize.Bytes(r.Bytes))
 		default:
 			line = fmt.Sprintf("%-7s %s — %s", r.Status, r.Name, r.Reason)
 		}

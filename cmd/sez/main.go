@@ -33,7 +33,7 @@ import (
 
 const name = "sez"
 
-const usage = `usage: sez [--send] [--thread TS] [--md] <#chan|@person|ID> [text]
+const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|@person|ID> [text]
        sez [--send] [--md] --edit <#chan|@person|ID> <ts> <new text>
        sez [--send] --delete <#chan|@person|ID> <ts>
 
@@ -41,6 +41,8 @@ const usage = `usage: sez [--send] [--thread TS] [--md] <#chan|@person|ID> [text
   text first; deliver it second.
 
   Text may be given as an argument, or piped on stdin (use "-" or omit it).
+  With --file the text becomes the message carried alongside the files; omitting
+  it means no comment, and stdin is not read. "-" still reads it.
   --edit and --delete rewrite or destroy what people have already read, so the
   render shows the current text first — read from the hear binary — and the
   change beside it. They are mutually exclusive with each other and with
@@ -51,6 +53,7 @@ const usage = `usage: sez [--send] [--thread TS] [--md] <#chan|@person|ID> [text
     -n, --dry-run     render only; the default, accepted for explicitness
         --md          convert Markdown to Slack mrkdwn before sending
         --thread TS   reply inside the thread with this parent ts
+        --file PATH   attach a file; repeatable, and the order is kept
         --edit        rewrite the message at the given ts; the render shows both
         --delete      delete the message at the given ts; the render shows what goes
         --            stop reading options; what follows is the target and text
@@ -77,10 +80,19 @@ const noCredential = `sez: no write credential found (keychain service: hersaid-
   Rendering needs no credential — omit --send.
 `
 
-const missingScope = `  The write app needs chat:write. Add it under User Token Scopes, reinstall
+// missingScopeFor names the scope the failing endpoint needs. The scope is read
+// from a table in slackwrite rather than from Slack's reply, so nothing a
+// response says can steer instructions about what to grant.
+func missingScopeFor(err error) string {
+	scope := slackwrite.Scope(err)
+	if scope == "" {
+		scope = "the scope this endpoint needs"
+	}
+	return fmt.Sprintf(`  The write app needs %s. Add it under User Token Scopes, reinstall
   the app, then enrol the new token:
     hersaid-setup --with-write
-`
+`, scope)
+}
 
 // Defence in depth: the form encoder already escapes every field.
 var (
@@ -131,6 +143,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	if f.del && f.md {
 		return cli.Usage(stderr, name, usage, "--delete sends no text, so --md has nothing to convert")
 	}
+	// Slack offers no way to attach a file to a message that already exists, so
+	// --file substitutes the send endpoint rather than adding to it.
+	if len(f.files) > 0 && (f.edit || f.del) {
+		return cli.Usage(stderr, name, usage,
+			"--file attaches files to a new message; it cannot combine with --edit or --delete")
+	}
 	if f.edit {
 		verb = verbEdit
 	} else if f.del {
@@ -158,11 +176,17 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		if len(rest) > 0 {
 			return cli.Usage(stderr, name, usage, "--delete takes a target and a ts and nothing else")
 		}
+	} else if len(f.files) > 0 && len(rest) == 0 {
+		// The files are the message. Reading stdin here would block on a
+		// terminal for input nobody is going to type.
+		text = ""
 	} else {
 		text, err = readText(rest, stdin)
 		if err != nil {
 			return fail(stderr, "%v", err)
 		}
+		// A comment asked for and answered with blank space is a mistake.
+		// Requesting no comment is what omitting the argument does.
 		if strings.TrimSpace(text) == "" {
 			return fail(stderr, "refusing to send an empty message")
 		}
@@ -193,9 +217,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		fmt.Fprintf(stderr, "sez: warning — %s\n", w)
 	}
 
+	action := verbAction(verb)
+	if len(f.files) > 0 {
+		action = audit.Upload
+	}
 	rec := audit.Post{
 		Channel: channel, ThreadTS: thread, DryRun: !send, Text: text,
-		Action: verbAction(verb),
+		Action: action,
 	}
 
 	// The gate: still before any client exists, so a refusal cannot issue a
@@ -211,6 +239,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	can := resolve.ForPost
 	if verb != verbSend {
 		can = resolve.ForEdit
+	}
+	// completeUploadExternal takes a conversation id, resolving no #name and
+	// opening no DM. Resolving as a send does would stage every byte of every
+	// file and then fail on the last leg.
+	if len(f.files) > 0 {
+		can = resolve.ForUpload
 	}
 	target, err := resolve.Resolve(context.Background(), cache.Offline(), can, channel)
 	if err != nil {
@@ -275,6 +309,21 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 			return orAuditFailure(writeRecord(stderr, log, rec), 0)
 		}
 		return change(stdout, stderr, log, rec, baseURL, wcred, target, verb, ts)
+	}
+
+	if len(f.files) > 0 {
+		files, ferr := openFiles(f.files)
+		if ferr != nil {
+			return abort(stderr, log, rec, ferr.Error())
+		}
+		defer closeFiles(files)
+		rec.Files = auditFiles(files)
+		if !send {
+			renderUpload(stdout, target, thread, text, files, credErr == nil)
+			rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
+			return orAuditFailure(writeRecord(stderr, log, rec), 0)
+		}
+		return upload(stdout, stderr, log, rec, baseURL, wcred, target, thread, text, files)
 	}
 
 	if !send {
@@ -349,7 +398,7 @@ func post(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL stri
 		// missing nor where it is granted; printing it for every failure would
 		// send someone editing OAuth scopes over a wrong channel name.
 		if slackwrite.Code(err) == slackwrite.CodeMissingScope {
-			fmt.Fprint(stderr, missingScope)
+			fmt.Fprint(stderr, missingScopeFor(err))
 		}
 		return orAuditFailure(werr, code)
 	}
@@ -515,7 +564,7 @@ func changeOutcome(stderr io.Writer, log *audit.Log, rec audit.Post, err error) 
 		werr := writeRecord(stderr, log, rec)
 		code := fail(stderr, "%v  (logged)", err)
 		if slackwrite.Code(err) == slackwrite.CodeMissingScope {
-			fmt.Fprint(stderr, missingScope)
+			fmt.Fprint(stderr, missingScopeFor(err))
 		}
 		return orAuditFailure(werr, code)
 	}
@@ -711,6 +760,8 @@ type flags struct {
 	edit   bool
 	del    bool
 	thread string
+	// files are the --file arguments, in the order given.
+	files []string
 	// rest is everything after the options: the target, then the text.
 	rest []string
 }
@@ -741,6 +792,16 @@ func parseFlags(args []string, stdout, stderr io.Writer) (f flags, done bool, co
 				return f, true, cli.Usage(stderr, name, usage, "--thread needs a parent ts")
 			}
 			f.thread, args = args[1], args[2:]
+		case "--file":
+			if len(args) < 2 || args[1] == "" {
+				return f, true, cli.Usage(stderr, name, usage, "--file needs a path")
+			}
+			// stdin is the text channel, and a file has to be seekable: the
+			// length is declared before the bytes are sent.
+			if args[1] == "-" {
+				return f, true, cli.Usage(stderr, name, usage, "--file needs a path; stdin carries the text, not a file")
+			}
+			f.files, args = append(f.files, args[1]), args[2:]
 		case "-h", "--help":
 			return f, true, cli.Help(stdout, usage)
 		case "--version":

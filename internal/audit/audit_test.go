@@ -17,14 +17,14 @@ import (
 // tri-state ok. A single struct shared by both record types would silently
 // change all four.
 const (
-	goldenPostIntent = `{"at":"2026-08-03T09:15:00Z","by":"stepan","phase":"intent","action":null,"channel":"#eng","channel_id":"C0123ABCD","thread_ts":null,"dry_run":false,"ok":null,"error":null,"ts":null,"permalink":null,"text":"hello","slack_text":null,"previous_text":null}`
+	goldenPostIntent = `{"at":"2026-08-03T09:15:00Z","by":"stepan","phase":"intent","action":null,"channel":"#eng","channel_id":"C0123ABCD","thread_ts":null,"dry_run":false,"ok":null,"error":null,"ts":null,"permalink":null,"text":"hello","slack_text":null,"previous_text":null,"files":null}`
 
-	goldenPostOutcome = `{"at":"2026-08-03T09:15:01Z","by":"stepan","phase":"outcome","action":null,"channel":"#eng","channel_id":"C0123ABCD","thread_ts":"1785712596.256909","dry_run":false,"ok":true,"error":null,"ts":"1785712599.000100","permalink":"https://example.invalid/archives/C/p1","text":"hello","slack_text":"hello","previous_text":null}`
+	goldenPostOutcome = `{"at":"2026-08-03T09:15:01Z","by":"stepan","phase":"outcome","action":null,"channel":"#eng","channel_id":"C0123ABCD","thread_ts":"1785712596.256909","dry_run":false,"ok":true,"error":null,"ts":"1785712599.000100","permalink":"https://example.invalid/archives/C/p1","text":"hello","slack_text":"hello","previous_text":null,"files":null}`
 
 	// An edit, which is the only record that carries both an action and the
 	// wording it replaced — the two fields the other goldens leave at their
 	// zero, and so the only place their position in the key order is pinned.
-	goldenPostEdit = `{"at":"2026-08-03T09:15:03Z","by":"stepan","phase":"outcome","action":"message.update","channel":"#eng","channel_id":"C0123ABCD","thread_ts":null,"dry_run":false,"ok":true,"error":null,"ts":"1785712599.000100","permalink":null,"text":"after","slack_text":"after","previous_text":"before"}`
+	goldenPostEdit = `{"at":"2026-08-03T09:15:03Z","by":"stepan","phase":"outcome","action":"message.update","channel":"#eng","channel_id":"C0123ABCD","thread_ts":null,"dry_run":false,"ok":true,"error":null,"ts":"1785712599.000100","permalink":null,"text":"after","slack_text":"after","previous_text":"before","files":null}`
 
 	goldenReactionOutcome = `{"at":"2026-08-03T09:15:02Z","by":"stepan","phase":"outcome","action":"react.add","channel":"#eng","channel_id":"C0123ABCD","ts":"1785712596.256909","emoji":"thumbsup","dry_run":false,"ok":true,"error":null}`
 )

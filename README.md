@@ -108,6 +108,7 @@ Write app — **User Token Scopes**:
 
 - `chat:write`
 - `reactions:write`
+- `files:write`
 
 If the write app existed before `reactions:write` was added, adding the scope
 alone isn't enough: Slack only issues a token carrying it on the *next*
@@ -376,6 +377,28 @@ is the credential that is refused rather than the hop:
   before the request is made.
 - A downgrade from `https` is refused, and the chain is bounded at three hops so
   a loop cannot be spun.
+- A refused redirect names a host and never a URL. `url.URL.Redacted` masks a
+  userinfo password and leaves the query string alone, so naming the target
+  would put a storage signature into the output and into `--json`.
+
+An upload is the same problem in reverse, and takes the stricter line. Slack
+hands back a pre-signed URL to send the bytes to, so:
+
+- The write token is never attached to that request. The package that makes it
+  holds no credential at all, so there is nothing to attach — the rule is a
+  property of what the code contains rather than of what it remembers not to do.
+- The URL must be on a host Slack takes uploads at, checked before the request
+  exists.
+- No redirect is followed. Nothing suggests Slack redirects an upload, and if it
+  turns out to, that is something to learn from a refusal rather than by having
+  already sent the file somewhere.
+- No error, log line or message ever contains that URL. Its query string is the
+  credential, and `sez` writes error text into the audit log — so the errors are
+  built from a filename, a host and a class rather than wrapped, since
+  `url.Parse`, `http.NewRequest` and the transport all quote the URL back. A
+  test asserts a sentinel in the query string is absent from stdout, stderr,
+  every audit line and every error string, across every way the transfer can
+  fail.
 
 ### One attempt, and an outcome that admits doubt
 
@@ -648,18 +671,21 @@ $ hear channels --json
 ### sez (post, with audit log)
 
 ```
-usage: sez [--send] [--thread TS] [--md] <#chan|@person|ID> [text]
+usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|@person|ID> [text]
 
   Renders the message WITHOUT sending unless --send is given. Read the rendered
   text first; deliver it second.
 
   Text may be given as an argument, or piped on stdin (use "-" or omit it).
+  With --file, omitting the text means no comment and stdin is not read; "-"
+  still reads it.
 
   Options:
         --send        actually deliver it (default is render-only)
     -n, --dry-run     render only; the default, accepted for explicitness
         --md          convert Markdown to Slack mrkdwn before sending
         --thread TS   reply inside the thread with this parent ts
+        --file PATH   attach a file; repeatable, and order is kept
         --            stop reading options; what follows is the target and text
     -h, --help        print this help and exit 0
         --version     print the version and exit 0
@@ -687,6 +713,16 @@ $ echo 'deploy is done' | sez '#eng-standup'
 
 # thread reply, sent
 $ sez --send --thread 1722500000.123456 '#eng-standup' 'fixed in the follow-up'
+
+# attach files; the text becomes the message alongside them
+$ sez --send --file ./trace.pdf --file ./out.log '#eng' "here's the repro"
+uploaded to #eng ts=1722500000.123456
+  trace.pdf  F0123ABCD
+  out.log    F0123ABCE
+https://yourteam.slack.com/archives/C0123ABCD/p1722500000123456
+
+# files with no message of their own
+$ sez --send --file ./chart.png '#eng'
 
 # Markdown conversion, rendered
 $ sez --md '#eng-standup' '**deploy** done, see [changelog](https://example.com)'
@@ -847,7 +883,8 @@ mistake that causes a duplicate message.
   through unresolved; `null` when resolution never happened
 - `thread_ts` — from `--thread`, or `null`
 - `dry_run`, `ok`, `error`
-- `action` — `message.send`, `message.update` or `message.delete`
+- `action` — `message.send`, `message.update`, `message.delete` or
+  `message.upload`
 - `ts` — for a send, the timestamp the send produced, known only afterwards;
   for an edit or a delete, the `<ts>` argument, so the intent line carries it too
 - `permalink` — link to the sent message, or `null`
@@ -858,6 +895,11 @@ mistake that causes a duplicate message.
   the only record of it.
 - `slack_text` — what Slack actually stored, which can differ: it sanitises and
   truncates. Logging both makes the difference auditable.
+- `files` — for an upload, one object per attachment: `path`, `name`, `size`,
+  `mimetype` and `id`. `id` is `null` on the intent line, which is written
+  before any file has been staged, and fills in as each one lands. `null` on
+  every record that carries no files. A path that is not valid UTF-8 is
+  recorded with the replacement character, JSON strings being Unicode.
 
 ### tap records
 
@@ -971,9 +1013,21 @@ action, never the wording.
   `--max-size` cannot be held to the bound that suits a small JSON reply. The
   bound is on the whole transfer, not on a stall within it, so a link that
   crawls fails late rather than early.
-- Editing and deleting messages are out of scope. They need new scopes,
-  read-before-write across both credentials, different audit guarantees and new
-  irreversible failure modes.
+- `sez --file` is all or nothing. A failure before the sharing leg posts
+  nothing at all — an outward message referring to an attachment that is not
+  there is worse than no message — and the ids of files already transferred are
+  reported so they can be found. They are staged uploads: invisible in the
+  channel, and Slack's documentation says an upload never completed is
+  discarded. `sez` does not delete them.
+- An upload is capped at 1,000,000,000 bytes and ten files per message. Slack
+  documents its own limit as "1 GB" without saying which one, and the decimal
+  reading is the one that cannot let through a file Slack will refuse.
+- A transfer is allowed the greater of ten times `HERSAID_TIMEOUT` and one
+  second per megabyte. The assumed floor is 1 MB/s; on a slower link, raise
+  `HERSAID_TIMEOUT`, which is itself capped at one day so that every multiple
+  taken of it stays in range.
+- Uploads follow no redirect. Slack has not been observed to redirect one, and
+  a hop is not something to discover by taking it.
 - Windows is not supported: XDG paths, `0600`, Unix signals and symlink
   installation throughout. WSL is a Linux environment and uses the Linux paths
   and the file credential fallback.

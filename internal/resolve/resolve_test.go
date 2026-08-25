@@ -249,3 +249,122 @@ func TestHostileDisplayNamesAreMatchedAsData(t *testing.T) {
 		t.Fatalf("error = %v; the display name was treated as a pattern", err)
 	}
 }
+
+// ForUpload is files.completeUploadExternal's capability: channel_id is a
+// conversation id, so neither a #name Slack would resolve nor a U… whose DM it
+// would open is any use. It is a name of its own rather than a reuse of
+// ForReact because it is a different endpoint's reason for the same strictness.
+func TestForUploadResolvesNothingItCannotName(t *testing.T) {
+	cat := fixture()
+	for _, c := range []struct {
+		target string
+		want   error
+	}{
+		{"#nosuch", ErrNoSuchChannel},
+		{"@nodm", ErrNoOpenDM},
+		{"U0000NODM", ErrNoOpenDM},
+	} {
+		_, err := Resolve(context.Background(), cat, ForUpload, c.target)
+		if !errors.Is(err, c.want) {
+			t.Errorf("Resolve(%q) error = %v, want %v", c.target, err, c.want)
+		}
+	}
+}
+
+// A #name must never be passed through unresolved: completion would receive a
+// channel name where an id belongs, after every byte had already been staged.
+func TestForUploadNeverPassesANameThrough(t *testing.T) {
+	got, err := Resolve(context.Background(), fixture(), ForUpload, "#eng")
+	if err != nil {
+		t.Fatalf("Resolve(#eng) error = %v", err)
+	}
+	if !got.Resolved || got.ID != "C0000ENG1" {
+		t.Fatalf("Resolve(#eng) = %+v, want the resolved id", got)
+	}
+}
+
+// A bare U… is one of the three forms the usage advertises. For a caller that
+// does not open DMs it used to fall past the id check into channel-name
+// matching and report "no such channel", even with that person's DM in the
+// cache. It resolves through the IM instead.
+func TestABareUserIDResolvesThroughTheOpenDM(t *testing.T) {
+	for _, can := range []struct {
+		name string
+		cap  Capability
+	}{
+		{"ForUpload", ForUpload},
+		{"ForReact", ForReact},
+		{"ForEdit", ForEdit},
+	} {
+		got, err := Resolve(context.Background(), fixture(), can.cap, "U0000STEP")
+		if err != nil {
+			t.Fatalf("%s: Resolve(U0000STEP) error = %v", can.name, err)
+		}
+		if got.ID != "D0000STEP" {
+			t.Errorf("%s: ID = %q, want the DM id D0000STEP", can.name, got.ID)
+		}
+		if !got.Resolved {
+			t.Errorf("%s: Resolved = false, want true", can.name)
+		}
+		if got.UserID != "U0000STEP" {
+			t.Errorf("%s: UserID = %q, want the person it went through", can.name, got.UserID)
+		}
+	}
+}
+
+// The capability that opens DMs still hands the user id straight to Slack, which
+// opens the conversation itself. Resolving it to a D… here would be harmless but
+// it is not this change's business, and chat.postMessage has always taken U….
+func TestForPostStillPassesABareUserIDStraightThrough(t *testing.T) {
+	got, err := Resolve(context.Background(), fixture(), ForPost, "U0000NODM")
+	if err != nil {
+		t.Fatalf("Resolve(U0000NODM) error = %v", err)
+	}
+	if got.ID != "U0000NODM" {
+		t.Fatalf("ID = %q, want the user id passed through", got.ID)
+	}
+}
+
+// A channel whose name merely begins with U is not a user id. The id form is
+// ^[CDGU][A-Z0-9]{7,}$ and nothing looser: a prefix test would send #UPDATES
+// hunting for a DM with a person who does not exist, and refuse a channel that
+// resolves perfectly well. Uppercase channel names exist — the shared fixture
+// carries one — so this is not hypothetical.
+func TestAChannelNamedLikeAUserIDStillResolves(t *testing.T) {
+	cat := catalog{
+		convs: []cache.Conversation{
+			{ID: "C0000UPD1", Name: "UPDATES"},
+			{ID: "D0000STEP", IsIM: true, User: "U0000STEP"},
+		},
+		users: []cache.User{{ID: "U0000STEP", Name: "stepan"}},
+	}
+	for _, can := range []struct {
+		name string
+		cap  Capability
+	}{
+		{"ForUpload", ForUpload},
+		{"ForReact", ForReact},
+		{"ForEdit", ForEdit},
+		{"ForRead", ForRead},
+	} {
+		for _, target := range []string{"#UPDATES", "UPDATES"} {
+			got, err := Resolve(context.Background(), cat, can.cap, target)
+			if err != nil {
+				t.Errorf("%s: Resolve(%q) error = %v, want the channel", can.name, target, err)
+				continue
+			}
+			if got.ID != "C0000UPD1" {
+				t.Errorf("%s: Resolve(%q) ID = %q, want C0000UPD1", can.name, target, got.ID)
+			}
+		}
+
+		// The name the catalog does not have. This is the case that tells a
+		// prefix test from the id form: the channel lookup misses either way,
+		// and only a prefix test then goes looking for a DM and reports that
+		// none is open — for something that was never a person.
+		_, err := Resolve(context.Background(), cat, can.cap, "#UNKNOWN")
+		if !errors.Is(err, ErrNoSuchChannel) {
+			t.Errorf("%s: Resolve(#UNKNOWN) error = %v, want %v", can.name, err, ErrNoSuchChannel)
+		}
+	}
+}

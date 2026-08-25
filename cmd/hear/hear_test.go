@@ -15,7 +15,7 @@ import (
 
 	"github.com/ledger-rocket/hersaid/internal/cache"
 	"github.com/ledger-rocket/hersaid/internal/render"
-	"github.com/ledger-rocket/hersaid/internal/slackfiles"
+	"github.com/ledger-rocket/hersaid/internal/slackhosts"
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
@@ -39,7 +39,7 @@ func newEnv(t *testing.T) *env {
 // its file server answers on — the same shape production has, where the API is
 // Slack's and the permitted hosts are the ones Slack serves files from.
 func testEndpoints(api string) endpoints {
-	return endpoints{api: api, files: slackfiles.Allow("127.0.0.1")}
+	return endpoints{api: api, files: slackhosts.Allow("127.0.0.1")}
 }
 
 func (e *env) run(args ...string) (stdout, stderr string, code int) {

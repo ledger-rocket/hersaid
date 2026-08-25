@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ledger-rocket/hersaid/internal/cred"
+	"github.com/ledger-rocket/hersaid/internal/slackhosts"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
 
@@ -22,7 +23,7 @@ const token = "xoxp-fake-read-token"
 
 // loopback is what a test server answers on. Production permits the hosts Slack
 // serves files from; a test permits the one standing in for them.
-var loopback = Allow("127.0.0.1")
+var loopback = slackhosts.Allow("127.0.0.1")
 
 // readCred builds a credential from the environment, which is the only way to
 // make one outside package cred — deliberately, since the token field is
@@ -70,7 +71,7 @@ func portOf(t *testing.T, rawURL string) string {
 	return u.Port()
 }
 
-func client(t *testing.T, hosts Hosts) *Client {
+func client(t *testing.T, hosts slackhosts.Hosts) *Client {
 	t.Helper()
 	return New(readCred(t), 5*time.Second, hosts)
 }
@@ -330,7 +331,7 @@ func TestNamesDifferingOnlyInCaseBothLand(t *testing.T) {
 func TestTheInitialHostIsCheckedToo(t *testing.T) {
 	srv, auths := fileHost(t, []byte("the file"), "application/pdf")
 	dir := filepath.Join(t.TempDir(), "eng-123.456")
-	c := client(t, Allow("example.invalid"))
+	c := client(t, slackhosts.Allow("example.invalid"))
 
 	results := c.Fetch(context.Background(),
 		[]slackread.File{hosted("trace.pdf", srv.URL+"/file", 8)}, filepath.Dir(dir), filepath.Base(dir), 1<<20)
@@ -350,7 +351,7 @@ func TestTheInitialHostIsCheckedToo(t *testing.T) {
 // prevent, so a plaintext URL is refused before the request is built.
 func TestAPlaintextDownloadURLIsRefused(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "eng-123.456")
-	c := client(t, Allow("files.slack.com"))
+	c := client(t, slackhosts.Allow("files.slack.com"))
 
 	results := c.Fetch(context.Background(),
 		[]slackread.File{hosted("trace.pdf", "http://files.slack.com/f", 8)}, filepath.Dir(dir), filepath.Base(dir), 1<<20)
@@ -378,7 +379,7 @@ func TestTheBearerIsDroppedWhenTheHostChanges(t *testing.T) {
 	// which Go's own cross-domain rule would treat as the same host and copy the
 	// header across. The drop here is this package's, and this is what holds it
 	// to it.
-	c := client(t, Allow(hostOf(t, final.URL)))
+	c := client(t, slackhosts.Allow(hostOf(t, final.URL)))
 
 	results := c.Fetch(context.Background(),
 		[]slackread.File{hosted("trace.pdf", redirector.URL+"/file", 8)}, filepath.Dir(dir), filepath.Base(dir), 1<<20)
@@ -411,7 +412,7 @@ func TestTheBearerSurvivesARedirectOnTheSameHost(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	dir := filepath.Join(t.TempDir(), "eng-123.456")
-	c := client(t, Allow(hostOf(t, srv.URL)))
+	c := client(t, slackhosts.Allow(hostOf(t, srv.URL)))
 
 	results := c.Fetch(context.Background(),
 		[]slackread.File{hosted("trace.pdf", srv.URL+"/file", 8)}, filepath.Dir(dir), filepath.Base(dir), 1<<20)
@@ -439,7 +440,7 @@ func TestARedirectLoopIsBounded(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	dir := filepath.Join(t.TempDir(), "eng-123.456")
-	c := client(t, Allow(hostOf(t, srv.URL)))
+	c := client(t, slackhosts.Allow(hostOf(t, srv.URL)))
 
 	results := c.Fetch(context.Background(),
 		[]slackread.File{hosted("trace.pdf", srv.URL+"/file", 8)}, filepath.Dir(dir), filepath.Base(dir), 1<<20)
@@ -638,26 +639,6 @@ func TestTheRequestCarriesTheBearer(t *testing.T) {
 	}
 }
 
-func TestPermitsMatchesOnLabelBoundaries(t *testing.T) {
-	h := Allow("slack.com")
-	for _, c := range []struct {
-		host string
-		want bool
-	}{
-		{"slack.com", true},
-		{"files.slack.com", true},
-		{"a.b.slack.com", true},
-		{"notslack.com", false},
-		{"slack.com.evil.test", false},
-		{"evilslack.com", false},
-		{"", false},
-	} {
-		if got := h.PermitsBearer(c.host); got != c.want {
-			t.Errorf("PermitsBearer(%q) = %v, want %v", c.host, got, c.want)
-		}
-	}
-}
-
 // Object storage may serve the bytes and may never receive the credential. The
 // allowlist that admits it says so, rather than leaving it to the redirect
 // policy to be the only thing standing between the two.
@@ -712,7 +693,7 @@ func TestADownloadIsHandedOffToStorageThatMayNotHoldTheBearer(t *testing.T) {
 	// Both servers answer on the loopback address; addressing the first as
 	// "localhost" is what makes them two hosts as far as the allowlist is
 	// concerned, standing in for files.slack.com handing off to storage.
-	hosts := Allow("localhost").AndViaRedirect("127.0.0.1")
+	hosts := slackhosts.Allow("localhost").AndViaRedirect("127.0.0.1")
 	if hosts.PermitsBearer("127.0.0.1") {
 		t.Fatal("the storage host is bearer-permitted; the test cannot show what it claims")
 	}
