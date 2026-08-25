@@ -469,6 +469,7 @@ usage: hear <command> [options]
     read <address> [n]            last n messages (default 20)
     thread <address> <ts>         replies in a thread
     files <address> <ts>          download the files attached to one message
+    canvas <link|F…|#chan>        print a canvas as Markdown
     search <query...>             search messages across the workspace
     refresh                       clear the channel/user cache
 
@@ -1005,6 +1006,22 @@ action, never the wording.
 - The channel and user lists are cached and reused: a channel created, renamed
   or archived afterwards won't appear, or will resolve wrongly, until
   `hear refresh`.
+- `hear canvas` takes a canvas link, a file id, or a conversation — a channel
+  canvas hangs off the conversation rather than off any message in it, so a
+  channel link, `#name` or id reaches it. A channel carrying more than one names
+  them rather than choosing, since a canvas and a notes document are different
+  documents. Slack surfaces one under `properties.canvas`, as a canvas tab, or
+  as `meeting_notes`, and a real channel was observed using the last two and not
+  the first, so all three are read.
+- `hear canvas` renders the document, not the page around it. Slack serves a
+  canvas as HTML and this converts it to Markdown: headings, lists, tables,
+  links and inline marks survive; the ids, classes and styling do not. `--html`
+  gives the bytes Slack sent, for a caller that would rather render them itself.
+  A canvas is written by whoever can edit it, so its text is stripped of
+  anything that could drive a terminal, exactly as a filename is — under
+  `--html` too, which gives the markup Slack sent rather than the bytes. Link
+  destinations are limited to ordinary schemes and encoded so that a canvas
+  cannot forge one that says a different place from where it goes.
 - `hear files` fetches only what Slack stores. A file living in Google Drive,
   Dropbox or another external store is a link in Slack's model, and following it
   would mean holding a credential for that service — which is a different

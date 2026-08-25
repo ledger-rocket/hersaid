@@ -261,3 +261,15 @@ func rfc3339(ts string) string {
 	}
 	return t.Format(time.RFC3339)
 }
+
+// KindCanvas tags the structured form of a canvas.
+const KindCanvas = "canvas"
+
+// Canvas is `hear canvas --json`.
+type Canvas struct {
+	Kind  string `json:"kind"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// Body is Markdown, or the HTML Slack served when --html was given.
+	Body string `json:"body"`
+}

@@ -754,3 +754,147 @@ func TestTheNoHardLinkFallbackStillRefusesToOverwrite(t *testing.T) {
 		t.Fatalf("file now holds %q, want it untouched", after)
 	}
 }
+
+// A canvas is typed application/vnd.slack-docs and served as text/html. The
+// sign-in-page guard refused exactly that combination, so a message carrying a
+// canvas failed with an error naming a scope the token already had.
+func TestACanvasIsNotMistakenForASignInPage(t *testing.T) {
+	srv, _ := fileHost(t, []byte(`<div class="quip-canvas-content"><h1>Plan</h1></div>`), "text/html; charset=utf-8")
+	dir := filepath.Join(t.TempDir(), "eng-123.456")
+	c := client(t, loopback)
+
+	f := hosted("plan.canvas", srv.URL+"/file", 0)
+	f.Mimetype = CanvasMimetype
+	results := c.Fetch(context.Background(), []slackread.File{f},
+		filepath.Dir(dir), filepath.Base(dir), 1<<20)
+
+	if results[0].Status != Written {
+		t.Fatalf("status = %s (%s), want the canvas written", results[0].Status, results[0].Reason)
+	}
+	got, err := os.ReadFile(results[0].Path)
+	if err != nil || !strings.Contains(string(got), "quip-canvas-content") {
+		t.Fatalf("file holds %q (err %v), want the canvas body", got, err)
+	}
+}
+
+// The guard still has to do its job: an ordinary attachment answered with a web
+// page is the missing-scope symptom it exists to name.
+func TestASignInPageIsStillRefusedForAnOrdinaryFile(t *testing.T) {
+	srv, _ := fileHost(t, []byte(`<html><body><form>Sign in</form></body></html>`), "text/html")
+	dir := filepath.Join(t.TempDir(), "eng-123.456")
+	c := client(t, loopback)
+
+	results := c.Fetch(context.Background(),
+		[]slackread.File{hosted("trace.pdf", srv.URL+"/file", 0)},
+		filepath.Dir(dir), filepath.Base(dir), 1<<20)
+
+	if results[0].Status != Failed {
+		t.Fatalf("status = %s, want failed", results[0].Status)
+	}
+	if !strings.Contains(results[0].Reason, "files:read") {
+		t.Fatalf("reason = %q, want it to name the scope", results[0].Reason)
+	}
+}
+
+// The regression the mimetype exemption introduced. hear files takes its file
+// list from conversations.history, a different scope, so a token without
+// files:read reaches a canvas attachment and is answered with the sign-in page.
+// Accepting it because the file is typed as a canvas turns a loud false
+// positive into a silent one: the login page written to disk, reported written.
+func TestASignInPageIsRefusedEvenWhenTheFileIsACanvas(t *testing.T) {
+	page := `<!DOCTYPE html><html><head><title>Slack</title></head>` +
+		`<body><form>Sign in to continue</form></body></html>`
+	srv, _ := fileHost(t, []byte(page), "text/html; charset=utf-8")
+	dir := filepath.Join(t.TempDir(), "eng-123.456")
+	c := client(t, loopback)
+
+	f := hosted("plan.canvas", srv.URL+"/file", 0)
+	f.Mimetype = CanvasMimetype
+	results := c.Fetch(context.Background(), []slackread.File{f},
+		filepath.Dir(dir), filepath.Base(dir), 1<<20)
+
+	if results[0].Status != Failed {
+		t.Fatalf("status = %s, want failed; a sign-in page is not a canvas", results[0].Status)
+	}
+	if !strings.Contains(results[0].Reason, "files:read") {
+		t.Fatalf("reason = %q, want it to name the scope", results[0].Reason)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plan.canvas")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("the sign-in page was written to disk")
+	}
+}
+
+// Read is the other half of the same request, so it earns the same bounds.
+func TestReadEnforcesItsLimit(t *testing.T) {
+	srv, _ := fileHost(t, []byte(strings.Repeat("x", 2048)), "application/pdf")
+	c := client(t, loopback)
+	f := hosted("big.pdf", srv.URL+"/file", 0)
+
+	if _, err := c.Read(context.Background(), f, 1024); err == nil {
+		t.Fatal("Read() = nil error, want the ceiling enforced")
+	}
+	got, err := c.Read(context.Background(), f, 2048)
+	if err != nil {
+		t.Fatalf("Read() at exactly the limit error = %v", err)
+	}
+	if len(got) != 2048 {
+		t.Fatalf("Read() returned %d bytes, want 2048", len(got))
+	}
+}
+
+func TestReadRefusesASignInPage(t *testing.T) {
+	srv, _ := fileHost(t, []byte(`<html><body><form>Sign in</form></body></html>`), "text/html")
+	c := client(t, loopback)
+
+	if _, err := c.Read(context.Background(), hosted("trace.pdf", srv.URL+"/file", 0), 1<<20); err == nil {
+		t.Fatal("Read() = nil error, want the sign-in page refused")
+	}
+}
+
+// A canvas served as the fragment Slack actually sends is read, not refused.
+func TestReadAcceptsACanvasFragment(t *testing.T) {
+	body := `<div class="quip-canvas-content"><h1>Plan</h1></div>`
+	srv, _ := fileHost(t, []byte(body), "text/html; charset=utf-8")
+	c := client(t, loopback)
+
+	f := hosted("canvas", srv.URL+"/file", 0)
+	f.Mimetype = CanvasMimetype
+	got, err := c.Read(context.Background(), f, 1<<20)
+	if err != nil {
+		t.Fatalf("Read() error = %v, want the canvas", err)
+	}
+	if string(got) != body {
+		t.Fatalf("Read() = %q, want the whole fragment — the peek must not consume it", got)
+	}
+}
+
+// <header> begins with <head and is perfectly ordinary inside a canvas. A
+// prefix test would refuse the document for containing a heading.
+func TestACanvasBeginningWithHeaderIsNotAWholeDocument(t *testing.T) {
+	body := `<header><h1>Plan</h1></header><p>body</p>`
+	srv, _ := fileHost(t, []byte(body), "text/html; charset=utf-8")
+	c := client(t, loopback)
+
+	f := hosted("canvas", srv.URL+"/file", 0)
+	f.Mimetype = CanvasMimetype
+	got, err := c.Read(context.Background(), f, 1<<20)
+	if err != nil {
+		t.Fatalf("Read() error = %v, want the canvas", err)
+	}
+	if string(got) != body {
+		t.Fatalf("Read() = %q", got)
+	}
+}
+
+// A leading comment must not carry the document past the inspection.
+func TestASignInPageBehindACommentIsStillRefused(t *testing.T) {
+	page := "<!-- " + strings.Repeat("x", 200) + " -->\n<!doctype html><html><body>Sign in</body></html>"
+	srv, _ := fileHost(t, []byte(page), "text/html; charset=utf-8")
+	c := client(t, loopback)
+
+	f := hosted("canvas", srv.URL+"/file", 0)
+	f.Mimetype = CanvasMimetype
+	if _, err := c.Read(context.Background(), f, 1<<20); err == nil {
+		t.Fatal("Read() = nil error, want the page refused")
+	}
+}

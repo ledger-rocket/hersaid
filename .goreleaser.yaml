@@ -55,6 +55,9 @@ archives:
     # anything named changelog*.
     files:
       - LICENSE
+      # The dependencies' licences require their notices to travel with a
+      # binary that contains their code.
+      - THIRD_PARTY_NOTICES.md
       - README.md
       - install.sh
 

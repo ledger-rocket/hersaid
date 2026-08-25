@@ -44,3 +44,18 @@ func Text(s string) string {
 func IsHostile(r rune) bool {
 	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
 }
+
+// TextKeepingNewlines is Text for content where a line break is part of what is
+// being shown — the inside of a code block, where removing them would run every
+// line together. Everything else that could drive a terminal still goes.
+func TextKeepingNewlines(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' {
+			return r
+		}
+		if IsHostile(r) {
+			return -1
+		}
+		return r
+	}, s)
+}

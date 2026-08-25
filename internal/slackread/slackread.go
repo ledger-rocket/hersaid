@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -454,4 +455,93 @@ func requestTimeout(hc *http.Client) time.Duration {
 		return hc.Timeout
 	}
 	return slackhttp.DefaultTimeout
+}
+
+// FileInfo returns the metadata for one file, addressed by its own id rather
+// than through a message.
+//
+// A canvas is why this exists. Slack gives one a permalink of its own —
+// /docs/<team>/<file id> — and nothing about it names a message, so there is no
+// timestamp to ask a transcript for. A file's id is enough for files.info, and
+// the reply carries the download URL the bytes come from.
+func (c *Client) FileInfo(ctx context.Context, fileID string) (File, error) {
+	params := url.Values{}
+	params.Set("file", fileID)
+
+	var out struct {
+		envelope
+		File File `json:"file"`
+	}
+	if err := c.get(ctx, "files.info", params, &out); err != nil {
+		return File{}, fmt.Errorf("looking up file %s: %w", fileID, err)
+	}
+	if out.File.ID == "" {
+		return File{}, fmt.Errorf("no file %s", fileID)
+	}
+	return out.File, nil
+}
+
+// fileIDShape is what a Slack file id looks like.
+var fileIDShape = regexp.MustCompile(`^F[A-Z0-9]{6,}$`)
+
+// Canvases are the canvas documents attached to a conversation.
+//
+// Slack surfaces one in more than one place and the shapes do not agree with
+// the documentation, so all of them are read: properties.canvas is the one
+// conversations.info documents, properties.tabs carries a canvas a channel
+// shows as a tab, and properties.meeting_notes is what a notes canvas is filed
+// under. A real channel was observed carrying the last two and not the first.
+//
+// Duplicates are collapsed, because a channel commonly lists the same document
+// as both a tab and its meeting notes.
+func (c *Client) Canvases(ctx context.Context, channelID string) ([]string, error) {
+	params := url.Values{}
+	params.Set("channel", channelID)
+
+	var out struct {
+		envelope
+		Channel struct {
+			Properties struct {
+				Canvas struct {
+					FileID string `json:"file_id"`
+				} `json:"canvas"`
+				MeetingNotes struct {
+					FileID string `json:"file_id"`
+				} `json:"meeting_notes"`
+				Tabs []struct {
+					Type string `json:"type"`
+					Data struct {
+						FileID string `json:"file_id"`
+					} `json:"data"`
+				} `json:"tabs"`
+			} `json:"properties"`
+		} `json:"channel"`
+	}
+	if err := c.get(ctx, "conversations.info", params, &out); err != nil {
+		return nil, fmt.Errorf("looking up %s: %w", channelID, err)
+	}
+
+	var ids []string
+	seen := map[string]bool{}
+	add := func(id string) {
+		// Checked for shape, not merely for emptiness: these ids are reported
+		// back to a person when a channel holds several, and a value out of a
+		// reply should not be able to put anything else on that line.
+		if !fileIDShape.MatchString(id) || seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	p := out.Channel.Properties
+	add(p.Canvas.FileID)
+	for _, t := range p.Tabs {
+		// Slack documents both names for the same kind of tab.
+		switch t.Type {
+		case "canvas", "channel_canvas":
+			add(t.Data.FileID)
+		}
+	}
+	add(p.MeetingNotes.FileID)
+	return ids, nil
 }

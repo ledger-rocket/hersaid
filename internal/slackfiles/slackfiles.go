@@ -13,6 +13,7 @@
 package slackfiles
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -215,24 +216,71 @@ func skipReason(f slackread.File, max int64) string {
 }
 
 func (c *Client) download(ctx context.Context, f slackread.File, d *dest, name string, max int64) (int64, error) {
+	resp, body, cancel, err := c.open(ctx, f)
+	if err != nil {
+		return 0, err
+	}
+	defer cancel()
+	defer resp.Body.Close()
+	return writeFile(body, d, name, max, f.Size)
+}
+
+// Read returns a file's bytes rather than writing them.
+//
+// It is the same request under the same rules — the host check, the bearer, the
+// sign-in-page refusal — differing only in where the body goes. A canvas is
+// read rather than saved: it is a document to look at, and 30KB of HTML has no
+// business becoming a file on the way to being rendered.
+//
+// max bounds what is held in memory, on bytes that arrive rather than on the
+// size Slack declared.
+func (c *Client) Read(ctx context.Context, f slackread.File, max int64) ([]byte, error) {
+	resp, body, cancel, err := c.open(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	defer resp.Body.Close()
+
+	if max >= math.MaxInt64 {
+		max = math.MaxInt64 - 1
+	}
+	buf, err := io.ReadAll(io.LimitReader(body, max+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(buf)) > max {
+		return nil, fmt.Errorf("longer than the %d byte limit", max)
+	}
+	return buf, nil
+}
+
+// open makes the request and hands back a response whose body is the file. The
+// returned cancel releases the request deadline and must be called.
+func (c *Client) open(ctx context.Context, f slackread.File) (*http.Response, *bufio.Reader, context.CancelFunc, error) {
 	// Structural, as in slackread: a zero credential cannot reach the wire,
 	// whatever the caller did with ResolveRead's error.
 	if c.cred.IsZero() {
-		return 0, ErrNoCredential
+		return nil, nil, nil, ErrNoCredential
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout())
-	defer cancel()
+	ok := false
+	defer func() {
+		if !ok {
+			cancel()
+		}
+	}()
 
 	// The URL comes from Slack's own reply, but so would a hostile one if that
 	// reply were ever not Slack's. Checking it here is what makes the host set a
 	// bound on everywhere the bearer can go, rather than only on where a
 	// redirect can take it.
 	if err := c.permits(f.URLPrivateDownload); err != nil {
-		return 0, err
+		return nil, nil, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.URLPrivateDownload, nil)
 	if err != nil {
-		return 0, err
+		return nil, nil, nil, err
 	}
 	c.cred.Authorize(req)
 
@@ -243,19 +291,22 @@ func (c *Client) download(ctx context.Context, f slackread.File, d *dest, name s
 		// the URL, which is the whole point of the typed error.
 		var re *redirectError
 		if errors.As(err, &re) {
-			return 0, re
+			return nil, nil, nil, re
 		}
-		return 0, err
+		return nil, nil, nil, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("HTTP %d", resp.StatusCode)
+		resp.Body.Close()
+		return nil, nil, nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	if err := checkBodyIsTheFile(resp, f); err != nil {
-		return 0, err
+	buffered := bufio.NewReader(resp.Body)
+	if err := checkBodyIsTheFile(resp, f, buffered); err != nil {
+		resp.Body.Close()
+		return nil, nil, nil, err
 	}
-	return writeFile(resp.Body, d, name, max, f.Size)
+	ok = true
+	return resp, buffered, cancel, nil
 }
 
 func (c *Client) timeout() time.Duration {
@@ -265,26 +316,83 @@ func (c *Client) timeout() time.Duration {
 	return slackhttp.DefaultTimeout
 }
 
+// signIn is the refusal a token without files:read earns. Slack answers such a
+// request with HTTP 200 and its sign-in page, so the status says nothing.
+var signIn = errors.New("Slack answered with a web page rather than the file, " +
+	"which is what a token without the files:read scope gets")
+
 // checkBodyIsTheFile refuses a response that is a web page where a file was
-// expected.
+// expected. body is a peekable reader so that what is inspected is still there
+// to be written.
 //
-// A token without files:read is not answered with a JSON error, or with any
-// error status at all: Slack replies 200 carrying its sign-in page. Written
-// blindly that becomes a trace.pdf containing a login form — a corrupt file
-// that every later step treats as a successful download. Only HTML is refused,
-// and only when the file itself is not HTML, so a genuine .html attachment
-// still downloads.
-func checkBodyIsTheFile(resp *http.Response, f slackread.File) error {
-	if !isHTML(resp.Header.Get("Content-Type")) || isHTML(f.Mimetype) {
+// A canvas forces the inspection. It is typed application/vnd.slack-docs and
+// served as text/html, so a rule going by type alone must either refuse every
+// canvas or accept every sign-in page delivered in place of one — and the
+// second is worse, because hear files takes its file list from
+// conversations.history, a different scope. A token without files:read would
+// then write the login page to disk and report it written.
+//
+// The distinction is structural rather than a search for words on the page:
+// Slack serves a canvas as a fragment, and its sign-in page as a whole HTML
+// document. A fragment that opens a document is not the canvas that was asked
+// for.
+func checkBodyIsTheFile(resp *http.Response, f slackread.File, body *bufio.Reader) error {
+	if !isHTML(resp.Header.Get("Content-Type")) {
 		return nil
 	}
-	return errors.New("Slack answered with a web page rather than the file, " +
-		"which is what a token without the files:read scope gets")
+	if isHTML(f.Mimetype) {
+		return nil
+	}
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(f.Mimetype)), CanvasMimetype) {
+		return signIn
+	}
+	head, _ := body.Peek(1024)
+	if isWholeDocument(head) {
+		return signIn
+	}
+	return nil
+}
+
+// isWholeDocument reports markup that opens an HTML page rather than continuing
+// one.
+func isWholeDocument(head []byte) bool {
+	h := skipPreamble(strings.ToLower(string(head)))
+	for _, tag := range []string{"<!doctype", "<html", "<head", "<body"} {
+		if !strings.HasPrefix(h, tag) {
+			continue
+		}
+		// A prefix match is not a tag: <header> begins with <head and is
+		// perfectly ordinary inside a canvas.
+		rest := h[len(tag):]
+		if rest == "" || rest[0] == '>' || rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\n' {
+			return true
+		}
+	}
+	return false
+}
+
+// skipPreamble drops the whitespace and comments a document may open with, so
+// that what is examined is the first thing that is actually markup.
+func skipPreamble(h string) string {
+	for {
+		h = strings.TrimLeft(h, " \t\r\n\ufeff")
+		if !strings.HasPrefix(h, "<!--") {
+			return h
+		}
+		end := strings.Index(h, "-->")
+		if end < 0 {
+			return ""
+		}
+		h = h[end+3:]
+	}
 }
 
 func isHTML(contentType string) bool {
 	return strings.HasPrefix(strings.TrimSpace(strings.ToLower(contentType)), "text/html")
 }
+
+// CanvasMimetype is what Slack calls a canvas. Its bytes are HTML.
+const CanvasMimetype = "application/vnd.slack-docs"
 
 // dest is where one message's files are written, and the only thing in this
 // package that touches the filesystem.

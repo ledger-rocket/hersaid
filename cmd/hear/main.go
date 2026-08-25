@@ -36,6 +36,7 @@ const usage = `usage: hear <command> [options]
     read <address> [n]            last n messages (default 20)
     thread <address> <ts>         replies in a thread
     files <address> <ts>          download the files attached to one message
+    canvas <link|F…|#chan>        print a canvas as Markdown
     search <query...>             search messages across the workspace
     refresh                       clear the channel/user cache
 
@@ -49,6 +50,7 @@ const usage = `usage: hear <command> [options]
         --ts          prefix each message with its timestamp, which is what
                       sez --thread and tap take; accepted in any position
         --json        write one structured JSON object instead of a transcript
+        --html        canvas: print the HTML Slack served, not Markdown
         --since D     read a window rather than a count: 30m, 2h, 7d, 1w.
                       Pages to the end of the window, or to the newest 5000
                       messages in it, whichever comes first — --json reports
@@ -168,6 +170,11 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 	if (f.out != "" || f.maxSize != 0) && verb != "files" {
 		return cli.Usage(stderr, name, usage, "--out and --max-size apply to files")
 	}
+	// Gated like every other verb-specific flag: a flag accepted and silently
+	// dropped teaches that it did something.
+	if f.canvasHTML && verb != "canvas" {
+		return cli.Usage(stderr, name, usage, "--html applies to canvas")
+	}
 
 	// The client is built on first use rather than up front, so the commands
 	// the cache can answer by itself — channels, dms with a warm cache, and
@@ -209,6 +216,8 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 		return h.thread(rest)
 	case "files":
 		return h.files(rest)
+	case "canvas":
+		return h.canvas(rest)
 	case "search":
 		if len(rest) == 0 {
 			return cli.Usage(stderr, name, usage, "search needs a query")
@@ -351,6 +360,9 @@ func (h *hear) address(ctx context.Context, target string) (resolve.Target, erro
 type flags struct {
 	showTS bool
 	asJSON bool
+	// canvasHTML prints a canvas as the HTML Slack served rather than as
+	// Markdown, for a caller that would rather render it itself.
+	canvasHTML bool
 	// since is the width of the window to read, zero when unset.
 	since time.Duration
 	// out is the directory files writes into, empty when unset.
@@ -383,6 +395,8 @@ func parseArgs(args []string, stdout, stderr io.Writer) (f flags, done bool, cod
 			f.showTS = true
 		case a == "--json":
 			f.asJSON = true
+		case a == "--html":
+			f.canvasHTML = true
 		case a == "--since" || strings.HasPrefix(a, "--since="):
 			v, ok := strings.CutPrefix(a, "--since=")
 			if !ok {
