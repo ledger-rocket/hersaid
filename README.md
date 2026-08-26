@@ -1055,12 +1055,13 @@ action, never the wording.
   `--max-size` cannot be held to the bound that suits a small JSON reply. The
   bound is on the whole transfer, not on a stall within it, so a link that
   crawls fails late rather than early.
-- `sez --file` is all or nothing. A failure before the sharing leg posts
-  nothing at all — an outward message referring to an attachment that is not
-  there is worse than no message — and the ids of files already transferred are
-  reported so they can be found. They are staged uploads: invisible in the
-  channel, and Slack's documentation says an upload never completed is
-  discarded. `sez` does not delete them.
+- `sez --file` is all or nothing. A failure before the sharing leg posts nothing
+  at all — an outward message referring to an attachment that is not there is
+  worse than no message. The ids of files that had already reached Slack are
+  reported, and they say how far the send got and nothing more: **an upload that
+  is never shared is discarded**, so there is nothing left to find or clean up.
+  Measured, not assumed — `files.info` on such an id answers `file_deleted`
+  straight away, to the read token and the write token alike.
 - An upload is capped at 1,000,000,000 bytes and ten files per message. Slack
   documents its own limit as "1 GB" without saying which one, and the decimal
   reading is the one that cannot let through a file Slack will refuse.

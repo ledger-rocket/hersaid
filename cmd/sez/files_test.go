@@ -1087,3 +1087,39 @@ func TestAHostileFilenameCannotDriveTheTerminalThroughAStagingRefusal(t *testing
 		}
 	}
 }
+
+// The note after a failed stage says how far the send got, not that there is
+// something to go and deal with. An upload Slack never completes is discarded —
+// files.info on one of these ids answers file_deleted immediately — so a note
+// telling somebody to clean them up sends them looking for nothing.
+func TestTheStagedNoteDoesNotPromiseSomethingToCleanUp(t *testing.T) {
+	isolate(t)
+	seedCache(t)
+	s := slacktest.New(t)
+	sinkURL, _ := uploadSink(t)
+	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
+
+	s.Pages("files.getUploadURLExternal",
+		fmt.Sprintf(`{"ok":true,"file_id":"F0000001","upload_url":"%s/u?X-Amz-Signature=CANARY42"}`, sinkURL),
+		`{"ok":false,"error":"file_uploads_disabled"}`)
+
+	a := tmpFile(t, "one.pdf", "aaaa")
+	b := tmpFile(t, "two.log", "bbbb")
+	code, _, stderr := sez(t, s, "--send", "--file", a, "--file", b, "#eng", "text")
+	if code == 0 {
+		t.Fatal("exit = 0, want the failure")
+	}
+	if !strings.Contains(stderr, "F0000001") {
+		t.Fatalf("stderr = %q, want the id that reached Slack", stderr)
+	}
+	if !strings.Contains(stderr, "discarded") {
+		t.Fatalf("stderr = %q, want it to say the upload is discarded", stderr)
+	}
+	if !strings.Contains(stderr, "nothing to clean up") {
+		t.Fatalf("stderr = %q, want it to say there is nothing to do", stderr)
+	}
+	// The old wording sent people looking for files that do not exist.
+	if strings.Contains(stderr, "never shared:") {
+		t.Fatalf("stderr = %q, want the note not to imply something was left behind", stderr)
+	}
+}

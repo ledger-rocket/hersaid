@@ -250,9 +250,15 @@ were about to go out and no ids at all.
 
 That is accepted rather than fixed. Checkpointing each id to the log before its
 transfer would make SIGKILL reconcilable, at a line per file on every send; what
-it would reconcile is a set of files nobody can see, which Slack's own upload
-documentation says are discarded when completion never comes. The cost is
-certain and the benefit is close to nothing.
+it would reconcile is a set of files that no longer exist. The cost is certain
+and the benefit is none.
+
+**Observed since:** a file staged and never shared is gone. `files.info` on such
+an id is refused `file_deleted`, from the read token and the write token alike,
+immediately — Slack discards an upload whose completion never comes, which its
+own documentation says and which is now measured rather than quoted. So the ids
+in the record say how far a send got and nothing more: there is no orphan to
+reconcile and nothing to clean up.
 
 What Slack does with them is not otherwise asserted here: no retention window is
 documented, and no observation has tested one. So the record calls them staged

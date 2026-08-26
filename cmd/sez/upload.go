@@ -359,8 +359,13 @@ func upload(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL st
 		werr := prog.writeOutcome(stderr, log, rec)
 		code := fail(stderr, "%s  (logged)", termsafe.Text(serr.Error()))
 		if n := len(staged); n > 0 {
+			// Named, but not as something to go and deal with: Slack discards
+			// an upload whose completion never comes, and asking files.info
+			// for one of these ids is answered file_deleted. The ids are here
+			// because they say how far the send got, and they are in the record
+			// for the same reason.
 			fmt.Fprintf(stderr,
-				"sez: note — %s transferred but never shared: %s. Nothing was posted.\n",
+				"sez: note — %s reached Slack before this failed (%s), but an upload that is never shared is discarded. Nothing was posted and there is nothing to clean up.\n",
 				plural(n, "file"), strings.Join(idsOf(staged), ", "))
 		}
 		if slackwrite.Code(serr) == slackwrite.CodeMissingScope {
