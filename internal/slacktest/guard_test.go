@@ -27,7 +27,7 @@ func TestNoTestNamesTheRealSlackAPI(t *testing.T) {
 			return err
 		}
 		if info.IsDir() {
-			if name := info.Name(); name == ".git" || name == "bin" {
+			if skipDir(info.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -56,6 +56,21 @@ func TestNoTestNamesTheRealSlackAPI(t *testing.T) {
 	}
 }
 
+// skipDir names a directory that is not this module's source.
+//
+// Go itself ignores a directory whose name begins with "." or "_", so nothing
+// under one is built or tested as part of this module — and the guard walks the
+// filesystem rather than the package list, so it has to say the same. The case
+// that made this matter is a nested checkout: the harness puts agent worktrees
+// under .claude, and walking one means reading another copy of this repo,
+// where the endpoint constants live exactly where they are supposed to.
+func skipDir(name string) bool {
+	if name == "bin" {
+		return true
+	}
+	return len(name) > 1 && (name[0] == '.' || name[0] == '_')
+}
+
 func moduleRoot(t *testing.T) string {
 	t.Helper()
 	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}").Output()
@@ -63,4 +78,20 @@ func moduleRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// The guard walks the filesystem, so it has to know what is not this module.
+func TestTheGuardSkipsWhatIsNotThisModulesSource(t *testing.T) {
+	for _, name := range []string{".git", ".claude", ".rb", ".github", "_ignored", "bin"} {
+		if !skipDir(name) {
+			t.Errorf("skipDir(%q) = false, want it skipped", name)
+		}
+	}
+	// filepath.Walk yields real entries, never "." or ".." — so the names that
+	// have to be walked are the ones a directory can actually be called.
+	for _, name := range []string{"internal", "cmd", "docs", "slacktest", "testdata"} {
+		if skipDir(name) {
+			t.Errorf("skipDir(%q) = true, want it walked", name)
+		}
+	}
 }
