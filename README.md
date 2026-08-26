@@ -632,6 +632,13 @@ $ hear channels --json
   `complete`. **`"complete": false` means Slack held more messages in the
   requested window than were read** — a count that filled up, or a page bound
   that was hit.
+- Each message always carries `blocks`, and it is emitted even when `false`. It
+  is `true` when the message is built from blocks whose fallback `text` does not
+  faithfully show it — the field a consumer checks before acting on `text`. It
+  is always present so that "this message has no blocks" can be told from "this
+  `hear` is too old to say", which is what `sez --edit` and `sez --delete` refuse
+  on. `partial` is the wider claim: `blocks` or files, either of which means
+  `text` is not the whole message.
 - Each message always has `ts`, `author`, `text` and `text_rendered`. `text`
   is exactly what Slack sent, mentions and all; `text_rendered` is the same
   text with `<@U…>` resolved — both, always, so a consumer never has to guess
@@ -897,7 +904,10 @@ mistake that causes a duplicate message.
 - `slack_text` — what Slack actually stored, which can differ: it sanitises and
   truncates. Logging both makes the difference auditable.
 - `files` — for an upload, one object per attachment: `path`, `name`, `size`,
-  `mimetype` and `id`. `id` is `null` on the intent line, which is written
+  `mimetype` and `id`. For a delete, one object per attachment the message
+  carried, with `name` and `id` only — the rest are empty, and the files
+  themselves stay in the workspace. The name is as Slack holds it, not as it
+  printed. `id` is `null` on the intent line, which is written
   before any file has been staged, and fills in as each one lands. `null` on
   every record that carries no files. A path that is not valid UTF-8 is
   recorded with the replacement character, JSON strings being Unicode.
@@ -1006,6 +1016,21 @@ action, never the wording.
 - The channel and user lists are cached and reused: a channel created, renamed
   or archived afterwards won't appear, or will resolve wrongly, until
   `hear refresh`.
+- `sez --edit` refuses a message carrying files, and `sez --delete` does not.
+  A delete removes the message and the files' shares in it — the render names
+  them, so what goes is shown. **The files themselves stay in the workspace**:
+  observed by deleting a message and finding both files still returned by
+  `files.info`, with no shares left. Removing a file is `files.delete`, which
+  this tool does not call. An edit is refused because it sends text alone, and
+  whether Slack keeps the shares through one is not established — an edit that
+  silently detached them is the failure the read-before-write gate exists to
+  prevent.
+- `sez --edit` and `sez --delete` refuse outright if the `hear` they find is too
+  old to report what a message carries. The two binaries are installed together
+  but `sez` falls back to `PATH`, and an older `hear` is wrong in both
+  directions — it can say a message is partial without saying why, or, older
+  still, call one carrying files plain. Neither is distinguishable from a sound
+  answer, so the missing field is the refusal.
 - `hear canvas` takes a canvas link, a file id, or a conversation — a channel
   canvas hangs off the conversation rather than off any message in it, so a
   channel link, `#name` or id reaches it. A channel carrying more than one names

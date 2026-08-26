@@ -133,6 +133,21 @@ func (m Message) HasUnrenderedContent() bool {
 	if len(m.Files) > 0 {
 		return true
 	}
+	return m.HasUnrenderedBlocks()
+}
+
+// HasUnrenderedBlocks reports content a transcript cannot show and a caller
+// cannot preserve: blocks, and not files.
+//
+// The distinction is what tells a message that can be acted on from one that
+// cannot. A file is listed by name and can be shown; blocks read as fallback
+// text or as nothing, so a render of them would show something the author never
+// wrote, and a text-only chat.update drops them outright.
+//
+// Attachments are excluded here for the reason HasUnrenderedContent gives:
+// they are overwhelmingly unfurls rather than authored content, and
+// chat.update keeps them.
+func (m Message) HasUnrenderedBlocks() bool {
 	var blocks []struct {
 		Type string `json:"type"`
 	}

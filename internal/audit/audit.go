@@ -109,8 +109,8 @@ type Post struct {
 	// made. An edit destroys the previous wording as surely as a delete
 	// destroys the message, and it is the only record of what was there.
 	PreviousText string
-	// Files are the attachments an upload carried. Empty for every other kind
-	// of record.
+	// Files are the attachments an upload carried, or the ones a delete removed
+	// from the message it destroyed. Empty for every other kind of record.
 	Files []File
 }
 

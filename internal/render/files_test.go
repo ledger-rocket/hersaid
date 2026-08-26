@@ -183,3 +183,55 @@ func TestWriteFilesReportsEveryOutcome(t *testing.T) {
 		t.Errorf("lines do not lead with what happened:\n%s", b.String())
 	}
 }
+
+// Blocks narrows Partial to the part a caller can neither show nor preserve.
+// The two travel together through the real transform, so a consumer can tell a
+// message it may act on from one it may not.
+func TestTheStructuredTranscriptDistinguishesBlocksFromFiles(t *testing.T) {
+	for _, c := range []struct {
+		name            string
+		msg             slackread.Message
+		partial, blocks bool
+	}{
+		{"plain text", slackread.Message{TS: "1.1", Text: "hello"}, false, false},
+		{"files only", slackread.Message{TS: "1.1", Files: []slackread.File{{ID: "F1", Name: "a.pdf"}}}, true, false},
+		{"a section block", slackread.Message{TS: "1.1", Text: "fallback",
+			Blocks: []byte(`[{"type":"section"}]`)}, true, true},
+		{"rich text is the text", slackread.Message{TS: "1.1", Text: "hi",
+			Blocks: []byte(`[{"type":"rich_text"}]`)}, false, false},
+		{"both", slackread.Message{TS: "1.1", Text: "fallback",
+			Blocks: []byte(`[{"type":"image"}]`),
+			Files:  []slackread.File{{ID: "F1", Name: "a.pdf"}}}, true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := Messages([]slackread.Message{c.msg}, nil)
+			if len(got) != 1 {
+				t.Fatalf("messages = %d, want 1", len(got))
+			}
+			if got[0].Partial != c.partial {
+				t.Errorf("partial = %v, want %v", got[0].Partial, c.partial)
+			}
+			if got[0].Blocks != c.blocks {
+				t.Errorf("blocks = %v, want %v", got[0].Blocks, c.blocks)
+			}
+			// The invariant a consumer relies on: anything that sets blocks
+			// sets partial, so an old reader of partial is never surprised.
+			if got[0].Blocks && !got[0].Partial {
+				t.Error("blocks without partial; the narrowing must not widen")
+			}
+		})
+	}
+}
+
+// blocks is emitted even when false, so a consumer can tell "no blocks" from
+// "this hear is too old to say".
+func TestTheBlocksKeyIsAlwaysPresent(t *testing.T) {
+	got := Messages([]slackread.Message{{TS: "1.1", Text: "hello"}}, nil)
+	b, err := json.Marshal(got[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"blocks":false`) {
+		t.Fatalf("marshalled = %s, want an explicit blocks:false", b)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ledger-rocket/hersaid/internal/audit"
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
@@ -17,8 +18,15 @@ import (
 // message itself — it asks the hear binary, which holds its own.
 func stubRead(t *testing.T, text string, err error) {
 	t.Helper()
+	stubReadFull(t, current{Text: text}, err)
+}
+
+// stubReadFull is stubRead for a test that cares what the message carried
+// besides its text.
+func stubReadFull(t *testing.T, now current, err error) {
+	t.Helper()
 	prev := readMessage
-	readMessage = func(context.Context, string, string) (string, error) { return text, err }
+	readMessage = func(context.Context, string, string, verb) (current, error) { return now, err }
 	t.Cleanup(func() { readMessage = prev })
 }
 
@@ -295,13 +303,61 @@ func TestAHangingReadIsBounded(t *testing.T) {
 
 // The happy path through the real subprocess, so the decoding is exercised too.
 func TestViaHearReadsTheMatchingMessage(t *testing.T) {
-	fakeHear(t, `echo '{"messages":[{"ts":"1.1","text":"other"},{"ts":"1785712599.000100","text":"wanted"}]}'`)
-	got, err := viaHear(context.Background(), "C1", "1785712599.000100")
+	fakeHear(t, `echo '{"messages":[{"ts":"1.1","text":"other","blocks":false},{"ts":"1785712599.000100","text":"wanted","blocks":false}]}'`)
+	got, err := viaHear(context.Background(), "C1", "1785712599.000100", verbEdit)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "wanted" {
-		t.Fatalf("text = %q, want the message whose ts matched", got)
+	if got.Text != "wanted" {
+		t.Fatalf("text = %q, want the message whose ts matched", got.Text)
+	}
+}
+
+// A message carrying files can be deleted: the files are named, so the render
+// shows what goes. This is the case sez --file creates, and refusing it meant
+// the tool could post a message it could not remove.
+func TestADeleteReadsAMessageThatCarriesFiles(t *testing.T) {
+	fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"look at these","blocks":false,`+
+		`"files":[{"name":"trace.pdf"},{"name":"out.log"}]}]}'`)
+	got, err := viaHear(context.Background(), "C1", "1785712599.000100", verbDelete)
+	if err != nil {
+		t.Fatalf("viaHear() error = %v; a delete may proceed on a message with files", err)
+	}
+	if got.Text != "look at these" {
+		t.Fatalf("text = %q", got.Text)
+	}
+	if len(got.Files) != 2 || got.Files[0].Name != "trace.pdf" || got.Files[1].Name != "out.log" {
+		t.Fatalf("files = %+v, want both named so the render can show them", got.Files)
+	}
+}
+
+// An edit may not. chat.update carries text alone and whether the shares
+// survive it is not established, so an edit could silently detach the
+// attachments — which is what this gate exists to prevent.
+func TestAnEditStillRefusesAMessageThatCarriesFiles(t *testing.T) {
+	fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"look","blocks":false,`+
+		`"files":[{"name":"trace.pdf"}]}]}'`)
+	_, err := viaHear(context.Background(), "C1", "1785712599.000100", verbEdit)
+	if err == nil {
+		t.Fatal("viaHear() = nil error, want an edit refused")
+	}
+	if !strings.Contains(err.Error(), "cannot edit") {
+		t.Fatalf("error = %v, want it to say an edit is what is refused", err)
+	}
+}
+
+// Blocks are refused for either verb: they read as fallback text or as nothing,
+// so a render of them would show something the author never wrote.
+func TestBlocksAreStillRefusedForBoth(t *testing.T) {
+	for _, v := range []verb{verbEdit, verbDelete} {
+		fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"fallback","blocks":true}]}'`)
+		_, err := viaHear(context.Background(), "C1", "1785712599.000100", v)
+		if err == nil {
+			t.Fatalf("verb %v: viaHear() = nil error, want blocks refused", v)
+		}
+		if !strings.Contains(err.Error(), "blocks") {
+			t.Fatalf("verb %v: error = %v", v, err)
+		}
 	}
 }
 
@@ -379,7 +435,7 @@ func TestTheReadSubprocessNeverSeesTheWriteToken(t *testing.T) {
 	isolate(t)
 	seedCache(t)
 	fakeHear(t, `if [ -n "${SLACK_WRITE_TOKEN+set}" ]; then echo "LEAKED" >&2; exit 3; fi
-echo '{"messages":[{"ts":"1785712599.000100","text":"safe"}]}'`)
+echo '{"messages":[{"ts":"1785712599.000100","text":"safe","blocks":false}]}'`)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 
@@ -404,7 +460,7 @@ func TestAMessageThatCannotBeShownIsNotChanged(t *testing.T) {
 		t.Run(verb, func(t *testing.T) {
 			isolate(t)
 			seedCache(t)
-			fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"","partial":true}]}'`)
+			fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"","blocks":true}]}'`)
 			t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 			s := slacktest.New(t)
 			s.Reply("chat.update", `{"ok":true,"ts":"1.1","message":{"text":"x"}}`)
@@ -561,5 +617,191 @@ func TestASlackEchoNeverReplacesTheAddressedTS(t *testing.T) {
 	}
 	if got := requestTo(t, s, "chat.getPermalink").Body.Get("message_ts"); got != "" && got != "1785712599.000100" {
 		t.Fatalf("permalink fetched for ts %q, want the addressed message", got)
+	}
+}
+
+// An older hear says a message is partial without saying why. sez cannot tell a
+// file it could show from a block it could not, so it refuses rather than
+// guessing: findHear falls back to PATH, so the two binaries are not always
+// upgraded together, and a gate that read a missing field as false would be off
+// exactly when the pair is mismatched.
+func TestAnOlderHearThatCannotSayWhyIsRefused(t *testing.T) {
+	for _, v := range []verb{verbEdit, verbDelete} {
+		fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"fallback","partial":true}]}'`)
+		_, err := viaHear(context.Background(), "C1", "1785712599.000100", v)
+		if err == nil {
+			t.Fatalf("verb %v: viaHear() = nil error; an unexplained partial must be refused", v)
+		}
+		if !strings.Contains(err.Error(), "too old") {
+			t.Fatalf("verb %v: error = %v, want it to name the mismatch", v, err)
+		}
+	}
+}
+
+// A hear old enough to omit the field is refused even when it reports nothing
+// unrenderable, because that is exactly what the dangerous case looks like: a
+// hear from before files were known reports a message carrying them as plain,
+// with no files array and partial false. It is indistinguishable from a sound
+// reply about an ordinary message, so the field's absence has to be the answer.
+func TestAnOlderHearIsRefusedEvenWhenItClaimsNothing(t *testing.T) {
+	for _, v := range []verb{verbEdit, verbDelete} {
+		fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"plain"}]}'`)
+		_, err := viaHear(context.Background(), "C1", "1785712599.000100", v)
+		if err == nil {
+			t.Fatalf("verb %v: viaHear() = nil error; a hear that cannot describe content must be refused", v)
+		}
+		if !strings.Contains(err.Error(), "too old") {
+			t.Fatalf("verb %v: error = %v, want it to name the mismatch", v, err)
+		}
+	}
+}
+
+// A name of nothing but control characters is empty once it is safe to print,
+// and the account of what a delete removes must not be a blank line.
+func TestAFileWithNoPrintableNameFallsBackToItsID(t *testing.T) {
+	hostile := string(rune(0x202e)) + string(rune(0x200e))
+	fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"look","blocks":false,`+
+		`"files":[{"id":"F0123ABCD","name":"`+hostile+`"}]}]}'`)
+	got, err := viaHear(context.Background(), "C1", "1785712599.000100", verbDelete)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The raw name is kept; the id is what the render falls back to.
+	if len(got.Files) != 1 || got.Files[0].ID != "F0123ABCD" {
+		t.Fatalf("files = %+v, want the id carried through", got.Files)
+	}
+	if label := fileLabel(got.Files[0]); label != "F0123ABCD" {
+		t.Fatalf("fileLabel = %q, want the id where the name cannot be shown", label)
+	}
+}
+
+// The delete render is the whole safety surface for the irreversible verb, and
+// the file lines are the part this change added. Pinned byte for byte: a
+// regression that dropped them would leave the render claiming to account for
+// the message while saying nothing about the attachments going with it.
+func TestTheDeleteRenderNamesEveryFile(t *testing.T) {
+	isolate(t)
+	seedCache(t)
+	stubReadFull(t, current{
+		Text:  "look at these",
+		Files: []audit.File{{Name: "trace.pdf"}, {Name: "out.log"}},
+	}, nil)
+	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
+	s := slacktest.New(t)
+
+	_, stdout, _ := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	want := "--- dry run: nothing sent ---\n" +
+		"channel : #eng -> C0123ENG01\n" +
+		"message : 1785712599.000100\n" +
+		"--- current message ---\n" +
+		"look at these\n" +
+		"files   : trace.pdf\n" +
+		"          out.log\n" +
+		"----------------------------------------\n"
+	if stdout != want {
+		t.Fatalf("render =\n%q\nwant\n%q", stdout, want)
+	}
+}
+
+// The names go through termsafe on the way to a terminal, exactly as a
+// filename does everywhere else in this tool.
+func TestTheDeleteRenderCannotBeDrivenByAFilename(t *testing.T) {
+	isolate(t)
+	seedCache(t)
+	stubReadFull(t, current{
+		Text:  "look",
+		Files: []audit.File{{Name: "in" + string(rune(0x1b)) + "[31mnocent" + string(rune(0x202e)) + ".pdf"}},
+	}, nil)
+	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
+	s := slacktest.New(t)
+
+	code, stdout, stderr := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	// Asserting only that the hostile runes are absent would pass on an empty
+	// render, which is the one outcome that proves nothing: the render has to
+	// have happened and shown the name.
+	if code != 0 {
+		t.Fatalf("exit = %d (stderr %q)", code, stderr)
+	}
+	if !strings.Contains(stdout, "nocent") {
+		t.Fatalf("stdout = %q, want the sanitised name rendered", stdout)
+	}
+	for _, banned := range []rune{0x1b, 0x202e} {
+		if strings.ContainsRune(stdout, banned) {
+			t.Errorf("the render carries %U from a filename", banned)
+		}
+	}
+}
+
+// The record names every file whose share the delete removes. Without it they
+// would survive in neither the message nor the log.
+func TestADeleteRecordsTheFilesItRemoved(t *testing.T) {
+	logPath := isolate(t)
+	seedCache(t)
+	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: "trace.pdf"}, {Name: "out.log"}}}, nil)
+	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
+	s := slacktest.New(t)
+	s.Reply("chat.delete", `{"ok":true}`)
+
+	if code, _, stderr := sez(t, s, "--send", "--delete", "#eng", "1785712599.000100"); code != 0 {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
+	}
+	recs := readLog(t, logPath)
+	last := recs[len(recs)-1]
+	files, ok := last["files"].([]any)
+	if !ok || len(files) != 2 {
+		t.Fatalf("files = %#v, want both names recorded", last["files"])
+	}
+	for i, want := range []string{"trace.pdf", "out.log"} {
+		m := files[i].(map[string]any)
+		if got, _ := m["name"].(string); got != want {
+			t.Errorf("files[%d].name = %v, want %s", i, m["name"], want)
+		}
+	}
+}
+
+// The forward twin of the version-skew guard. A later hear could report a kind
+// of unrenderable content this sez has never heard of — partial set, no blocks,
+// no files to explain it — and that is the same unshowable message the gate
+// exists to refuse, arriving from the future rather than the past.
+func TestAHearThatKnowsSomethingThisSezDoesNotIsRefused(t *testing.T) {
+	for _, v := range []verb{verbEdit, verbDelete} {
+		fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"fallback",`+
+			`"partial":true,"blocks":false}]}'`)
+		_, err := viaHear(context.Background(), "C1", "1785712599.000100", v)
+		if err == nil {
+			t.Fatalf("verb %v: viaHear() = nil error; an unexplained partial must be refused", v)
+		}
+		if !strings.Contains(err.Error(), "update sez") {
+			t.Fatalf("verb %v: error = %v, want it to name the direction of the mismatch", v, err)
+		}
+	}
+}
+
+// A file's name reaches the record as Slack holds it. termsafe is for display:
+// a name carrying a stripped rune is recorded whole, since JSON carries it
+// safely and the log is meant to say what Slack has rather than what printed.
+func TestTheRecordKeepsTheNameSlackHolds(t *testing.T) {
+	logPath := isolate(t)
+	seedCache(t)
+	raw := "in" + string(rune(0x202e)) + "voice.pdf"
+	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: raw, ID: "F0123ABCD"}}}, nil)
+	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
+	s := slacktest.New(t)
+	s.Reply("chat.delete", `{"ok":true}`)
+
+	if code, _, stderr := sez(t, s, "--send", "--delete", "#eng", "1785712599.000100"); code != 0 {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
+	}
+	recs := readLog(t, logPath)
+	files, ok := recs[len(recs)-1]["files"].([]any)
+	if !ok || len(files) != 1 {
+		t.Fatalf("files = %#v, want the one file", recs[len(recs)-1]["files"])
+	}
+	m := files[0].(map[string]any)
+	if got, _ := m["name"].(string); got != raw {
+		t.Fatalf("recorded name = %q, want the raw name Slack holds", got)
+	}
+	if got, _ := m["id"].(string); got != "F0123ABCD" {
+		t.Fatalf("recorded id = %q, want the id that reconciles against files.info", got)
 	}
 }

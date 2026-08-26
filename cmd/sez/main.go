@@ -29,6 +29,7 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/resolve"
 	"github.com/ledger-rocket/hersaid/internal/slackhttp"
 	"github.com/ledger-rocket/hersaid/internal/slackwrite"
+	"github.com/ledger-rocket/hersaid/internal/termsafe"
 )
 
 const name = "sez"
@@ -112,6 +113,17 @@ var resolveWrite = cred.ResolveWrite
 // own credential. readMessage returns the text of the message at ts, or an
 // error if hear is absent, fails, or does not list the message.
 var readMessage = viaHear
+
+// current is a message as it stands, read before anything changes it.
+type current struct {
+	// Text is the whole of what the message says.
+	Text string
+	// Files are the attached files as Slack holds them, name and id both. They
+	// are kept raw: termsafe is for display, and the record is supposed to say
+	// what Slack has rather than what was printable. The id is what reconciles
+	// a delete against files.info afterwards.
+	Files []audit.File
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, slackwrite.SlackAPI))
@@ -290,21 +302,25 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		// the message that was addressed. Without it a delete interrupted before
 		// its outcome cannot be reconciled against Slack at all.
 		rec.TS = ts
-		current, readErr := readMessage(context.Background(), target.ID, ts)
+		now, readErr := readMessage(context.Background(), target.ID, ts, verb)
 		if readErr != nil {
 			return abort(stderr, log, rec, "cannot read the current message: "+readErr.Error())
 		}
 		// For a delete the record carries what was read, so the log says what
 		// was destroyed rather than merely that something was.
 		if verb == verbDelete {
-			rec.Text = current
+			rec.Text = now.Text
+			// The record names every file whose share the delete removes.
+			// Without this they would survive in neither the message nor the
+			// log, and the log is supposed to say what a delete took.
+			rec.Files = append(rec.Files, now.Files...)
 		} else {
 			// An edit's Text is the replacement, so the wording it replaced has
 			// nowhere else to go, and sez has just read it.
-			rec.PreviousText = current
+			rec.PreviousText = now.Text
 		}
 		if !send {
-			renderChange(stdout, target, verb, ts, current, text, credErr == nil)
+			renderChange(stdout, target, verb, ts, now, text, credErr == nil)
 			rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
 			return orAuditFailure(writeRecord(stderr, log, rec), 0)
 		}
@@ -448,7 +464,7 @@ func render(stdout io.Writer, target resolve.Target, thread, text string, haveCr
 // something people have already read, so the render's job is to show it as it
 // stands; an edit also shows the replacement beside it, so what changes is
 // visible rather than asserted.
-func renderChange(stdout io.Writer, target resolve.Target, v verb, ts, current, text string, haveCred bool) {
+func renderChange(stdout io.Writer, target resolve.Target, v verb, ts string, now current, text string, haveCred bool) {
 	fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
 	if target.ID != target.Input {
 		fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
@@ -463,7 +479,16 @@ func renderChange(stdout io.Writer, target resolve.Target, v verb, ts, current, 
 		fmt.Fprintln(stdout, "token   : absent (posting currently impossible)")
 	}
 	fmt.Fprintln(stdout, "--- current message ---")
-	fmt.Fprintln(stdout, current)
+	fmt.Fprintln(stdout, now.Text)
+	// A delete takes the files out of the message along with it, so what goes
+	// has to be shown rather than merely counted.
+	for i, f := range now.Files {
+		label := "files   :"
+		if i > 0 {
+			label = "         "
+		}
+		fmt.Fprintf(stdout, "%s %s\n", label, fileLabel(f))
+	}
 	if v == verbEdit {
 		fmt.Fprintln(stdout, "--- replacement ---")
 		fmt.Fprintln(stdout, text)
@@ -593,10 +618,10 @@ func hearBound() time.Duration {
 	return hearTimeout
 }
 
-func viaHear(ctx context.Context, channelID, ts string) (string, error) {
+func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error) {
 	bin, err := findHear()
 	if err != nil {
-		return "", err
+		return current{}, err
 	}
 	bound := hearBound()
 	ctx, cancel := context.WithTimeout(ctx, bound)
@@ -618,22 +643,30 @@ func viaHear(ctx context.Context, channelID, ts string) (string, error) {
 		// carries it because Output captures stderr.
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && len(bytes.TrimSpace(ee.Stderr)) > 0 {
-			return "", fmt.Errorf("hear: %s", bytes.TrimSpace(ee.Stderr))
+			return current{}, fmt.Errorf("hear: %s", bytes.TrimSpace(ee.Stderr))
 		}
 		if ctx.Err() != nil {
-			return "", fmt.Errorf("hear: no answer within %s", bound)
+			return current{}, fmt.Errorf("hear: no answer within %s", bound)
 		}
-		return "", fmt.Errorf("hear: %w", err)
+		return current{}, fmt.Errorf("hear: %w", err)
 	}
 	var tr struct {
 		Messages []struct {
-			TS      string `json:"ts"`
-			Text    string `json:"text"`
-			Partial bool   `json:"partial"`
+			TS   string `json:"ts"`
+			Text string `json:"text"`
+			// Partial is what every hear has always emitted; Blocks is a
+			// pointer so that a hear too old to emit it is distinguishable from
+			// one saying there are none.
+			Partial bool  `json:"partial"`
+			Blocks  *bool `json:"blocks"`
+			Files   []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"files"`
 		} `json:"messages"`
 	}
 	if err := json.Unmarshal(out, &tr); err != nil {
-		return "", fmt.Errorf("parsing hear output: %w", err)
+		return current{}, fmt.Errorf("parsing hear output: %w", err)
 	}
 	for _, m := range tr.Messages {
 		if m.TS != ts {
@@ -644,12 +677,52 @@ func viaHear(ctx context.Context, channelID, ts string) (string, error) {
 		// render would show something the author never wrote — and Slack drops
 		// existing blocks from a text-only chat.update, so the replacement
 		// would not be what the message became either.
-		if m.Partial {
-			return "", fmt.Errorf("the message at %s carries blocks, attachments or files that cannot be shown here; change it in Slack", ts)
+		// A hear that does not report blocks is one sez will not change anything
+		// on. findHear falls back to PATH, so the two binaries are not always
+		// upgraded together, and an older hear is wrong in both directions: it
+		// says partial without saying why, and — older still, before it knew
+		// files existed — it calls a message carrying them plain. The second is
+		// the dangerous one, because it looks exactly like a message with
+		// nothing to show. Neither can be told apart from a sound reply by
+		// reading the reply, so the field's absence is the refusal.
+		if m.Blocks == nil {
+			return current{}, fmt.Errorf(
+				"this hear is too old to say what the message at %s carries; update hear, or change the message in Slack", ts)
 		}
-		return m.Text, nil
+		// The other direction of the same problem. A later hear could set partial
+		// for a kind of content this sez has never heard of, with no blocks and
+		// no files to explain it — and that is the same unshowable message the
+		// gate exists to refuse, arriving from the future rather than the past.
+		if m.Partial && !*m.Blocks && len(m.Files) == 0 {
+			return current{}, fmt.Errorf(
+				"hear reports the message at %s as carrying something this sez does not know about; update sez, or change the message in Slack", ts)
+		}
+		if *m.Blocks {
+			return current{}, fmt.Errorf(
+				"the message at %s carries blocks that cannot be shown here; change it in Slack", ts)
+		}
+		names := make([]audit.File, 0, len(m.Files))
+		for _, f := range m.Files {
+			// Neither a printable name nor an id is nothing to show, and a
+			// delete must not offer a blank line as its account of what goes.
+			if strings.TrimSpace(termsafe.Text(f.Name)) == "" && f.ID == "" {
+				return current{}, fmt.Errorf(
+					"the message at %s carries a file that cannot be identified", ts)
+			}
+			names = append(names, audit.File{Name: f.Name, ID: f.ID})
+		}
+		// A file can be shown by name, and a delete removes the message and its
+		// share of the file rather than the file itself, so a delete may
+		// proceed. An edit may not: chat.update carries text alone, and whether
+		// the shares survive it is not established — an edit that silently
+		// detached them would be the very thing this gate exists to prevent.
+		if len(names) > 0 && v == verbEdit {
+			return current{}, fmt.Errorf(
+				"the message at %s carries files; sez cannot edit a message with files, only delete it", ts)
+		}
+		return current{Text: m.Text, Files: names}, nil
 	}
-	return "", fmt.Errorf("hear: no message with ts %s", ts)
+	return current{}, fmt.Errorf("hear: no message with ts %s", ts)
 }
 
 // findHear names the hear binary to run, preferring the one installed beside
@@ -844,4 +917,14 @@ func trimTrailingNewlines(s string) string {
 func fail(stderr io.Writer, format string, a ...any) int {
 	fmt.Fprintf(stderr, "sez: "+format+"\n", a...)
 	return cli.ExitFailure
+}
+
+// fileLabel is what to call a file on a terminal: its name made safe to print,
+// or its id when nothing printable is left. The raw name stays in the record —
+// termsafe is for display, and the log should say what Slack has.
+func fileLabel(f audit.File) string {
+	if name := strings.TrimSpace(termsafe.Text(f.Name)); name != "" {
+		return name
+	}
+	return f.ID
 }

@@ -98,6 +98,16 @@ type Message struct {
 	// consumer acting on the text of such a message is acting on something the
 	// author never saw.
 	Partial bool `json:"partial,omitempty"`
+	// Blocks narrows Partial to the part that cannot be shown or preserved.
+	// Files are listed in Files and are not this: they have names a render can
+	// print, where a block reads as fallback text or as nothing. A consumer
+	// deciding whether it may act on Text wants this rather than Partial.
+	//
+	// Always emitted, never omitted when false. A consumer has to tell "this
+	// message has no blocks" from "this hear is too old to say", and an omitted
+	// field cannot: sez refuses to change a message it cannot account for, and
+	// a missing key that decoded as false would turn that refusal off.
+	Blocks bool `json:"blocks"`
 }
 
 // Transcript is `hear read --json` and `hear thread --json`.
@@ -199,6 +209,7 @@ func Messages(msgs []slackread.Message, names Names) []Message {
 			Reactions:    reactions,
 			Files:        fileRefs(m.Files),
 			Partial:      m.HasUnrenderedContent(),
+			Blocks:       m.HasUnrenderedBlocks(),
 		})
 	}
 	return out
