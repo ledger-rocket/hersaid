@@ -1018,10 +1018,13 @@ action, never the wording.
   `hear refresh`.
 - `sez --edit` refuses a message carrying files, and `sez --delete` does not.
   A delete removes the message and the files' shares in it — the render names
-  them, so what goes is shown. **The files themselves stay in the workspace**:
-  observed by deleting a message and finding both files still returned by
-  `files.info`, with no shares left. Removing a file is `files.delete`, which
-  this tool does not call. An edit is refused because it sends text alone, and
+  them, and says outright that they stay. **A message is a share of a file, not
+  the file**: deleting it leaves the file in the workspace, in no conversation,
+  reachable by id and counted against storage. This is Slack's behaviour rather
+  than this tool's — deleting the same message through Slack's own interface
+  leaves the file exactly as `chat.delete` does, which was checked both ways.
+  Removing a file is Slack's Files browser, or `files.delete`, which this tool
+  does not call. An edit is refused because it sends text alone, and
   whether Slack keeps the shares through one is not established — an edit that
   silently detached them is the failure the read-before-write gate exists to
   prevent.

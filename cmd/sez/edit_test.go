@@ -697,6 +697,7 @@ func TestTheDeleteRenderNamesEveryFile(t *testing.T) {
 		"look at these\n" +
 		"files   : trace.pdf\n" +
 		"          out.log\n" +
+		"note    : the files stay in Slack; deleting a message never removes them\n" +
 		"----------------------------------------\n"
 	if stdout != want {
 		t.Fatalf("render =\n%q\nwant\n%q", stdout, want)
@@ -803,5 +804,40 @@ func TestTheRecordKeepsTheNameSlackHolds(t *testing.T) {
 	}
 	if got, _ := m["id"].(string); got != "F0123ABCD" {
 		t.Fatalf("recorded id = %q, want the id that reconciles against files.info", got)
+	}
+}
+
+// A message is a share of a file, not the file. Deleting the message takes the
+// share and leaves the file in the workspace — true through Slack's own
+// interface as well as through chat.delete, so this is not a difference between
+// this tool and Slack. It is said at the moment somebody is deciding, because
+// almost nobody expects it.
+func TestTheDeleteRenderSaysTheFilesOutliveTheMessage(t *testing.T) {
+	isolate(t)
+	seedCache(t)
+	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: "trace.pdf"}}}, nil)
+	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
+	s := slacktest.New(t)
+
+	code, stdout, stderr := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	if code != 0 {
+		t.Fatalf("exit = %d (stderr %q)", code, stderr)
+	}
+	if !strings.Contains(stdout, "the files stay in Slack") {
+		t.Fatalf("render = %q, want it to say the files outlive the message", stdout)
+	}
+}
+
+// A message with nothing attached says nothing about files.
+func TestADeleteWithNoFilesSaysNothingAboutThem(t *testing.T) {
+	isolate(t)
+	seedCache(t)
+	stubRead(t, "just words", nil)
+	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
+	s := slacktest.New(t)
+
+	_, stdout, _ := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	if strings.Contains(stdout, "stay in Slack") {
+		t.Fatalf("render = %q, want no note where there are no files", stdout)
 	}
 }

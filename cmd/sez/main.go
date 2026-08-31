@@ -489,6 +489,15 @@ func renderChange(stdout io.Writer, target resolve.Target, v verb, ts string, no
 		}
 		fmt.Fprintf(stdout, "%s %s\n", label, fileLabel(f))
 	}
+	// A message is a share of a file, not the file. Deleting it takes the share
+	// and leaves the file in the workspace, reachable by id and counted against
+	// storage — observed to be true through Slack's own interface as well as
+	// through chat.delete, so this is not a difference between this tool and
+	// Slack. It is said here because it is the moment somebody is deciding, and
+	// almost nobody expects it.
+	if len(now.Files) > 0 {
+		fmt.Fprintln(stdout, "note    : the files stay in Slack; deleting a message never removes them")
+	}
 	if v == verbEdit {
 		fmt.Fprintln(stdout, "--- replacement ---")
 		fmt.Fprintln(stdout, text)
