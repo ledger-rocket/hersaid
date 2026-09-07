@@ -1,0 +1,75 @@
+---
+# Dependabot version updates. Hand-maintained: edit this file in place.
+#
+# Two streams — the Go modules in go.mod, and the third-party Actions the
+# workflows pin. Nothing merges on its own; every PR opened here is reviewed
+# and merged by a person.
+
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    # Sit out the window in which a compromised or broken release is usually
+    # caught and pulled, and scale the wait to how much the bump can break: a
+    # major waits a month, a patch three days. Daily polling above means a
+    # release is still picked up the day its cooldown expires, so the delay is
+    # the cooldown and nothing else.
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 10
+    groups:
+      # Batched by semver level rather than all into one PR, so a patch sweep
+      # stays a quick read while anything that can change behaviour is judged
+      # on its own. The two `update-types` lists are disjoint, so no bump can
+      # land in both PRs.
+      #
+      # The semver label is the publisher's claim, not a guarantee — a 0.x
+      # release is labelled patch and promises nothing about compatibility.
+      # What makes the patch batch cheap to review is the cooldown above plus a
+      # green CI run, not the label on its own.
+      external-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+      external:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "major"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    cooldown:
+      # Actions are not versioned by semver, and the schema accepts only
+      # default-days for them — the ladder above has no effect here.
+      default-days: 7
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5
+    groups:
+      # Deliberately not split by semver the way the Go groups are: Action
+      # bumps are few and mostly rewrite a pinned SHA, so one batched PR is
+      # easier to audit than three.
+      #
+      # Audit it properly. An Action is executable code that runs in CI holding
+      # the workflow's token, and a version number says nothing about what the
+      # new SHA actually points at. Read the upstream diff whatever level the
+      # bump claims to be.
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
