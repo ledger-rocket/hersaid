@@ -450,9 +450,11 @@ func TestALostOutcomeRecordIsFatalAndStillReportsDelivery(t *testing.T) {
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://x/p1"}`)
 
 	var stdout, stderr bytes.Buffer
-	code := post(&stdout, &stderr, log,
-		audit.Post{Channel: "#eng", ChannelID: "#eng", Text: "hi"},
-		s.URL, wcred, resolve.Target{Input: "#eng", ID: "#eng", Name: "eng"}, "", "hi")
+	code := post(attempt{
+		stdout: &stdout, stderr: &stderr, log: log, baseURL: s.URL, cred: wcred,
+		target: resolve.Target{Input: "#eng", ID: "#eng", Name: "eng"},
+	},
+		audit.Post{Channel: "#eng", ChannelID: "#eng", Text: "hi"}, "", "hi")
 
 	if code != 3 {
 		t.Fatalf("exit code = %d, want 3 — a delivery nobody can account for is not a success", code)
@@ -502,9 +504,11 @@ func TestAFailedIntentRecordRefusesToSend(t *testing.T) {
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://x/p1"}`)
 
 	var stdout, stderr bytes.Buffer
-	code := post(&stdout, &stderr, log,
-		audit.Post{Channel: "#eng", ChannelID: "#eng", Text: "hi"},
-		s.URL, wcred, resolve.Target{Input: "#eng", ID: "#eng", Name: "eng"}, "", "hi")
+	code := post(attempt{
+		stdout: &stdout, stderr: &stderr, log: log, baseURL: s.URL, cred: wcred,
+		target: resolve.Target{Input: "#eng", ID: "#eng", Name: "eng"},
+	},
+		audit.Post{Channel: "#eng", ChannelID: "#eng", Text: "hi"}, "", "hi")
 
 	if got := s.Hits(); got != 0 {
 		t.Fatalf("Slack received %d requests, want 0 — no write may begin without a durable intent record", got)

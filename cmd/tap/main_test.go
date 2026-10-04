@@ -233,14 +233,15 @@ func TestALostOutcomeRecordIsFatalAndStillReportsTheReaction(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	code := react(&stdout, &stderr, log,
+	code := react(attempt{
+		stdout: &stdout, stderr: &stderr, log: log, baseURL: s.URL, cred: wcred,
+		target: resolve.Target{Input: "#eng", ID: "C0123ABCD", Name: "eng", Resolved: true},
+	},
 		audit.Reaction{
 			Action: audit.Add, Channel: "#eng", ChannelID: "C0123ABCD",
 			TS: "1785712596.256909", Emoji: "thumbsup",
 		},
-		s.URL, wcred, false,
-		resolve.Target{Input: "#eng", ID: "C0123ABCD", Name: "eng", Resolved: true},
-		"1785712596.256909", "thumbsup")
+		false, "1785712596.256909", "thumbsup")
 
 	if code != 3 {
 		t.Fatalf("exit code = %d, want 3 — a reaction nobody can account for is not a success", code)
@@ -287,14 +288,15 @@ func TestAFailedIntentRecordRefusesToReact(t *testing.T) {
 	s.Reply("reactions.add", `{"ok":true}`)
 
 	var stdout, stderr bytes.Buffer
-	code := react(&stdout, &stderr, log,
+	code := react(attempt{
+		stdout: &stdout, stderr: &stderr, log: log, baseURL: s.URL, cred: wcred,
+		target: resolve.Target{Input: "#eng", ID: "C0123ABCD", Name: "eng", Resolved: true},
+	},
 		audit.Reaction{
 			Action: audit.Add, Channel: "#eng", ChannelID: "C0123ABCD",
 			TS: "1785712596.256909", Emoji: "thumbsup",
 		},
-		s.URL, wcred, false,
-		resolve.Target{Input: "#eng", ID: "C0123ABCD", Name: "eng", Resolved: true},
-		"1785712596.256909", "thumbsup")
+		false, "1785712596.256909", "thumbsup")
 
 	if got := s.Hits(); got != 0 {
 		t.Fatalf("Slack received %d requests, want 0 — no write may begin without a durable intent record", got)

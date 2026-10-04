@@ -99,6 +99,7 @@ linters:
   - recvcheck
   - testableexamples
   - unqueryvet
+  - revive
   - predeclared
   - godox
   - dupword
@@ -246,7 +247,6 @@ linters:
   - noctx # 19
   - paralleltest # 558
   - gosec # 8
-  - revive # 7
   - exhaustive # 8
   - goconst # 20
   - dupl # 4

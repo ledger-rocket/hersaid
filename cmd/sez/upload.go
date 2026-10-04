@@ -13,9 +13,7 @@ import (
 	"sync"
 
 	"github.com/ledger-rocket/hersaid/internal/audit"
-	"github.com/ledger-rocket/hersaid/internal/cred"
 	"github.com/ledger-rocket/hersaid/internal/humansize"
-	"github.com/ledger-rocket/hersaid/internal/resolve"
 	"github.com/ledger-rocket/hersaid/internal/slackhttp"
 	"github.com/ledger-rocket/hersaid/internal/slackupload"
 	"github.com/ledger-rocket/hersaid/internal/slackwrite"
@@ -300,9 +298,8 @@ func withIDs(files []audit.File, ids []string) []audit.File {
 // proofread a sentence. Every one of them goes through termsafe: a filename
 // arrives through a shell glob and may hold an ESC or a newline, and the render
 // is what a person reads in order to authorise a send.
-func renderUpload(stdout io.Writer, target resolve.Target, thread, text string,
-	files []slackupload.Local, haveCred bool,
-) {
+func renderUpload(p preview, thread, text string, files []slackupload.Local) {
+	stdout, target, haveCred := p.stdout, p.target, p.haveCred
 	fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
 	if target.ID != target.Input {
 		fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
@@ -335,9 +332,8 @@ func renderUpload(stdout io.Writer, target resolve.Target, thread, text string,
 // upload is the send path for a message carrying files. It mirrors post — the
 // intent record before anything leaves, one attempt, a classified outcome —
 // with the difference that most of what can fail here provably posted nothing.
-func upload(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL string,
-	c cred.Write, target resolve.Target, thread, text string, files []slackupload.Local,
-) int {
+func upload(a attempt, rec audit.Post, thread, text string, files []slackupload.Local) int {
+	stdout, stderr, log, baseURL, c, target := a.stdout, a.stderr, a.log, a.baseURL, a.cred, a.target
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
 		return abort(stderr, log, rec, err.Error())

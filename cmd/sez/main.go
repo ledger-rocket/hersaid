@@ -331,6 +331,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 			"sez: warning — this looks like a Markdown table; Slack renders it as literal text.")
 	}
 
+	a := attempt{stdout: stdout, stderr: stderr, log: log, baseURL: baseURL, cred: wcred, target: target}
+	p := preview{stdout: stdout, target: target, haveCred: credErr == nil}
+
 	if verb != verbSend {
 		// The read gates the write: an edit or delete rewrites or destroys what
 		// people have already read, so the render must show it as it stands. If
@@ -360,11 +363,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 			rec.PreviousText = now.Text
 		}
 		if !send {
-			renderChange(stdout, target, verb, ts, now, text, credErr == nil)
+			renderChange(p, verb, ts, now, text)
 			rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
 			return orAuditFailure(writeRecord(stderr, log, rec), 0)
 		}
-		return change(stdout, stderr, log, rec, baseURL, wcred, target, verb, ts)
+		return change(a, rec, verb, ts)
 	}
 
 	if len(f.files) > 0 {
@@ -375,11 +378,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		defer closeFiles(files)
 		rec.Files = auditFiles(files)
 		if !send {
-			renderUpload(stdout, target, thread, text, files, credErr == nil)
+			renderUpload(p, thread, text, files)
 			rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
 			return orAuditFailure(writeRecord(stderr, log, rec), 0)
 		}
-		return upload(stdout, stderr, log, rec, baseURL, wcred, target, thread, text, files)
+		return upload(a, rec, thread, text, files)
 	}
 
 	if !send {
@@ -387,12 +390,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
 		return orAuditFailure(writeRecord(stderr, log, rec), 0)
 	}
-	return post(stdout, stderr, log, rec, baseURL, wcred, target, thread, text)
+	return post(a, rec, thread, text)
 }
 
-func post(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL string,
-	c cred.Write, target resolve.Target, thread, text string,
-) int {
+func post(a attempt, rec audit.Post, thread, text string) int {
+	stdout, stderr, log, baseURL, c, target := a.stdout, a.stderr, a.log, a.baseURL, a.cred, a.target
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
 		return abort(stderr, log, rec, err.Error())
@@ -506,7 +508,8 @@ func render(stdout io.Writer, target resolve.Target, thread, text string, haveCr
 // something people have already read, so the render's job is to show it as it
 // stands; an edit also shows the replacement beside it, so what changes is
 // visible rather than asserted.
-func renderChange(stdout io.Writer, target resolve.Target, v verb, ts string, now current, text string, haveCred bool) {
+func renderChange(p preview, v verb, ts string, now current, text string) {
+	stdout, target, haveCred := p.stdout, p.target, p.haveCred
 	fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
 	if target.ID != target.Input {
 		fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
@@ -547,13 +550,30 @@ func renderChange(stdout io.Writer, target resolve.Target, v verb, ts string, no
 	fmt.Fprintln(stdout, "----------------------------------------")
 }
 
+// attempt is what every send path shares: where it reports, where it records,
+// and how it reaches the one conversation addressed.
+type attempt struct {
+	stdout, stderr io.Writer
+	log            *audit.Log
+	baseURL        string
+	cred           cred.Write
+	target         resolve.Target
+}
+
+// preview is what every dry run shares: where it prints, what it addresses and
+// whether a write credential is there to send with.
+type preview struct {
+	stdout   io.Writer
+	target   resolve.Target
+	haveCred bool
+}
+
 // change is the send path for an edit or a delete. It mirrors post's shape —
 // intent before the request, a catchable-signal outcome, one attempt, a
 // classified outcome — because an edit and a delete deserve the same accounting
 // as a send: the read has already happened and gated this call.
-func change(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL string,
-	c cred.Write, target resolve.Target, v verb, ts string,
-) int {
+func change(a attempt, rec audit.Post, v verb, ts string) int {
+	stdout, stderr, log, baseURL, c, target := a.stdout, a.stderr, a.log, a.baseURL, a.cred, a.target
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
 		return abort(stderr, log, rec, err.Error())

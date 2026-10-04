@@ -172,12 +172,22 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 		rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
 		return orAuditFailure(writeRecord(stderr, log, rec), 0)
 	}
-	return react(stdout, stderr, log, rec, baseURL, wcred, remove, target, targetTS, emoji)
+	a := attempt{stdout: stdout, stderr: stderr, log: log, baseURL: baseURL, cred: wcred, target: target}
+	return react(a, rec, remove, targetTS, emoji)
 }
 
-func react(stdout, stderr io.Writer, log *audit.Log, rec audit.Reaction, baseURL string,
-	c cred.Write, remove bool, target resolve.Target, targetTS, emoji string,
-) int {
+// attempt is what the send path needs: where it reports, where it records,
+// and how it reaches the one conversation addressed.
+type attempt struct {
+	stdout, stderr io.Writer
+	log            *audit.Log
+	baseURL        string
+	cred           cred.Write
+	target         resolve.Target
+}
+
+func react(a attempt, rec audit.Reaction, remove bool, targetTS, emoji string) int {
+	stdout, stderr, log, baseURL, c, target := a.stdout, a.stderr, a.log, a.baseURL, a.cred, a.target
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
 		return abort(stderr, log, rec, err.Error())
