@@ -59,7 +59,8 @@ func TestDeleteSendsOnlyTheAddress(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.delete", `{"ok":true,"ts":"1.1"}`)
 
-	if err := client(t, s).Delete(context.Background(), "C1", "1785712599.000100"); err != nil {
+	err := client(t, s).Delete(context.Background(), "C1", "1785712599.000100")
+	if err != nil {
 		t.Fatal(err)
 	}
 	req := s.Last()

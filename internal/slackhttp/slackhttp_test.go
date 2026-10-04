@@ -147,7 +147,8 @@ func TestTimeoutFromEnv(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(TimeoutEnvVar, tc.value)
 			if tc.unset {
-				if err := os.Unsetenv(TimeoutEnvVar); err != nil {
+				err := os.Unsetenv(TimeoutEnvVar)
+				if err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -201,7 +202,8 @@ func TestTimeoutFromEnvIsCappedSoItsConsumersCannotOverflow(t *testing.T) {
 	}
 
 	t.Setenv(TimeoutEnvVar, "86401")
-	if _, err := TimeoutFromEnv(); err == nil {
+	_, err = TimeoutFromEnv()
+	if err == nil {
 		t.Fatal("TimeoutFromEnv() one second above the cap = nil error, want a refusal")
 	}
 }

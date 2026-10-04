@@ -46,7 +46,7 @@ func FromEnv() List { return Parse(os.Getenv(EnvVar)) }
 // an optional leading "#".
 func Parse(s string) List {
 	l := List{ids: map[string]bool{}, names: map[string]bool{}, raw: s}
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		e := strings.TrimSpace(part)
 		if e == "" {
 			continue

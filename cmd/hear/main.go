@@ -237,6 +237,7 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 // lazily-built way to reach Slack.
 type hear struct {
 	flags
+
 	store  *cache.Store
 	src    *source
 	stdout io.Writer
@@ -281,6 +282,24 @@ type source struct {
 	done bool
 }
 
+// ConversationsList and UsersList make source a cache.Source, so a cold cache
+// fills itself from Slack at the point of use and a warm one costs nothing.
+func (s *source) ConversationsList(ctx context.Context) ([]cache.Conversation, error) {
+	c, err := s.get()
+	if err != nil {
+		return nil, err
+	}
+	return c.ConversationsList(ctx)
+}
+
+func (s *source) UsersList(ctx context.Context) ([]cache.User, error) {
+	c, err := s.get()
+	if err != nil {
+		return nil, err
+	}
+	return c.UsersList(ctx)
+}
+
 func (s *source) get() (*slackread.Client, error) {
 	s.resolve()
 	return s.client, s.err
@@ -317,24 +336,6 @@ func (s *source) resolve() {
 	s.client = slackread.New(c, slackhttp.New(timeout), s.where.api)
 	s.files = slackfiles.New(c, timeout*downloadTimeoutFactor, s.where.files)
 	s.key = c.Key()
-}
-
-// ConversationsList and UsersList make source a cache.Source, so a cold cache
-// fills itself from Slack at the point of use and a warm one costs nothing.
-func (s *source) ConversationsList(ctx context.Context) ([]cache.Conversation, error) {
-	c, err := s.get()
-	if err != nil {
-		return nil, err
-	}
-	return c.ConversationsList(ctx)
-}
-
-func (s *source) UsersList(ctx context.Context) ([]cache.User, error) {
-	c, err := s.get()
-	if err != nil {
-		return nil, err
-	}
-	return c.UsersList(ctx)
 }
 
 // address resolves target to the conversation to read.

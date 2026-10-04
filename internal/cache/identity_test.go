@@ -14,11 +14,13 @@ import (
 func TestIdentityRoundTripsThroughTheCache(t *testing.T) {
 	isolate(t)
 	want := Identity{UserID: "U1", User: "stepan", Team: "LR"}
-	if err := Write(IdentityFile, want); err != nil {
+	err := Write(IdentityFile, want)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var got Identity
-	if err := Read(IdentityFile, &got); err != nil {
+	err = Read(IdentityFile, &got)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got != want {
@@ -31,7 +33,8 @@ func TestIdentityRoundTripsThroughTheCache(t *testing.T) {
 func TestAnUnwarmedIdentityIsCold(t *testing.T) {
 	isolate(t)
 	var id Identity
-	if err := Read(IdentityFile, &id); !errors.Is(err, ErrCold) {
+	err := Read(IdentityFile, &id)
+	if !errors.Is(err, ErrCold) {
 		t.Fatalf("err = %v, want ErrCold", err)
 	}
 }
@@ -41,14 +44,17 @@ func TestAnUnwarmedIdentityIsCold(t *testing.T) {
 // the reader's own.
 func TestClearRemovesTheIdentity(t *testing.T) {
 	isolate(t)
-	if err := Write(IdentityFile, Identity{UserID: "U1"}); err != nil {
+	err := Write(IdentityFile, Identity{UserID: "U1"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Clear(); err != nil {
+	err = Clear()
+	if err != nil {
 		t.Fatal(err)
 	}
 	var id Identity
-	if err := Read(IdentityFile, &id); !errors.Is(err, ErrCold) {
+	err = Read(IdentityFile, &id)
+	if !errors.Is(err, ErrCold) {
 		t.Fatalf("err = %v, want ErrCold after Clear", err)
 	}
 }

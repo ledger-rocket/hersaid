@@ -188,11 +188,11 @@ func TestASparseTableDoesNotExpandToItsBoundingBox(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("<table>")
 	b.WriteString("<tr>")
-	for i := 0; i < 5000; i++ {
+	for range 5000 {
 		b.WriteString("<td>x</td>")
 	}
 	b.WriteString("</tr>")
-	for i := 0; i < 5000; i++ {
+	for range 5000 {
 		b.WriteString("<tr><td>y</td></tr>")
 	}
 	b.WriteString("</table>")
@@ -356,7 +356,7 @@ func TestALongTableKeepsEveryRow(t *testing.T) {
 	const rows = 25000
 	var b strings.Builder
 	b.WriteString("<table>")
-	for i := 0; i < rows; i++ {
+	for range rows {
 		b.WriteString("<tr><td>r</td></tr>")
 	}
 	b.WriteString("</table>")

@@ -90,10 +90,12 @@ func TestZeroCredentialIssuesNoRequest(t *testing.T) {
 	if got := Classify(err); got != Rejected {
 		t.Fatalf("Classify = %v, want Rejected", got)
 	}
-	if err := c.AddReaction(context.Background(), "C0123ABCD", "1.1", "thumbsup"); !errors.Is(err, ErrNoCredential) {
+	err = c.AddReaction(context.Background(), "C0123ABCD", "1.1", "thumbsup")
+	if !errors.Is(err, ErrNoCredential) {
 		t.Fatalf("AddReaction error = %v, want ErrNoCredential", err)
 	}
-	if _, err := c.Permalink(context.Background(), "C0123ABCD", "1.1"); !errors.Is(err, ErrNoCredential) {
+	_, err = c.Permalink(context.Background(), "C0123ABCD", "1.1")
+	if !errors.Is(err, ErrNoCredential) {
 		t.Fatalf("Permalink error = %v, want ErrNoCredential", err)
 	}
 
@@ -109,14 +111,16 @@ func TestThreadTSIsOmittedWhenEmpty(t *testing.T) {
 	s.Reply("chat.postMessage", `{"ok":true,"ts":"1.1"}`)
 
 	c := client(t, s)
-	if _, err := c.PostMessage(context.Background(), "C1", "hi", ""); err != nil {
+	_, err := c.PostMessage(context.Background(), "C1", "hi", "")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := s.Last().BodyFields(), []string{"channel", "text"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("fields = %v, want %v", got, want)
 	}
 
-	if _, err := c.PostMessage(context.Background(), "C1", "hi", "1785712596.256909"); err != nil {
+	_, err = c.PostMessage(context.Background(), "C1", "hi", "1785712596.256909")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := s.Last().BodyFields(), []string{"channel", "text", "thread_ts"}; !reflect.DeepEqual(got, want) {
@@ -147,7 +151,8 @@ func TestReactionsSendExactlyTheDeclaredFields(t *testing.T) {
 	s.Reply("reactions.remove", `{"ok":true}`)
 
 	c := client(t, s)
-	if err := c.AddReaction(context.Background(), "C1", "1.1", "thumbsup"); err != nil {
+	err := c.AddReaction(context.Background(), "C1", "1.1", "thumbsup")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := s.Last().BodyFields(), []string{"channel", "name", "timestamp"}; !reflect.DeepEqual(got, want) {
@@ -157,7 +162,8 @@ func TestReactionsSendExactlyTheDeclaredFields(t *testing.T) {
 		t.Fatalf("endpoint = %q", s.Last().Endpoint)
 	}
 
-	if err := c.RemoveReaction(context.Background(), "C1", "1.1", "thumbsup"); err != nil {
+	err = c.RemoveReaction(context.Background(), "C1", "1.1", "thumbsup")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if s.Last().Endpoint != "reactions.remove" {
@@ -339,7 +345,8 @@ func TestBaseURLIsPerClient(t *testing.T) {
 	}
 	s := slacktest.New(t)
 	s.Reply("chat.postMessage", `{"ok":true,"ts":"1.1"}`)
-	if _, err := client(t, s).PostMessage(context.Background(), "C1", "hi", ""); err != nil {
+	_, err := client(t, s).PostMessage(context.Background(), "C1", "hi", "")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got := s.Hits(); got != 1 {

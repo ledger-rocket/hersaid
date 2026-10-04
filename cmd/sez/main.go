@@ -267,7 +267,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	// After resolution, because #eng and its C… id are the same conversation;
 	// before any request, so a refusal costs nothing and reveals nothing.
 	list := allowlist.FromEnv()
-	if err := list.Check(target); err != nil {
+	err = list.Check(target)
+	if err != nil {
 		rec.Phase, rec.OK, rec.Error = audit.Refused, audit.Failed, err.Error()
 		werr := writeRecord(stderr, log, rec)
 		return orAuditFailure(werr, fail(stderr, "%v", err))
@@ -363,7 +364,8 @@ func post(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL stri
 	// not success. This is the one record that survives SIGKILL.
 	intent := rec
 	intent.Phase, intent.OK = audit.Intent, audit.Unknown
-	if err := log.Post(intent); err != nil {
+	err = log.Post(intent)
+	if err != nil {
 		return fail(stderr, "%v — refusing to send", err)
 	}
 
@@ -424,7 +426,8 @@ func post(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL stri
 	// must not turn a success into an error. Fetched for every target: knowing
 	// the channel precisely is not the same as having a link to the message,
 	// which is the only field in the record that points at what was sent.
-	if link, perr := client.Permalink(context.Background(), target.ID, resp.TS); perr == nil {
+	link, perr := client.Permalink(context.Background(), target.ID, resp.TS)
+	if perr == nil {
 		rec.Permalink = link
 	}
 	werr := writeRecord(stderr, log, rec)
@@ -522,7 +525,8 @@ func change(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL st
 	// success. This is the one record that survives SIGKILL.
 	intent := rec
 	intent.Phase, intent.OK = audit.Intent, audit.Unknown
-	if err := log.Post(intent); err != nil {
+	err = log.Post(intent)
+	if err != nil {
 		return fail(stderr, "%v — refusing to send", err)
 	}
 
@@ -554,11 +558,13 @@ func change(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL st
 		// the permalink lookup after the wrong one.
 		// An edit changes what a message says, and the ts and channel are both
 		// in hand: the same reasoning that makes a send fetch one.
-		if link, perr := client.Permalink(ctx, target.ID, rec.TS); perr == nil {
+		link, perr := client.Permalink(ctx, target.ID, rec.TS)
+		if perr == nil {
 			rec.Permalink = link
 		}
 	case verbDelete:
-		if err := client.Delete(ctx, target.ID, ts); err != nil {
+		err := client.Delete(ctx, target.ID, ts)
+		if err != nil {
 			return changeOutcome(stderr, log, rec, err)
 		}
 		rec.OK = audit.Succeeded
@@ -621,7 +627,8 @@ var hearTimeout = 30 * time.Second
 // a caller who raised that timeout for a slow link would otherwise have its
 // child killed mid-request, and the read gates the write.
 func hearBound() time.Duration {
-	if t, err := slackhttp.TimeoutFromEnv(); err == nil && 2*t > hearTimeout {
+	t, err := slackhttp.TimeoutFromEnv()
+	if err == nil && 2*t > hearTimeout {
 		return 2 * t
 	}
 	return hearTimeout
@@ -674,7 +681,8 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 			} `json:"files"`
 		} `json:"messages"`
 	}
-	if err := json.Unmarshal(out, &tr); err != nil {
+	err = json.Unmarshal(out, &tr)
+	if err != nil {
 		return current{}, fmt.Errorf("parsing hear output: %w", err)
 	}
 	for _, m := range tr.Messages {
@@ -751,9 +759,11 @@ func withoutWriteToken(env []string) []string {
 }
 
 func findHear() (string, error) {
-	if exe, err := os.Executable(); err == nil {
+	exe, err := os.Executable()
+	if err == nil {
 		candidate := filepath.Join(filepath.Dir(exe), "hear")
-		if fi, err := os.Stat(candidate); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+		fi, err := os.Stat(candidate)
+		if err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
 			return candidate, nil
 		}
 	}
@@ -788,7 +798,8 @@ func abort(stderr io.Writer, log *audit.Log, rec audit.Post, msg string) int {
 // writeRecord appends rec, reporting a failure on stderr. The error is returned
 // rather than swallowed because it outranks whatever the record was describing.
 func writeRecord(stderr io.Writer, log *audit.Log, rec audit.Post) error {
-	if err := log.Post(rec); err != nil {
+	err := log.Post(rec)
+	if err != nil {
 		fmt.Fprintf(stderr, "sez: AUDIT WRITE FAILED — %v\n", err)
 		return err
 	}

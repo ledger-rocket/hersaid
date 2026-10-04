@@ -99,6 +99,18 @@ linters:
   - recvcheck
   - testableexamples
   - unqueryvet
+  - whitespace
+  - funcorder
+  - musttag
+  - godoclint
+  - forbidigo
+  - dogsled
+  - embeddedstructfieldcheck
+  - canonicalheader
+  - perfsprint
+  - intrange
+  - modernize
+  - noinlineerr
   settings:
     wrapcheck:
       ignore-package-globs:
@@ -229,7 +241,6 @@ linters:
   - prealloc # 1
   - revive # 7
   - misspell # 2
-  - whitespace # 6
   - exhaustive # 8
   - dupword # 1
   - goconst # 20
@@ -241,21 +252,10 @@ linters:
   - gocognit # 10
   - funlen # 1
   - mnd # 23
-  - canonicalheader # 5
-  - dogsled # 1
-  - embeddedstructfieldcheck # 14
   - err113 # 78
-  - forbidigo # 2
-  - funcorder # 11
-  - godoclint # 2
   - gosmopolitan # 5
-  - intrange # 18
   - maintidx # 1
-  - modernize # 31
-  - musttag # 1
   - nestif # 2
-  - noinlineerr # 316
-  - perfsprint # 2
 severity:
   default: error
   rules:

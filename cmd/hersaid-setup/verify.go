@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -15,7 +16,7 @@ import (
 const writeScope = "chat:write"
 
 // scopeHeader is where Slack reports what a token was actually granted.
-const scopeHeader = "X-OAuth-Scopes"
+const scopeHeader = "X-Oauth-Scopes"
 
 // maxBody caps the auth.test response read. Slack's is a few hundred bytes; the
 // bound is here because a broken or hostile server should not be able to
@@ -72,7 +73,8 @@ func verify(ctx context.Context, hc *http.Client, baseURL, token string, r role)
 		return account{}, errors.New("  could not read Slack's reply")
 	}
 	var out authTest
-	if err := json.Unmarshal(body, &out); err != nil {
+	err = json.Unmarshal(body, &out)
+	if err != nil {
 		return account{}, fmt.Errorf("  Slack sent a reply this cannot read (HTTP %d)", resp.StatusCode)
 	}
 	if !out.OK {
@@ -92,7 +94,8 @@ func verify(ctx context.Context, hc *http.Client, baseURL, token string, r role)
 		return acct, fmt.Errorf(botRefusal, out.User)
 	}
 
-	if err := checkScopes(resp.Header, r); err != nil {
+	err = checkScopes(resp.Header, r)
+	if err != nil {
 		return acct, err
 	}
 	return acct, nil
@@ -126,7 +129,7 @@ func checkScopes(h http.Header, r role) error {
 func parseScopes(h http.Header) []string {
 	var out []string
 	for _, v := range h.Values(scopeHeader) {
-		for _, s := range strings.Split(v, ",") {
+		for s := range strings.SplitSeq(v, ",") {
 			if s = strings.TrimSpace(s); s != "" {
 				out = append(out, s)
 			}
@@ -136,12 +139,7 @@ func parseScopes(h http.Header) []string {
 }
 
 func contains(list []string, want string) bool {
-	for _, s := range list {
-		if s == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, want)
 }
 
 const botRefusal = `  REFUSED: that is a BOT token. Messages would post as an app named

@@ -10,6 +10,7 @@ package audit
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -77,7 +78,8 @@ func Actor() string {
 	if u := os.Getenv("USER"); u != "" {
 		return u
 	}
-	if u, err := user.Current(); err == nil && u.Username != "" {
+	u, err := user.Current()
+	if err == nil && u.Username != "" {
 		return u.Username
 	}
 	return "unknown"
@@ -342,9 +344,10 @@ type Log struct {
 // Open prepares the log at path, creating the directory 0700 and the file 0600.
 func Open(path string) (*Log, error) {
 	if path == "" {
-		return nil, fmt.Errorf("audit: no log path")
+		return nil, errors.New("audit: no log path")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	err := os.MkdirAll(filepath.Dir(path), 0o700)
+	if err != nil {
 		return nil, fmt.Errorf("audit: %w", err)
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
@@ -355,7 +358,8 @@ func Open(path string) (*Log, error) {
 	// An existing log may predate this, or have been created by another tool.
 	// Warned about rather than refused: losing the record is worse than a
 	// permissive mode on a file the user already owns.
-	if err := f.Chmod(0o600); err != nil {
+	err = f.Chmod(0o600)
+	if err != nil {
 		l.warnings = append(l.warnings,
 			fmt.Sprintf("cannot enforce 0600 on %s: %v", path, err))
 	}
@@ -405,7 +409,8 @@ func (l *Log) append(rec any) error {
 	// One fsync per record, and a command writes at most three. It is not
 	// needed for another process to see the line, only for power loss, but at
 	// this rate it costs nothing worth reasoning about.
-	if err := l.f.Sync(); err != nil {
+	err = l.f.Sync()
+	if err != nil {
 		return fmt.Errorf("audit: %w", err)
 	}
 	return nil

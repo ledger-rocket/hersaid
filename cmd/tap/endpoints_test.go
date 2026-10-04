@@ -18,7 +18,8 @@ func TestBuiltBinaryReachesNoMessageEndpoints(t *testing.T) {
 		t.Skip("builds a binary")
 	}
 	bin := filepath.Join(t.TempDir(), "tap")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
+	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 

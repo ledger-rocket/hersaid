@@ -37,7 +37,8 @@ func store(r role, token string) (where string, shadowed []string, err error) {
 	// Any keyring error means the file, not only "not found": on a headless
 	// host go-keyring returns the raw D-Bus or exec failure unwrapped, and cred
 	// falls through on the same basis when it reads the credential back.
-	if err := keyringSet(r.service, acct, token); err == nil {
+	err = keyringSet(r.service, acct, token)
+	if err == nil {
 		return fmt.Sprintf("keychain (service: %s)", r.service), outranked(r, true), nil
 	}
 
@@ -45,7 +46,8 @@ func store(r role, token string) (where string, shadowed []string, err error) {
 	// declined one write. cred reads every keyring tier before any file, so if
 	// an item is still readable the file would never be seen — and reporting a
 	// stored credential that nothing resolves is worse than reporting nothing.
-	if _, err := keyringGet(r.service, acct); err == nil {
+	_, err = keyringGet(r.service, acct)
+	if err == nil {
 		return "", nil, fmt.Errorf(
 			"the keychain would not take the token, and it already holds a %s credential under service %s that would be read in preference to a file; remove that item and try again",
 			r.name, r.service)
@@ -56,19 +58,22 @@ func store(r role, token string) (where string, shadowed []string, err error) {
 		return "", nil, err
 	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	err = os.MkdirAll(dir, 0o700)
+	if err != nil {
 		return "", nil, err
 	}
 	// MkdirAll applies its mode only to directories it creates, so the chmod is
 	// unconditional: one somebody made group-readable years ago would otherwise
 	// stay that way.
-	if err := os.Chmod(dir, 0o700); err != nil {
+	err = os.Chmod(dir, 0o700)
+	if err != nil {
 		return "", nil, err
 	}
-	if err := writeTokenFile(path, token); err != nil {
+	err = writeTokenFile(path, token)
+	if err != nil {
 		return "", nil, err
 	}
-	return fmt.Sprintf("%s (mode 0600)", path), outranked(r, false), nil
+	return path + " (mode 0600)", outranked(r, false), nil
 }
 
 // writeTokenFile writes the token atomically: a temp file in the same directory,
@@ -82,15 +87,18 @@ func writeTokenFile(path, token string) error {
 		return err
 	}
 	defer os.Remove(tmp.Name()) // a no-op once the rename has succeeded
-	if err := tmp.Chmod(0o600); err != nil {
+	err = tmp.Chmod(0o600)
+	if err != nil {
 		tmp.Close()
 		return err
 	}
-	if _, err := tmp.WriteString(token); err != nil {
+	_, err = tmp.WriteString(token)
+	if err != nil {
 		tmp.Close()
 		return err
 	}
-	if err := tmp.Close(); err != nil {
+	err = tmp.Close()
+	if err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
@@ -111,7 +119,8 @@ func outranked(r role, inKeyring bool) []string {
 		if err != nil {
 			continue
 		}
-		if _, err := os.Stat(path); err == nil {
+		_, err = os.Stat(path)
+		if err == nil {
 			out = append(out, path)
 		}
 	}
@@ -122,8 +131,8 @@ func outranked(r role, inKeyring bool) []string {
 // write, so that replacing one is a decision somebody made rather than a side
 // effect of re-running the installer.
 type stored struct {
-	where string
-	print string
+	where     string
+	described string
 }
 
 // lookup reports what is already stored for a role.
@@ -134,11 +143,12 @@ type stored struct {
 // "Replace it?" would misdescribe what the answer does. It is reported after
 // the fact, by reportWhatOutranksIt, which is what it actually is.
 func lookup(r role) (stored, bool) {
-	if v, err := keyringGet(r.service, keyringAccount()); err == nil {
+	v, err := keyringGet(r.service, keyringAccount())
+	if err == nil {
 		if t := strip(v); t != "" {
 			return stored{
-				where: fmt.Sprintf("the keychain (service: %s)", r.service),
-				print: describe(t),
+				where:     fmt.Sprintf("the keychain (service: %s)", r.service),
+				described: describe(t),
 			}, true
 		}
 	}
@@ -151,7 +161,7 @@ func lookup(r role) (stored, bool) {
 		return stored{}, false
 	}
 	if t := strip(string(b)); t != "" {
-		return stored{where: path, print: describe(t)}, true
+		return stored{where: path, described: describe(t)}, true
 	}
 	return stored{}, false
 }
@@ -191,7 +201,8 @@ func keyringAccount() string {
 	if u := os.Getenv("USER"); u != "" {
 		return u
 	}
-	if u, err := user.Current(); err == nil {
+	u, err := user.Current()
+	if err == nil {
 		return u.Username
 	}
 	return ""

@@ -144,7 +144,7 @@ func (w *writer) block(n *html.Node, depth int) {
 			w.emit(fence + "\n" + body + "\n" + fence)
 			return
 		case atom.Blockquote:
-			for _, line := range strings.Split(inline(n), "\n") {
+			for line := range strings.SplitSeq(inline(n), "\n") {
 				w.emit("> " + line)
 			}
 			return
@@ -172,10 +172,7 @@ func (w *writer) children(n *html.Node, depth int) {
 // item renders one list entry, indented for its depth. A nested list inside the
 // item is walked by the same code, so depth is the length of the stack.
 func (w *writer) item(n *html.Node, depth int) string {
-	indent := len(w.list) - 1
-	if indent < 0 {
-		indent = 0
-	}
+	indent := max(len(w.list)-1, 0)
 	marker := "- "
 	if len(w.list) > 0 && w.list[len(w.list)-1].ordered {
 		w.list[len(w.list)-1].n++

@@ -95,27 +95,6 @@ func New(c cred.Read, timeout time.Duration, hosts slackhosts.Hosts) *Client {
 	return cl
 }
 
-// permits reports whether a request carrying the bearer may be sent to rawURL.
-//
-// A plaintext scheme is refused, because a bearer on the wire in clear is the
-// thing every other rule here exists to prevent. Loopback is the exception: a
-// token that never leaves the machine has not been disclosed by travelling, and
-// a test server is the only thing that answers there.
-func (c *Client) permits(rawURL string) error {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("download url: %w", err)
-	}
-	host := u.Hostname()
-	if u.Scheme != "https" && !isLoopback(host) {
-		return fmt.Errorf("refusing to download over %s: a bearer may not travel in clear", u.Scheme)
-	}
-	if !c.hosts.PermitsBearer(host) {
-		return fmt.Errorf("refusing to download from %s: not a host Slack serves files from", host)
-	}
-	return nil
-}
-
 func isLoopback(host string) bool {
 	if ip := net.ParseIP(host); ip != nil {
 		return ip.IsLoopback()
@@ -135,34 +114,6 @@ func isLoopback(host string) bool {
 type redirectError struct{ reason string }
 
 func (e *redirectError) Error() string { return e.reason }
-
-// checkRedirect is the whole of the redirect policy. slackhttp refuses every
-// redirect because a Location can move an Authorization header to a host of
-// someone else's choosing; a file download cannot take that line, because Slack
-// may answer with a redirect to storage it does not serve itself. So the header
-// is what is refused, rather than the hop.
-func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) >= maxHops {
-		return &redirectError{fmt.Sprintf("refusing a redirect to %s: more than %d hops",
-			req.URL.Hostname(), maxHops)}
-	}
-	first := via[0].URL
-	if first.Scheme == "https" && req.URL.Scheme != "https" {
-		return &redirectError{fmt.Sprintf("refusing a redirect to %s: that is a downgrade from https",
-			req.URL.Hostname())}
-	}
-	if !c.hosts.PermitsRedirect(req.URL.Hostname()) {
-		return &redirectError{fmt.Sprintf("refusing a redirect to %s: not a host Slack serves files from",
-			req.URL.Hostname())}
-	}
-	// Go drops Authorization across a domain change of its own accord. Doing it
-	// here as well means the property holds because this package says so, and a
-	// test can hold it to that.
-	if req.URL.Host != first.Host {
-		req.Header.Del("Authorization")
-	}
-	return nil
-}
 
 // Fetch downloads every file in files into dir, one Result each, in order.
 //
@@ -215,16 +166,6 @@ func skipReason(f slackread.File, max int64) string {
 	return ""
 }
 
-func (c *Client) download(ctx context.Context, f slackread.File, d *dest, name string, max int64) (int64, error) {
-	resp, body, cancel, err := c.open(ctx, f)
-	if err != nil {
-		return 0, err
-	}
-	defer cancel()
-	defer resp.Body.Close()
-	return writeFile(body, d, name, max, f.Size)
-}
-
 // Read returns a file's bytes rather than writing them.
 //
 // It is the same request under the same rules — the host check, the bearer, the
@@ -255,6 +196,65 @@ func (c *Client) Read(ctx context.Context, f slackread.File, max int64) ([]byte,
 	return buf, nil
 }
 
+// permits reports whether a request carrying the bearer may be sent to rawURL.
+//
+// A plaintext scheme is refused, because a bearer on the wire in clear is the
+// thing every other rule here exists to prevent. Loopback is the exception: a
+// token that never leaves the machine has not been disclosed by travelling, and
+// a test server is the only thing that answers there.
+func (c *Client) permits(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("download url: %w", err)
+	}
+	host := u.Hostname()
+	if u.Scheme != "https" && !isLoopback(host) {
+		return fmt.Errorf("refusing to download over %s: a bearer may not travel in clear", u.Scheme)
+	}
+	if !c.hosts.PermitsBearer(host) {
+		return fmt.Errorf("refusing to download from %s: not a host Slack serves files from", host)
+	}
+	return nil
+}
+
+// checkRedirect is the whole of the redirect policy. slackhttp refuses every
+// redirect because a Location can move an Authorization header to a host of
+// someone else's choosing; a file download cannot take that line, because Slack
+// may answer with a redirect to storage it does not serve itself. So the header
+// is what is refused, rather than the hop.
+func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxHops {
+		return &redirectError{fmt.Sprintf("refusing a redirect to %s: more than %d hops",
+			req.URL.Hostname(), maxHops)}
+	}
+	first := via[0].URL
+	if first.Scheme == "https" && req.URL.Scheme != "https" {
+		return &redirectError{fmt.Sprintf("refusing a redirect to %s: that is a downgrade from https",
+			req.URL.Hostname())}
+	}
+	if !c.hosts.PermitsRedirect(req.URL.Hostname()) {
+		return &redirectError{fmt.Sprintf("refusing a redirect to %s: not a host Slack serves files from",
+			req.URL.Hostname())}
+	}
+	// Go drops Authorization across a domain change of its own accord. Doing it
+	// here as well means the property holds because this package says so, and a
+	// test can hold it to that.
+	if req.URL.Host != first.Host {
+		req.Header.Del("Authorization")
+	}
+	return nil
+}
+
+func (c *Client) download(ctx context.Context, f slackread.File, d *dest, name string, max int64) (int64, error) {
+	resp, body, cancel, err := c.open(ctx, f)
+	if err != nil {
+		return 0, err
+	}
+	defer cancel()
+	defer resp.Body.Close()
+	return writeFile(body, d, name, max, f.Size)
+}
+
 // open makes the request and hands back a response whose body is the file. The
 // returned cancel releases the request deadline and must be called.
 func (c *Client) open(ctx context.Context, f slackread.File) (*http.Response, *bufio.Reader, context.CancelFunc, error) {
@@ -275,7 +275,8 @@ func (c *Client) open(ctx context.Context, f slackread.File) (*http.Response, *b
 	// reply were ever not Slack's. Checking it here is what makes the host set a
 	// bound on everywhere the bearer can go, rather than only on where a
 	// redirect can take it.
-	if err := c.permits(f.URLPrivateDownload); err != nil {
+	err := c.permits(f.URLPrivateDownload)
+	if err != nil {
 		return nil, nil, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.URLPrivateDownload, nil)
@@ -301,7 +302,8 @@ func (c *Client) open(ctx context.Context, f slackread.File) (*http.Response, *b
 		return nil, nil, nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	buffered := bufio.NewReader(resp.Body)
-	if err := checkBodyIsTheFile(resp, f, buffered); err != nil {
+	err = checkBodyIsTheFile(resp, f, buffered)
+	if err != nil {
 		resp.Body.Close()
 		return nil, nil, nil, err
 	}
@@ -418,14 +420,16 @@ func (d *dest) ready() error {
 	}
 	// --out itself is the caller's own argument, so creating it and following
 	// it is intended. Everything below it is not the caller's choice.
-	if err := os.MkdirAll(d.out, 0o700); err != nil {
+	err := os.MkdirAll(d.out, 0o700)
+	if err != nil {
 		return err
 	}
 	root, err := os.OpenRoot(d.out)
 	if err != nil {
 		return err
 	}
-	if err := root.Mkdir(d.msgDir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+	err = root.Mkdir(d.msgDir, 0o700)
+	if err != nil && !errors.Is(err, os.ErrExist) {
 		root.Close()
 		return err
 	}
@@ -448,7 +452,7 @@ func (d *dest) rel(name string) string  { return path.Join(d.msgDir, name) }
 // to. os.Root has no CreateTemp, and O_EXCL makes the loop safe without one:
 // whoever creates the name owns it.
 func (d *dest) temp() (string, *os.File, error) {
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		name := fmt.Sprintf(".hear-%d", i)
 		f, err := d.root.OpenFile(d.rel(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err == nil {
@@ -475,7 +479,8 @@ func (d *dest) temp() (string, *os.File, error) {
 // a body that stops short of it is a truncation the transport did not report,
 // and writing it would produce a file that looks complete and is not.
 func writeFile(body io.Reader, d *dest, name string, max, declared int64) (int64, error) {
-	if err := d.ready(); err != nil {
+	err := d.ready()
+	if err != nil {
 		return 0, err
 	}
 	tmpName, tmp, err := d.temp()
@@ -502,10 +507,12 @@ func writeFile(body io.Reader, d *dest, name string, max, declared int64) (int64
 	if declared > 0 && n < declared {
 		return 0, fmt.Errorf("received %d bytes, fewer than the %d Slack declared", n, declared)
 	}
-	if err := tmp.Close(); err != nil {
+	err = tmp.Close()
+	if err != nil {
 		return 0, err
 	}
-	if err := d.place(tmpName, name); err != nil {
+	err = d.place(tmpName, name)
+	if err != nil {
 		return 0, err
 	}
 	return n, nil
@@ -565,18 +572,21 @@ func (d *dest) copyExclusive(tmpName, name string) error {
 	}
 	defer d.root.Remove(d.rel(copyName))
 
-	if _, err := io.Copy(dst, src); err != nil {
+	_, err = io.Copy(dst, src)
+	if err != nil {
 		dst.Close()
 		d.root.Remove(d.rel(name))
 		return err
 	}
 	// The close is where a full disk is reported on several filesystems, so it
 	// fails the same way a short write does: with nothing left at name.
-	if err := dst.Close(); err != nil {
+	err = dst.Close()
+	if err != nil {
 		d.root.Remove(d.rel(name))
 		return err
 	}
-	if err := d.root.Rename(d.rel(copyName), d.rel(name)); err != nil {
+	err = d.root.Rename(d.rel(copyName), d.rel(name))
+	if err != nil {
 		d.root.Remove(d.rel(name))
 		return err
 	}

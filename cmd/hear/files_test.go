@@ -83,7 +83,8 @@ func TestMaxSizeReachesTheDownloadBound(t *testing.T) {
 	if !strings.Contains(stdout, "failed") {
 		t.Fatalf("stdout = %q, want the file reported as failed", stdout)
 	}
-	if _, err := os.Stat(filepath.Join(out, "eng-1785708834.862009", "big.pdf")); !errors.Is(err, os.ErrNotExist) {
+	_, err := os.Stat(filepath.Join(out, "eng-1785708834.862009", "big.pdf"))
+	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("the oversize file was written; the ceiling did not bind")
 	}
 }
@@ -128,7 +129,8 @@ func TestFilesExitsNonZeroWhenAnythingWasSkipped(t *testing.T) {
 		t.Fatalf("exit = %d, want 1", code)
 	}
 	// The file that could be fetched still was.
-	if _, err := os.Stat(filepath.Join(out, "eng-1785708834.862009", "trace.pdf")); err != nil {
+	_, err := os.Stat(filepath.Join(out, "eng-1785708834.862009", "trace.pdf"))
+	if err != nil {
 		t.Fatalf("the fetchable file was not written: %v", err)
 	}
 	if !strings.Contains(stdout, "skipped") || !strings.Contains(stdout, "external") {
@@ -164,7 +166,8 @@ func TestFilesJSONReportsEachFile(t *testing.T) {
 			Reason string `json:"reason"`
 		} `json:"files"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+	err := json.Unmarshal([]byte(stdout), &got)
+	if err != nil {
 		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout)
 	}
 	if got.Kind != "files" || got.TS != "1785708834.862009" || got.Channel.Name != "eng" {
@@ -197,7 +200,8 @@ func TestFilesJSONNamesNoDirectoryWhenNothingWasWritten(t *testing.T) {
 		t.Fatalf("exit = %d, want 1", code)
 	}
 	var got map[string]any
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+	err := json.Unmarshal([]byte(stdout), &got)
+	if err != nil {
 		t.Fatalf("stdout is not one JSON object: %v", err)
 	}
 	if _, ok := got["dir"]; ok {
@@ -243,7 +247,8 @@ func TestFilesFindsAFileOnAThreadReply(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
-	if _, err := os.Stat(filepath.Join(out, "eng-1785708834.862009", "trace.pdf")); err != nil {
+	_, err := os.Stat(filepath.Join(out, "eng-1785708834.862009", "trace.pdf"))
+	if err != nil {
 		t.Fatalf("the reply's file was not written: %v", err)
 	}
 	if !strings.Contains(stdout, "trace.pdf") {

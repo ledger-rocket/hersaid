@@ -151,7 +151,8 @@ func (m Message) HasUnrenderedBlocks() bool {
 	var blocks []struct {
 		Type string `json:"type"`
 	}
-	if err := json.Unmarshal(m.Blocks, &blocks); err != nil {
+	err := json.Unmarshal(m.Blocks, &blocks)
+	if err != nil {
 		// Undecodable blocks are unknown content, and unknown is not safe.
 		return len(m.Blocks) > 0 && string(m.Blocks) != "null"
 	}
@@ -176,7 +177,8 @@ func (c *Client) AuthTest(ctx context.Context) (*AuthTestResponse, error) {
 		envelope
 		AuthTestResponse
 	}
-	if err := c.get(ctx, "auth.test", nil, &out); err != nil {
+	err := c.get(ctx, "auth.test", nil, &out)
+	if err != nil {
 		return nil, err
 	}
 	return &out.AuthTestResponse, nil
@@ -191,7 +193,7 @@ func (c *Client) ConversationsList(ctx context.Context) ([]cache.Conversation, e
 	// in place of [] breaks every `jq '.channels[]'` the README documents.
 	all := []cache.Conversation{}
 	cursor := ""
-	for page := 0; page < maxPages; page++ {
+	for range maxPages {
 		params := url.Values{}
 		params.Set("types", conversationTypes)
 		params.Set("exclude_archived", "true")
@@ -201,9 +203,11 @@ func (c *Client) ConversationsList(ctx context.Context) ([]cache.Conversation, e
 		}
 		var out struct {
 			envelope
+
 			Channels []cache.Conversation `json:"channels"`
 		}
-		if err := c.get(ctx, "conversations.list", params, &out); err != nil {
+		err := c.get(ctx, "conversations.list", params, &out)
+		if err != nil {
 			return nil, err
 		}
 		all = append(all, out.Channels...)
@@ -218,7 +222,7 @@ func (c *Client) ConversationsList(ctx context.Context) ([]cache.Conversation, e
 func (c *Client) UsersList(ctx context.Context) ([]cache.User, error) {
 	all := []cache.User{}
 	cursor := ""
-	for page := 0; page < maxPages; page++ {
+	for range maxPages {
 		params := url.Values{}
 		params.Set("limit", strconv.Itoa(pageSize))
 		if cursor != "" {
@@ -226,9 +230,11 @@ func (c *Client) UsersList(ctx context.Context) ([]cache.User, error) {
 		}
 		var out struct {
 			envelope
+
 			Members []cache.User `json:"members"`
 		}
-		if err := c.get(ctx, "users.list", params, &out); err != nil {
+		err := c.get(ctx, "users.list", params, &out)
+		if err != nil {
 			return nil, err
 		}
 		all = append(all, out.Members...)
@@ -342,6 +348,153 @@ func (c *Client) Replies(ctx context.Context, channelID, threadTS string, opts H
 	return c.transcript(ctx, "conversations.replies", params, channelID, opts)
 }
 
+// SearchMatch is one search.messages hit.
+type SearchMatch struct {
+	Message
+
+	Permalink string `json:"permalink"`
+	Channel   struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"channel"`
+}
+
+// Search runs a workspace message search.
+func (c *Client) Search(ctx context.Context, query string, count int) ([]SearchMatch, error) {
+	params := url.Values{}
+	params.Set("query", query)
+	params.Set("count", strconv.Itoa(count))
+	var out struct {
+		envelope
+
+		Messages struct {
+			Matches []SearchMatch `json:"matches"`
+		} `json:"messages"`
+	}
+	err := c.get(ctx, "search.messages", params, &out)
+	if err != nil {
+		return nil, err
+	}
+	return out.Messages.Matches, nil
+}
+
+// envelope is the part of every Slack reply that decides success.
+type envelope struct {
+	OK               bool   `json:"ok"`
+	Error            string `json:"error"`
+	ResponseMetadata struct {
+		NextCursor string `json:"next_cursor"`
+	} `json:"response_metadata"`
+}
+
+// enveloped is what get needs of its destination. Every response struct embeds
+// envelope, so each satisfies it without saying so.
+type enveloped interface{ status() (bool, string) }
+
+func (e envelope) status() (bool, string) { return e.OK, e.Error }
+
+// requestTimeout prefers the client's own bound and falls back to the package
+// default, so a client built elsewhere cannot leave a request unbounded.
+func requestTimeout(hc *http.Client) time.Duration {
+	if hc.Timeout > 0 {
+		return hc.Timeout
+	}
+	return slackhttp.DefaultTimeout
+}
+
+// FileInfo returns the metadata for one file, addressed by its own id rather
+// than through a message.
+//
+// A canvas is why this exists. Slack gives one a permalink of its own —
+// /docs/<team>/<file id> — and nothing about it names a message, so there is no
+// timestamp to ask a transcript for. A file's id is enough for files.info, and
+// the reply carries the download URL the bytes come from.
+func (c *Client) FileInfo(ctx context.Context, fileID string) (File, error) {
+	params := url.Values{}
+	params.Set("file", fileID)
+
+	var out struct {
+		envelope
+
+		File File `json:"file"`
+	}
+	err := c.get(ctx, "files.info", params, &out)
+	if err != nil {
+		return File{}, fmt.Errorf("looking up file %s: %w", fileID, err)
+	}
+	if out.File.ID == "" {
+		return File{}, fmt.Errorf("no file %s", fileID)
+	}
+	return out.File, nil
+}
+
+// fileIDShape is what a Slack file id looks like.
+var fileIDShape = regexp.MustCompile(`^F[A-Z0-9]{6,}$`)
+
+// Canvases are the canvas documents attached to a conversation.
+//
+// Slack surfaces one in more than one place and the shapes do not agree with
+// the documentation, so all of them are read: properties.canvas is the one
+// conversations.info documents, properties.tabs carries a canvas a channel
+// shows as a tab, and properties.meeting_notes is what a notes canvas is filed
+// under. A real channel was observed carrying the last two and not the first.
+//
+// Duplicates are collapsed, because a channel commonly lists the same document
+// as both a tab and its meeting notes.
+func (c *Client) Canvases(ctx context.Context, channelID string) ([]string, error) {
+	params := url.Values{}
+	params.Set("channel", channelID)
+
+	var out struct {
+		envelope
+
+		Channel struct {
+			Properties struct {
+				Canvas struct {
+					FileID string `json:"file_id"`
+				} `json:"canvas"`
+				MeetingNotes struct {
+					FileID string `json:"file_id"`
+				} `json:"meeting_notes"`
+				Tabs []struct {
+					Type string `json:"type"`
+					Data struct {
+						FileID string `json:"file_id"`
+					} `json:"data"`
+				} `json:"tabs"`
+			} `json:"properties"`
+		} `json:"channel"`
+	}
+	err := c.get(ctx, "conversations.info", params, &out)
+	if err != nil {
+		return nil, fmt.Errorf("looking up %s: %w", channelID, err)
+	}
+
+	var ids []string
+	seen := map[string]bool{}
+	add := func(id string) {
+		// Checked for shape, not merely for emptiness: these ids are reported
+		// back to a person when a channel holds several, and a value out of a
+		// reply should not be able to put anything else on that line.
+		if !fileIDShape.MatchString(id) || seen[id] {
+			return
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	p := out.Channel.Properties
+	add(p.Canvas.FileID)
+	for _, t := range p.Tabs {
+		// Slack documents both names for the same kind of tab.
+		switch t.Type {
+		case "canvas", "channel_canvas":
+			add(t.Data.FileID)
+		}
+	}
+	add(p.MeetingNotes.FileID)
+	return ids, nil
+}
+
 // transcript is the request both transcript endpoints make. They differ only in
 // the method name and in replies naming its parent, so sharing the construction
 // is what keeps the two option sets from drifting apart.
@@ -366,55 +519,15 @@ func (c *Client) transcript(ctx context.Context, method string, params url.Value
 	}
 	var out struct {
 		envelope
+
 		Messages []Message `json:"messages"`
 	}
-	if err := c.get(ctx, method, params, &out); err != nil {
+	err := c.get(ctx, method, params, &out)
+	if err != nil {
 		return HistoryPage{}, err
 	}
 	return HistoryPage{Messages: out.Messages, NextCursor: out.ResponseMetadata.NextCursor}, nil
 }
-
-// SearchMatch is one search.messages hit.
-type SearchMatch struct {
-	Message
-	Permalink string `json:"permalink"`
-	Channel   struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	} `json:"channel"`
-}
-
-// Search runs a workspace message search.
-func (c *Client) Search(ctx context.Context, query string, count int) ([]SearchMatch, error) {
-	params := url.Values{}
-	params.Set("query", query)
-	params.Set("count", strconv.Itoa(count))
-	var out struct {
-		envelope
-		Messages struct {
-			Matches []SearchMatch `json:"matches"`
-		} `json:"messages"`
-	}
-	if err := c.get(ctx, "search.messages", params, &out); err != nil {
-		return nil, err
-	}
-	return out.Messages.Matches, nil
-}
-
-// envelope is the part of every Slack reply that decides success.
-type envelope struct {
-	OK               bool   `json:"ok"`
-	Error            string `json:"error"`
-	ResponseMetadata struct {
-		NextCursor string `json:"next_cursor"`
-	} `json:"response_metadata"`
-}
-
-// enveloped is what get needs of its destination. Every response struct embeds
-// envelope, so each satisfies it without saying so.
-type enveloped interface{ status() (bool, string) }
-
-func (e envelope) status() (bool, string) { return e.OK, e.Error }
 
 func (c *Client) get(ctx context.Context, method string, params url.Values, out enveloped) error {
 	// Structural: a zero credential cannot reach the wire, whatever the caller
@@ -451,7 +564,8 @@ func (c *Client) get(ctx context.Context, method string, params url.Values, out 
 	if err != nil {
 		return fmt.Errorf("network error calling %s: %w", method, err)
 	}
-	if err := json.Unmarshal(body, out); err != nil {
+	err = json.Unmarshal(body, out)
+	if err != nil {
 		return fmt.Errorf("%s: malformed response (HTTP %d)", method, resp.StatusCode)
 	}
 	if ok, apiErr := out.status(); !ok {
@@ -461,102 +575,4 @@ func (c *Client) get(ctx context.Context, method string, params url.Values, out 
 		return fmt.Errorf("%s: %s", method, apiErr)
 	}
 	return nil
-}
-
-// requestTimeout prefers the client's own bound and falls back to the package
-// default, so a client built elsewhere cannot leave a request unbounded.
-func requestTimeout(hc *http.Client) time.Duration {
-	if hc.Timeout > 0 {
-		return hc.Timeout
-	}
-	return slackhttp.DefaultTimeout
-}
-
-// FileInfo returns the metadata for one file, addressed by its own id rather
-// than through a message.
-//
-// A canvas is why this exists. Slack gives one a permalink of its own —
-// /docs/<team>/<file id> — and nothing about it names a message, so there is no
-// timestamp to ask a transcript for. A file's id is enough for files.info, and
-// the reply carries the download URL the bytes come from.
-func (c *Client) FileInfo(ctx context.Context, fileID string) (File, error) {
-	params := url.Values{}
-	params.Set("file", fileID)
-
-	var out struct {
-		envelope
-		File File `json:"file"`
-	}
-	if err := c.get(ctx, "files.info", params, &out); err != nil {
-		return File{}, fmt.Errorf("looking up file %s: %w", fileID, err)
-	}
-	if out.File.ID == "" {
-		return File{}, fmt.Errorf("no file %s", fileID)
-	}
-	return out.File, nil
-}
-
-// fileIDShape is what a Slack file id looks like.
-var fileIDShape = regexp.MustCompile(`^F[A-Z0-9]{6,}$`)
-
-// Canvases are the canvas documents attached to a conversation.
-//
-// Slack surfaces one in more than one place and the shapes do not agree with
-// the documentation, so all of them are read: properties.canvas is the one
-// conversations.info documents, properties.tabs carries a canvas a channel
-// shows as a tab, and properties.meeting_notes is what a notes canvas is filed
-// under. A real channel was observed carrying the last two and not the first.
-//
-// Duplicates are collapsed, because a channel commonly lists the same document
-// as both a tab and its meeting notes.
-func (c *Client) Canvases(ctx context.Context, channelID string) ([]string, error) {
-	params := url.Values{}
-	params.Set("channel", channelID)
-
-	var out struct {
-		envelope
-		Channel struct {
-			Properties struct {
-				Canvas struct {
-					FileID string `json:"file_id"`
-				} `json:"canvas"`
-				MeetingNotes struct {
-					FileID string `json:"file_id"`
-				} `json:"meeting_notes"`
-				Tabs []struct {
-					Type string `json:"type"`
-					Data struct {
-						FileID string `json:"file_id"`
-					} `json:"data"`
-				} `json:"tabs"`
-			} `json:"properties"`
-		} `json:"channel"`
-	}
-	if err := c.get(ctx, "conversations.info", params, &out); err != nil {
-		return nil, fmt.Errorf("looking up %s: %w", channelID, err)
-	}
-
-	var ids []string
-	seen := map[string]bool{}
-	add := func(id string) {
-		// Checked for shape, not merely for emptiness: these ids are reported
-		// back to a person when a channel holds several, and a value out of a
-		// reply should not be able to put anything else on that line.
-		if !fileIDShape.MatchString(id) || seen[id] {
-			return
-		}
-		seen[id] = true
-		ids = append(ids, id)
-	}
-	p := out.Channel.Properties
-	add(p.Canvas.FileID)
-	for _, t := range p.Tabs {
-		// Slack documents both names for the same kind of tab.
-		switch t.Type {
-		case "canvas", "channel_canvas":
-			add(t.Data.FileID)
-		}
-	}
-	add(p.MeetingNotes.FileID)
-	return ids, nil
 }

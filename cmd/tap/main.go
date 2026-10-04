@@ -153,7 +153,8 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 	}
 	rec.ChannelID = target.ID
 
-	if err := allowlist.FromEnv().Check(target); err != nil {
+	err = allowlist.FromEnv().Check(target)
+	if err != nil {
 		rec.Phase, rec.OK, rec.Error = audit.Refused, audit.Failed, err.Error()
 		werr := writeRecord(stderr, log, rec)
 		return orAuditFailure(werr, fail(stderr, "%v", err))
@@ -186,7 +187,8 @@ func react(stdout, stderr io.Writer, log *audit.Log, rec audit.Reaction, baseURL
 	// reaction was attempted.
 	intent := rec
 	intent.Phase, intent.OK = audit.Intent, audit.Unknown
-	if err := log.Reaction(intent); err != nil {
+	err = log.Reaction(intent)
+	if err != nil {
 		return fail(stderr, "%v — refusing to send", err)
 	}
 
@@ -288,7 +290,8 @@ func abort(stderr io.Writer, log *audit.Log, rec audit.Reaction, msg string) int
 // writeRecord appends rec, reporting a failure on stderr. The error is returned
 // rather than swallowed because it outranks whatever the record was describing.
 func writeRecord(stderr io.Writer, log *audit.Log, rec audit.Reaction) error {
-	if err := log.Reaction(rec); err != nil {
+	err := log.Reaction(rec)
+	if err != nil {
 		fmt.Fprintf(stderr, "tap: AUDIT WRITE FAILED — %v\n", err)
 		return err
 	}

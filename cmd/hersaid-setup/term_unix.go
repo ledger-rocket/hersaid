@@ -37,7 +37,8 @@ func enterNoEcho(f *os.File) (restore func(), err error) {
 	// byte, no timer, which is byte-at-a-time.
 	next.Cc[unix.VMIN] = 1
 	next.Cc[unix.VTIME] = 0
-	if err := unix.IoctlSetTermios(fd, ioctlSetTermios, &next); err != nil {
+	err = unix.IoctlSetTermios(fd, ioctlSetTermios, &next)
+	if err != nil {
 		return nil, err
 	}
 	return func() { _ = unix.IoctlSetTermios(fd, ioctlSetTermios, prev) }, nil

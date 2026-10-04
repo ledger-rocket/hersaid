@@ -116,18 +116,11 @@ func current(name string, link Info, build *debug.BuildInfo) Info {
 // splitDirty removes the marker either producer appends for a modified tree.
 func splitDirty(v string) (string, bool) {
 	for _, marker := range []string{"-dirty", "+dirty"} {
-		if strings.HasSuffix(v, marker) {
-			return strings.TrimSuffix(v, marker), true
+		if before, ok := strings.CutSuffix(v, marker); ok {
+			return before, true
 		}
 	}
 	return v, false
-}
-
-func (i Info) withDefaults() Info {
-	if i.Version == "" {
-		i.Version = devel
-	}
-	return i
 }
 
 // String is the one line --version prints: "hear v0.1.0 (abc1234, 2026-08-03)".
@@ -152,6 +145,13 @@ func (i Info) String() string {
 		return s
 	}
 	return s + " (" + strings.Join(parts, ", ") + ")"
+}
+
+func (i Info) withDefaults() Info {
+	if i.Version == "" {
+		i.Version = devel
+	}
+	return i
 }
 
 // String reports the running build of name.
@@ -180,7 +180,8 @@ func day(d string) string {
 		return ""
 	}
 	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05Z0700", "2006-01-02"} {
-		if t, err := time.Parse(layout, d); err == nil {
+		t, err := time.Parse(layout, d)
+		if err == nil {
 			// In the offset it was recorded in, not UTC: `git log` shows the
 			// former, and a commit made just after midnight should not appear to
 			// be from the day before.

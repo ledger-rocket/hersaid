@@ -235,7 +235,8 @@ func fakeHear(t *testing.T, script string) {
 	t.Helper()
 	dir := t.TempDir()
 	body := "#!/bin/sh\n" + script + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "hear"), []byte(body), 0o755); err != nil {
+	err := os.WriteFile(filepath.Join(dir, "hear"), []byte(body), 0o755)
+	if err != nil {
 		t.Fatal(err)
 	}
 	// Prepended, not replaced: a stub that shells out needs sleep and the rest

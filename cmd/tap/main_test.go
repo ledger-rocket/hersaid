@@ -25,7 +25,8 @@ func isolate(t *testing.T) string {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	t.Setenv("HERSAID_WRITE_CHANNELS", "")
-	if err := os.Unsetenv("HERSAID_WRITE_CHANNELS"); err != nil {
+	err := os.Unsetenv("HERSAID_WRITE_CHANNELS")
+	if err != nil {
 		t.Fatal(err)
 	}
 	return filepath.Join(dir, "state", "hersaid", "posts.jsonl")
@@ -35,10 +36,11 @@ func isolate(t *testing.T) string {
 // scope of its own, so without it a #name cannot resolve.
 func warmCache(t *testing.T) {
 	t.Helper()
-	if err := cache.Write(cache.ConversationsFile, cache.Conversations{Channels: []cache.Conversation{
+	err := cache.Write(cache.ConversationsFile, cache.Conversations{Channels: []cache.Conversation{
 		{ID: "C0123ABCD", Name: "eng"},
 		{ID: "C0456EFGH", Name: "general"},
-	}}); err != nil {
+	}})
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -55,12 +57,13 @@ func readLog(t *testing.T, path string) []record {
 		t.Fatal(err)
 	}
 	var out []record
-	for _, line := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(b), "\n"), "\n") {
 		if line == "" {
 			continue
 		}
 		var r record
-		if err := json.Unmarshal([]byte(line), &r); err != nil {
+		err := json.Unmarshal([]byte(line), &r)
+		if err != nil {
 			t.Fatalf("audit line is not JSON: %v\n%s", err, line)
 		}
 		out = append(out, r)
@@ -222,7 +225,8 @@ func TestALostOutcomeRecordIsFatalAndStillReportsTheReaction(t *testing.T) {
 
 	s := slacktest.New(t)
 	s.ReplyFunc("reactions.add", func(w http.ResponseWriter, r *http.Request) {
-		if err := log.Close(); err != nil {
+		err := log.Close()
+		if err != nil {
 			t.Errorf("closing the log: %v", err)
 		}
 		w.Write([]byte(`{"ok":true}`))
@@ -272,7 +276,8 @@ func TestAFailedIntentRecordRefusesToReact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := log.Close(); err != nil {
+	err = log.Close()
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -420,10 +425,12 @@ func TestAnUnenforceableLogModeIsReported(t *testing.T) {
 	warmCache(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+	err := os.MkdirAll(filepath.Dir(logPath), 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(os.DevNull, logPath); err != nil {
+	err = os.Symlink(os.DevNull, logPath)
+	if err != nil {
 		t.Fatal(err)
 	}
 	// As root — a container's default — chmod succeeds and there is no warning
@@ -475,7 +482,8 @@ func TestHelpAndVersionTouchNothing(t *testing.T) {
 			if got := s.Hits(); got != 0 {
 				t.Errorf("Slack received %d requests", got)
 			}
-			if entries, err := os.ReadDir(home); err != nil {
+			entries, err := os.ReadDir(home)
+			if err != nil {
 				t.Fatal(err)
 			} else if len(entries) != 0 {
 				t.Errorf("left %v behind under HOME; state, cache and config must be untouched", entries)

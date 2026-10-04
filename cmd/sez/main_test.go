@@ -32,7 +32,8 @@ func isolate(t *testing.T) string {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	t.Setenv("HERSAID_WRITE_CHANNELS", "")
-	if err := os.Unsetenv("HERSAID_WRITE_CHANNELS"); err != nil {
+	err := os.Unsetenv("HERSAID_WRITE_CHANNELS")
+	if err != nil {
 		t.Fatal(err)
 	}
 	return filepath.Join(dir, "state", "hersaid", "posts.jsonl")
@@ -43,11 +44,13 @@ func isolate(t *testing.T) string {
 func seedCache(t *testing.T) {
 	t.Helper()
 	dir := filepath.Join(os.Getenv("XDG_CACHE_HOME"), "hersaid")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	err := os.MkdirAll(dir, 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
 	body := `{"channels":[{"id":"C0123ENG01","name":"eng"}]}`
-	if err := os.WriteFile(filepath.Join(dir, cache.ConversationsFile), []byte(body), 0o600); err != nil {
+	err = os.WriteFile(filepath.Join(dir, cache.ConversationsFile), []byte(body), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -66,12 +69,13 @@ func readLog(t *testing.T, path string) []record {
 		t.Fatal(err)
 	}
 	var out []record
-	for _, line := range strings.Split(strings.TrimRight(string(b), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(b), "\n"), "\n") {
 		if line == "" {
 			continue
 		}
 		var r record
-		if err := json.Unmarshal([]byte(line), &r); err != nil {
+		err := json.Unmarshal([]byte(line), &r)
+		if err != nil {
 			t.Fatalf("audit line is not JSON: %v\n%s", err, line)
 		}
 		out = append(out, r)
@@ -151,10 +155,12 @@ func TestExplicitlyEmptyTokenIsTreatedAsAbsent(t *testing.T) {
 	isolate(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "")
 	cfg := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid")
-	if err := os.MkdirAll(cfg, 0o700); err != nil {
+	err := os.MkdirAll(cfg, 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg, "write.token"), []byte("xoxp-would-work"), 0o600); err != nil {
+	err = os.WriteFile(filepath.Join(cfg, "write.token"), []byte("xoxp-would-work"), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 	s := slacktest.New(t)
@@ -435,7 +441,8 @@ func TestALostOutcomeRecordIsFatalAndStillReportsDelivery(t *testing.T) {
 
 	s := slacktest.New(t)
 	s.ReplyFunc("chat.postMessage", func(w http.ResponseWriter, r *http.Request) {
-		if err := log.Close(); err != nil {
+		err := log.Close()
+		if err != nil {
 			t.Errorf("closing the log: %v", err)
 		}
 		w.Write([]byte(`{"ok":true,"ts":"1785712596.256909","message":{"text":"hi"}}`))
@@ -483,7 +490,8 @@ func TestAFailedIntentRecordRefusesToSend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := log.Close(); err != nil {
+	err = log.Close()
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -1149,10 +1157,12 @@ func TestAnUnenforceableLogModeIsReported(t *testing.T) {
 	logPath := isolate(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+	err := os.MkdirAll(filepath.Dir(logPath), 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(os.DevNull, logPath); err != nil {
+	err = os.Symlink(os.DevNull, logPath)
+	if err != nil {
 		t.Fatal(err)
 	}
 	// As root — a container's default — chmod succeeds and there is no warning
@@ -1204,7 +1214,8 @@ func TestHelpAndVersionTouchNothing(t *testing.T) {
 			if got := s.Hits(); got != 0 {
 				t.Errorf("Slack received %d requests", got)
 			}
-			if entries, err := os.ReadDir(home); err != nil {
+			entries, err := os.ReadDir(home)
+			if err != nil {
 				t.Fatal(err)
 			} else if len(entries) != 0 {
 				t.Errorf("left %v behind under HOME; state, cache and config must be untouched", entries)
@@ -1419,7 +1430,8 @@ func startHelper(t *testing.T, s *slacktest.Server, args ...string) *exec.Cmd {
 		"XDG_CACHE_HOME="+os.Getenv("XDG_CACHE_HOME"),
 		"XDG_STATE_HOME="+os.Getenv("XDG_STATE_HOME"),
 	)
-	if err := cmd.Start(); err != nil {
+	err := cmd.Start()
+	if err != nil {
 		t.Fatal(err)
 	}
 	return cmd
@@ -1460,12 +1472,14 @@ func TestSignalDuringTheSendWindowStillRecords(t *testing.T) {
 	cmd := startHelper(t, s, "--send", "#eng", "hello")
 	waitFor(t, cmd, arrived)
 
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	err := cmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
 		t.Fatal(err)
 	}
 
 	var exitErr *exec.ExitError
-	if err := cmd.Wait(); !errors.As(err, &exitErr) {
+	err = cmd.Wait()
+	if !errors.As(err, &exitErr) {
 		t.Fatalf("Wait() = %v, want a non-zero exit", err)
 	}
 	if got := exitErr.ExitCode(); got != 143 {
@@ -1495,7 +1509,8 @@ func TestSigkillLeavesTheIntentRecord(t *testing.T) {
 	cmd := startHelper(t, s, "--send", "#eng", "hello")
 	waitFor(t, cmd, arrived)
 
-	if err := cmd.Process.Kill(); err != nil {
+	err := cmd.Process.Kill()
+	if err != nil {
 		t.Fatal(err)
 	}
 	_ = cmd.Wait()
@@ -1550,11 +1565,13 @@ func TestASignalDuringThePermalinkFetchStillRecords(t *testing.T) {
 	cmd := startHelper(t, s, "--send", "#eng", "hello")
 	waitFor(t, cmd, arrived)
 
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	err := cmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var exitErr *exec.ExitError
-	if err := cmd.Wait(); !errors.As(err, &exitErr) {
+	err = cmd.Wait()
+	if !errors.As(err, &exitErr) {
 		t.Fatalf("Wait() = %v, want a non-zero exit", err)
 	}
 	if got := exitErr.ExitCode(); got != 143 {

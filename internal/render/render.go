@@ -136,7 +136,8 @@ func WriteTranscript(w io.Writer, msgs []slackread.Message, names Names, opts Op
 			fmt.Fprintf(&b, "\n%s⤷ %d replies — %s %s",
 				continuation, m.ReplyCount, opts.ThreadCommand, m.TS)
 		}
-		if _, err := fmt.Fprintln(w, b.String()); err != nil {
+		_, err := fmt.Fprintln(w, b.String())
+		if err != nil {
 			return err
 		}
 	}
@@ -283,7 +284,8 @@ func WriteSearch(w io.Writer, matches []slackread.SearchMatch, names Names, opts
 		b.WriteString(orQuestionMark(m.Username))
 		b.WriteString("  ")
 		b.WriteString(names.Text(m.Text))
-		if _, err := fmt.Fprintln(w, b.String()); err != nil {
+		_, err := fmt.Fprintln(w, b.String())
+		if err != nil {
 			return err
 		}
 	}
@@ -306,7 +308,8 @@ func WriteFiles(w io.Writer, results []FileResult) error {
 		default:
 			line = fmt.Sprintf("%-7s %s — %s", r.Status, r.Name, r.Reason)
 		}
-		if _, err := fmt.Fprintln(w, line); err != nil {
+		_, err := fmt.Fprintln(w, line)
+		if err != nil {
 			return err
 		}
 	}

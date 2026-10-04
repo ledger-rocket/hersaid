@@ -59,13 +59,13 @@ var (
 // fallback.
 const configDir = "hersaid"
 
-// Read authorises read-only Slack API calls.
 // WriteEnvVar is the variable that overrides the stored write credential.
 // Exported because a caller that must withhold the write credential from a
 // child process needs to name it, and a second literal elsewhere would drift
 // from this one silently.
 const WriteEnvVar = "SLACK_WRITE_TOKEN"
 
+// Read authorises read-only Slack API calls.
 type Read struct{ token string }
 
 // Write authorises Slack API calls that act as the user.
@@ -168,12 +168,14 @@ func resolve(r role) (string, error) {
 	// unwrapped, so a caller cannot tell it apart from a genuine miss, and
 	// matching on ErrNotFound alone would strand every such user.
 	acct := account()
-	if v, err := keyringGet(r.service, acct); err == nil {
+	v, err := keyringGet(r.service, acct)
+	if err == nil {
 		if t := strip(v); t != "" {
 			return t, nil
 		}
 	}
-	if b, err := os.ReadFile(tokenPath(configDir, r)); err == nil {
+	b, err := os.ReadFile(tokenPath(configDir, r))
+	if err == nil {
 		if t := strip(string(b)); t != "" {
 			return t, nil
 		}
@@ -220,7 +222,8 @@ func account() string {
 	if u := os.Getenv("USER"); u != "" {
 		return u
 	}
-	if u, err := user.Current(); err == nil {
+	u, err := user.Current()
+	if err == nil {
 		return u.Username
 	}
 	return ""

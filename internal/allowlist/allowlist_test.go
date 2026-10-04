@@ -20,7 +20,8 @@ func resolved(id, name string) resolve.Target {
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
 	t.Setenv(key, "")
-	if err := os.Unsetenv(key); err != nil {
+	err := os.Unsetenv(key)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -141,10 +142,11 @@ func TestMixedEntriesAndWhitespace(t *testing.T) {
 
 func TestCheckWrapsErrRefused(t *testing.T) {
 	l := Parse("#eng")
-	if err := l.Check(resolved("C1", "eng")); err != nil {
+	err := l.Check(resolved("C1", "eng"))
+	if err != nil {
 		t.Fatalf("Check on a permitted target = %v, want nil", err)
 	}
-	err := l.Check(resolved("C2", "secrets"))
+	err = l.Check(resolved("C2", "secrets"))
 	if !errors.Is(err, ErrRefused) {
 		t.Fatalf("error = %v, want it to wrap ErrRefused", err)
 	}

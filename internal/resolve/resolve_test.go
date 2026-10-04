@@ -113,7 +113,8 @@ func TestUserIDIsOnlyATargetForAnEndpointThatOpensDMs(t *testing.T) {
 	}
 
 	// For tap it is not an id, so it falls through to a name lookup and fails.
-	if _, err := Resolve(context.Background(), fixture(), ForReact, "U0123ABCD"); err == nil {
+	_, err := Resolve(context.Background(), fixture(), ForReact, "U0123ABCD")
+	if err == nil {
 		t.Fatal("tap accepted a raw user id; reactions.add cannot open a DM")
 	}
 }
@@ -247,7 +248,8 @@ func TestHostileDisplayNamesAreMatchedAsData(t *testing.T) {
 		t.Fatalf("target = %+v", got)
 	}
 	// The metacharacters must not have matched anything else.
-	if _, err := Resolve(context.Background(), cat, ForReact, "@anything"); !errors.Is(err, ErrNoSuchUser) {
+	_, err := Resolve(context.Background(), cat, ForReact, "@anything")
+	if !errors.Is(err, ErrNoSuchUser) {
 		t.Fatalf("error = %v; the display name was treated as a pattern", err)
 	}
 }

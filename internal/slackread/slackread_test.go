@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -151,10 +152,12 @@ func TestZeroCredentialIssuesNoRequest(t *testing.T) {
 
 	c := New(cred.Read{}, slackhttp.New(2*time.Second), s.URL)
 
-	if _, err := c.AuthTest(context.Background()); !errors.Is(err, ErrNoCredential) {
+	_, err := c.AuthTest(context.Background())
+	if !errors.Is(err, ErrNoCredential) {
 		t.Fatalf("AuthTest error = %v, want ErrNoCredential", err)
 	}
-	if _, err := c.ConversationsList(context.Background()); !errors.Is(err, ErrNoCredential) {
+	_, err = c.ConversationsList(context.Background())
+	if !errors.Is(err, ErrNoCredential) {
 		t.Fatalf("ConversationsList error = %v, want ErrNoCredential", err)
 	}
 	if got := s.Hits(); got != 0 {
@@ -215,10 +218,12 @@ func TestPaginationIsBounded(t *testing.T) {
 		`{"ok":true,"members":[{"id":"U1"}],"response_metadata":{"next_cursor":"always"}}`)
 
 	c := client(t, s)
-	if _, err := c.ConversationsList(context.Background()); err == nil {
+	_, err := c.ConversationsList(context.Background())
+	if err == nil {
 		t.Fatal("ConversationsList followed an endless cursor to completion")
 	}
-	if _, err := c.UsersList(context.Background()); err == nil {
+	_, err = c.UsersList(context.Background())
+	if err == nil {
 		t.Fatal("UsersList followed an endless cursor to completion")
 	}
 	if got, want := s.Hits(), 2*maxPages; got != want {
@@ -326,12 +331,7 @@ func TestATranscriptIsPagedByTheCaller(t *testing.T) {
 }
 
 func contains(list []string, want string) bool {
-	for _, s := range list {
-		if s == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, want)
 }
 
 // oldest and latest bound the window by message timestamp. Empty means
@@ -342,18 +342,20 @@ func TestHistoryWindow(t *testing.T) {
 	s.Reply("conversations.history", `{"ok":true,"messages":[]}`)
 	c := client(t, s)
 
-	if _, err := c.History(context.Background(), "C0123ABCD", HistoryOptions{Limit: 20}); err != nil {
+	_, err := c.History(context.Background(), "C0123ABCD", HistoryOptions{Limit: 20})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := s.Last().QueryFields(), []string{"channel", "limit"}; !equal(got, want) {
 		t.Fatalf("unbounded query fields = %v, want exactly %v", got, want)
 	}
 
-	if _, err := c.History(context.Background(), "C0123ABCD", HistoryOptions{
+	_, err = c.History(context.Background(), "C0123ABCD", HistoryOptions{
 		Limit:  20,
 		Oldest: "1785712000.000000",
 		Latest: "1785715600.000000",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	req := s.Last()
@@ -391,7 +393,8 @@ func TestQueryValuesCannotIntroduceAField(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("search.messages", `{"ok":true,"messages":{"matches":[]}}`)
 
-	if _, err := client(t, s).Search(context.Background(), "a&count=1000&token=xoxp-stolen", 20); err != nil {
+	_, err := client(t, s).Search(context.Background(), "a&count=1000&token=xoxp-stolen", 20)
+	if err != nil {
 		t.Fatal(err)
 	}
 	req := s.Last()
@@ -443,7 +446,8 @@ func TestEveryRequestCarriesADeadline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := &probe{next: http.DefaultTransport}
 			tc.hc.Transport = p
-			if _, err := New(readCred(t, "xoxp-t"), tc.hc, s.URL).AuthTest(context.Background()); err != nil {
+			_, err := New(readCred(t, "xoxp-t"), tc.hc, s.URL).AuthTest(context.Background())
+			if err != nil {
 				t.Fatal(err)
 			}
 			if !p.hasIt {
@@ -468,7 +472,8 @@ func TestCallerDeadlineIsNotExtended(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
-	if _, err := New(readCred(t, "xoxp-t"), hc, s.URL).AuthTest(ctx); err != nil {
+	_, err := New(readCred(t, "xoxp-t"), hc, s.URL).AuthTest(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if d := time.Until(p.deadline); d > time.Second {

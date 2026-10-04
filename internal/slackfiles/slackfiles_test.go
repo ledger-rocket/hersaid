@@ -139,7 +139,8 @@ func TestASignInPageIsRefusedRatherThanWritten(t *testing.T) {
 	if !strings.Contains(results[0].Reason, "files:read") {
 		t.Fatalf("reason = %q, want it to name the missing scope", results[0].Reason)
 	}
-	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+	entries, err := os.ReadDir(dir)
+	if err == nil && len(entries) > 0 {
 		t.Fatalf("directory holds %v, want nothing written", entries)
 	}
 }
@@ -177,7 +178,8 @@ func TestTheCeilingHoldsWhenTheDeclaredSizeUnderstatesTheBody(t *testing.T) {
 	if !strings.Contains(results[0].Reason, "1000") {
 		t.Fatalf("reason = %q, want it to name the limit", results[0].Reason)
 	}
-	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+	entries, err := os.ReadDir(dir)
+	if err == nil && len(entries) > 0 {
 		t.Fatalf("directory holds %v, want nothing left behind", entries)
 	}
 }
@@ -272,7 +274,8 @@ func TestABodyShorterThanTheDeclaredSizeIsRefused(t *testing.T) {
 	if !strings.Contains(results[0].Reason, "fewer than") {
 		t.Fatalf("reason = %q, want it to say the body was short", results[0].Reason)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "trace.pdf")); !errors.Is(err, os.ErrNotExist) {
+	_, err := os.Stat(filepath.Join(dir, "trace.pdf"))
+	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("the short body was written; nothing incomplete may be left in place")
 	}
 }
@@ -284,7 +287,8 @@ func TestABodyShorterThanTheDeclaredSizeIsRefused(t *testing.T) {
 func TestASymlinkedMessageDirectoryCannotEscapeTheOutputRoot(t *testing.T) {
 	out := t.TempDir()
 	elsewhere := t.TempDir()
-	if err := os.Symlink(elsewhere, filepath.Join(out, "eng-123.456")); err != nil {
+	err := os.Symlink(elsewhere, filepath.Join(out, "eng-123.456"))
+	if err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
@@ -297,7 +301,8 @@ func TestASymlinkedMessageDirectoryCannotEscapeTheOutputRoot(t *testing.T) {
 	if results[0].Status == Written {
 		t.Fatalf("status = written at %s; the symlink was followed out of --out", results[0].Path)
 	}
-	if entries, err := os.ReadDir(elsewhere); err == nil && len(entries) > 0 {
+	entries, err := os.ReadDir(elsewhere)
+	if err == nil && len(entries) > 0 {
 		t.Fatalf("%d entries landed outside --out", len(entries))
 	}
 }
@@ -458,11 +463,13 @@ func TestARedirectLoopIsBounded(t *testing.T) {
 func TestAnExistingFileIsNotOverwritten(t *testing.T) {
 	srv, _ := fileHost(t, []byte("the new bytes"), "application/pdf")
 	dir := filepath.Join(t.TempDir(), "eng-123.456")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	err := os.MkdirAll(dir, 0o755)
+	if err != nil {
 		t.Fatal(err)
 	}
 	existing := filepath.Join(dir, "trace.pdf")
-	if err := os.WriteFile(existing, []byte("the old bytes"), 0o600); err != nil {
+	err = os.WriteFile(existing, []byte("the old bytes"), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 	c := client(t, loopback)
@@ -530,7 +537,8 @@ func TestFilesWithNoBytesAreSkippedAndTheRestStillLand(t *testing.T) {
 			t.Fatalf("file %d: status = %s (%s), want %s", i, results[i].Status, results[i].Reason, w)
 		}
 	}
-	if got, err := os.ReadFile(results[1].Path); err != nil || string(got) != string(body) {
+	got, err := os.ReadFile(results[1].Path)
+	if err != nil || string(got) != string(body) {
 		t.Fatalf("wrote %q (err %v), want the body", got, err)
 	}
 }
@@ -545,7 +553,8 @@ func TestNothingToWriteLeavesNoDirectory(t *testing.T) {
 	c.Fetch(context.Background(),
 		[]slackread.File{{ID: "F1", Name: "a link", Mode: "external"}}, filepath.Dir(dir), filepath.Base(dir), 1<<20)
 
-	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+	_, err := os.Stat(dir)
+	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("os.Stat(%s) error = %v, want it not to exist", dir, err)
 	}
 }
@@ -722,19 +731,22 @@ func TestTheNoHardLinkFallbackStillRefusesToOverwrite(t *testing.T) {
 	out := t.TempDir()
 	d := &dest{out: out, msgDir: "eng-123.456"}
 	t.Cleanup(d.close)
-	if err := d.ready(); err != nil {
+	err := d.ready()
+	if err != nil {
 		t.Fatal(err)
 	}
 	tmpName, tmp, err := d.temp()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tmp.WriteString("the bytes"); err != nil {
+	_, err = tmp.WriteString("the bytes")
+	if err != nil {
 		t.Fatal(err)
 	}
 	tmp.Close()
 
-	if err := d.copyExclusive(tmpName, "trace.pdf"); err != nil {
+	err = d.copyExclusive(tmpName, "trace.pdf")
+	if err != nil {
 		t.Fatalf("copyExclusive() error = %v", err)
 	}
 	path := d.path("trace.pdf")
@@ -819,7 +831,8 @@ func TestASignInPageIsRefusedEvenWhenTheFileIsACanvas(t *testing.T) {
 	if !strings.Contains(results[0].Reason, "files:read") {
 		t.Fatalf("reason = %q, want it to name the scope", results[0].Reason)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "plan.canvas")); !errors.Is(err, os.ErrNotExist) {
+	_, err := os.Stat(filepath.Join(dir, "plan.canvas"))
+	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("the sign-in page was written to disk")
 	}
 }
@@ -830,7 +843,8 @@ func TestReadEnforcesItsLimit(t *testing.T) {
 	c := client(t, loopback)
 	f := hosted("big.pdf", srv.URL+"/file", 0)
 
-	if _, err := c.Read(context.Background(), f, 1024); err == nil {
+	_, err := c.Read(context.Background(), f, 1024)
+	if err == nil {
 		t.Fatal("Read() = nil error, want the ceiling enforced")
 	}
 	got, err := c.Read(context.Background(), f, 2048)
@@ -846,7 +860,8 @@ func TestReadRefusesASignInPage(t *testing.T) {
 	srv, _ := fileHost(t, []byte(`<html><body><form>Sign in</form></body></html>`), "text/html")
 	c := client(t, loopback)
 
-	if _, err := c.Read(context.Background(), hosted("trace.pdf", srv.URL+"/file", 0), 1<<20); err == nil {
+	_, err := c.Read(context.Background(), hosted("trace.pdf", srv.URL+"/file", 0), 1<<20)
+	if err == nil {
 		t.Fatal("Read() = nil error, want the sign-in page refused")
 	}
 }
@@ -894,7 +909,8 @@ func TestASignInPageBehindACommentIsStillRefused(t *testing.T) {
 
 	f := hosted("canvas", srv.URL+"/file", 0)
 	f.Mimetype = CanvasMimetype
-	if _, err := c.Read(context.Background(), f, 1<<20); err == nil {
+	_, err := c.Read(context.Background(), f, 1<<20)
+	if err == nil {
 		t.Fatal("Read() = nil error, want the page refused")
 	}
 }

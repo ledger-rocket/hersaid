@@ -109,7 +109,8 @@ func (c *Client) transfer(ctx context.Context, rawURL string, f Local) error {
 	ctx, cancel := context.WithTimeout(ctx, TransferDeadline(c.timeout, f.Size))
 	defer cancel()
 
-	if _, err := f.File.Seek(0, io.SeekStart); err != nil {
+	_, err = f.File.Seek(0, io.SeekStart)
+	if err != nil {
 		return &transferError{file: f.Name, host: host, class: "could not be read"}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, io.LimitReader(f.File, f.Size))
@@ -144,7 +145,8 @@ func (c *Client) transfer(ctx context.Context, rawURL string, f Local) error {
 	// refused mid-body, and either way what Slack now holds is not what the
 	// render described. Nothing has been shared yet, so this still fails before
 	// anything is posted.
-	if info, err := f.File.Stat(); err != nil {
+	info, err := f.File.Stat()
+	if err != nil {
 		return &transferError{file: f.Name, host: host, class: "could not be checked after sending"}
 	} else if info.Size() != f.Size {
 		return &transferError{file: f.Name, host: host, class: "changed while it was being sent"}
@@ -198,7 +200,7 @@ func isLoopback(host string) bool {
 	return host == "localhost"
 }
 
-// hostsFor is the policy for where an upload may go: Slack's own hosts, and
+// SlackHosts is the policy for where an upload may go: Slack's own hosts, and
 // nowhere by redirect at all.
 //
 // There is no redirect tier here, unlike a download. A download follows Slack's

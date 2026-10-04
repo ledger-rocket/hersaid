@@ -170,7 +170,8 @@ func TestLineReadsAnEchoedAnswerWithoutEchoingIt(t *testing.T) {
 
 func TestLineCancelsWhenThereIsNoAnswer(t *testing.T) {
 	c := &console{in: bufio.NewReader(strings.NewReader("")), out: io.Discard}
-	if _, err := c.Line("? "); !errors.Is(err, errCancelled) {
+	_, err := c.Line("? ")
+	if !errors.Is(err, errCancelled) {
 		t.Fatalf("err = %v, want errCancelled", err)
 	}
 }
@@ -267,7 +268,8 @@ func TestSecretDoesNotWaitForOrEatALaterKeystroke(t *testing.T) {
 	var out bytes.Buffer
 	c := &console{in: bufio.NewReader(strings.NewReader("xoxp-abc\n\n")), out: &out}
 
-	if _, err := c.Secret("  "); err != nil {
+	_, err := c.Secret("  ")
+	if err != nil {
 		t.Fatal(err)
 	}
 	// The blank line that follows is an answer in its own right — "no" — and
@@ -315,7 +317,8 @@ func TestOnAbortRestoresTheTerminalAndExits(t *testing.T) {
 			stop := onAbort(func() { close(restored) })
 			defer stop()
 
-			if err := syscall.Kill(os.Getpid(), tc.sig); err != nil {
+			err := syscall.Kill(os.Getpid(), tc.sig)
+			if err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -352,7 +355,8 @@ func TestOnAbortStopsListening(t *testing.T) {
 	stop := onAbort(func() { fired <- struct{}{} })
 	stop()
 
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+	err := syscall.Kill(os.Getpid(), syscall.SIGTERM)
+	if err != nil {
 		t.Fatal(err)
 	}
 	// The runtime has forwarded the signal to everything still registered by
@@ -426,7 +430,8 @@ func TestSecretRestoresTheTerminalWhenASignalArrives(t *testing.T) {
 	// makes that deterministic: the runtime has then forwarded the signal to
 	// every channel registered at this moment, so a guard armed after raw
 	// returns has provably missed it.
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+	err = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+	if err != nil {
 		t.Fatal(err)
 	}
 	select {

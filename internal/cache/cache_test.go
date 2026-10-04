@@ -21,10 +21,11 @@ func isolate(t *testing.T) string {
 // with the same expression that reads the API.
 func TestOnDiskShapeIsTheAPIResponse(t *testing.T) {
 	dir := isolate(t)
-	if err := Write(ConversationsFile, Conversations{Channels: []Conversation{
+	err := Write(ConversationsFile, Conversations{Channels: []Conversation{
 		{ID: "C0123ABCD", Name: "eng"},
 		{ID: "D0123ABCD", IsIM: true, User: "U0123ABCD"},
-	}}); err != nil {
+	}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(dir, ConversationsFile))
@@ -34,7 +35,8 @@ func TestOnDiskShapeIsTheAPIResponse(t *testing.T) {
 	var shaped struct {
 		Channels []map[string]any `json:"channels"`
 	}
-	if err := json.Unmarshal(b, &shaped); err != nil {
+	err = json.Unmarshal(b, &shaped)
+	if err != nil {
 		t.Fatalf("cache is not {\"channels\":[…]}: %v\n%s", err, b)
 	}
 	if len(shaped.Channels) != 2 {
@@ -53,10 +55,12 @@ func TestOnDiskShapeIsTheAPIResponse(t *testing.T) {
 // reader after it.
 func TestEmptyListsAreWrittenAsAnEmptyArray(t *testing.T) {
 	dir := isolate(t)
-	if err := Write(ConversationsFile, Conversations{}); err != nil {
+	err := Write(ConversationsFile, Conversations{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Write(UsersFile, Users{}); err != nil {
+	err = Write(UsersFile, Users{})
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ name, want string }{
@@ -83,10 +87,12 @@ func TestNoResolvableDirectoryIsAnErrorNotTheWorkingDirectory(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", "")
 	t.Setenv("HOME", "")
 
-	if dir, err := Dir(); err == nil {
+	dir, err := Dir()
+	if err == nil {
 		t.Fatalf("Dir() = %q with no XDG_CACHE_HOME and no HOME, want an error", dir)
 	}
-	if err := Write(ConversationsFile, Conversations{}); err == nil {
+	err = Write(ConversationsFile, Conversations{})
+	if err == nil {
 		t.Fatal("Write() succeeded with nowhere to write to")
 	}
 	var c Conversations
@@ -94,10 +100,12 @@ func TestNoResolvableDirectoryIsAnErrorNotTheWorkingDirectory(t *testing.T) {
 	// could not name, and ErrCold would mean "the cache is empty" where the
 	// truth is "there is no cache directory" — a caller told the first fetches
 	// and writes; told the second it explains what to fix.
-	if err := Read(ConversationsFile, &c); err == nil || errors.Is(err, ErrCold) {
+	err = Read(ConversationsFile, &c)
+	if err == nil || errors.Is(err, ErrCold) {
 		t.Fatalf("Read() = %v with nowhere to read from, want an error that is not ErrCold", err)
 	}
-	if err := Clear(); err == nil {
+	err = Clear()
+	if err == nil {
 		t.Fatal("Clear() succeeded with no cache directory")
 	}
 
@@ -113,15 +121,18 @@ func TestNoResolvableDirectoryIsAnErrorNotTheWorkingDirectory(t *testing.T) {
 // A cache file written by hand, in the shape the API returns, is read as is.
 func TestACacheWrittenByHandIsRead(t *testing.T) {
 	dir := isolate(t)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	err := os.MkdirAll(dir, 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
 	const written = `{"channels":[{"id":"C0123ABCD","name":"eng","is_channel":true,"is_archived":false}]}`
-	if err := os.WriteFile(filepath.Join(dir, ConversationsFile), []byte(written), 0o600); err != nil {
+	err = os.WriteFile(filepath.Join(dir, ConversationsFile), []byte(written), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var c Conversations
-	if err := Read(ConversationsFile, &c); err != nil {
+	err = Read(ConversationsFile, &c)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if len(c.Channels) != 1 || c.Channels[0].Name != "eng" {
@@ -133,7 +144,8 @@ func TestACacheWrittenByHandIsRead(t *testing.T) {
 // half-written cache and the file is never briefly world-readable.
 func TestWriteIsAtomicAndPrivate(t *testing.T) {
 	dir := isolate(t)
-	if err := Write(UsersFile, Users{Members: []User{{ID: "U1", Name: "stepan"}}}); err != nil {
+	err := Write(UsersFile, Users{Members: []User{{ID: "U1", Name: "stepan"}}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(filepath.Join(dir, UsersFile))
@@ -166,17 +178,20 @@ func TestWriteIsAtomicAndPrivate(t *testing.T) {
 func TestOverwriteLeavesAWholeFile(t *testing.T) {
 	isolate(t)
 	big := Users{}
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		big.Members = append(big.Members, User{ID: "U", RealName: strings.Repeat("n", 100)})
 	}
-	if err := Write(UsersFile, big); err != nil {
+	err := Write(UsersFile, big)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Write(UsersFile, Users{Members: []User{{ID: "U1"}}}); err != nil {
+	err = Write(UsersFile, Users{Members: []User{{ID: "U1"}}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	var got Users
-	if err := Read(UsersFile, &got); err != nil {
+	err = Read(UsersFile, &got)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got.Members) != 1 {
@@ -188,16 +203,20 @@ func TestOverwriteLeavesAWholeFile(t *testing.T) {
 func TestMissingAndEmptyAreBothCold(t *testing.T) {
 	dir := isolate(t)
 	var c Conversations
-	if err := Read(ConversationsFile, &c); !errors.Is(err, ErrCold) {
+	err := Read(ConversationsFile, &c)
+	if !errors.Is(err, ErrCold) {
 		t.Fatalf("missing file: error = %v, want ErrCold", err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	err = os.MkdirAll(dir, 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ConversationsFile), nil, 0o600); err != nil {
+	err = os.WriteFile(filepath.Join(dir, ConversationsFile), nil, 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Read(ConversationsFile, &c); !errors.Is(err, ErrCold) {
+	err = Read(ConversationsFile, &c)
+	if !errors.Is(err, ErrCold) {
 		t.Fatalf("empty file: error = %v, want ErrCold", err)
 	}
 }
@@ -206,15 +225,18 @@ func TestMissingAndEmptyAreBothCold(t *testing.T) {
 // two files this package writes.
 func TestClearRemovesEveryJSONFile(t *testing.T) {
 	dir := isolate(t)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	err := os.MkdirAll(dir, 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{ConversationsFile, UsersFile, "stale.json", "notes.txt"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("{}"), 0o600); err != nil {
+		err := os.WriteFile(filepath.Join(dir, name), []byte("{}"), 0o600)
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := Clear(); err != nil {
+	err = Clear()
+	if err != nil {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(dir)
@@ -228,7 +250,8 @@ func TestClearRemovesEveryJSONFile(t *testing.T) {
 
 func TestClearOnAMissingDirectoryIsNotAnError(t *testing.T) {
 	isolate(t)
-	if err := Clear(); err != nil {
+	err := Clear()
+	if err != nil {
 		t.Fatalf("Clear() on a cold cache = %v, want nil", err)
 	}
 }
@@ -253,10 +276,12 @@ func (f *fakeSource) UsersList(context.Context) ([]User, error) {
 // is an error they turn into "run hear channels first" — never a silent fetch.
 func TestOfflineStoreNeverFetches(t *testing.T) {
 	isolate(t)
-	if _, err := Offline().Conversations(context.Background()); !errors.Is(err, ErrCold) {
+	_, err := Offline().Conversations(context.Background())
+	if !errors.Is(err, ErrCold) {
 		t.Fatalf("error = %v, want ErrCold", err)
 	}
-	if _, err := Offline().Users(context.Background()); !errors.Is(err, ErrCold) {
+	_, err = Offline().Users(context.Background())
+	if !errors.Is(err, ErrCold) {
 		t.Fatalf("error = %v, want ErrCold", err)
 	}
 }
@@ -266,7 +291,7 @@ func TestFillingStoreFetchesOnceAndWritesBack(t *testing.T) {
 	src := &fakeSource{convs: []Conversation{{ID: "C0123ABCD", Name: "eng"}}}
 	s := Filling(src)
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		got, err := s.Conversations(context.Background())
 		if err != nil {
 			t.Fatal(err)
@@ -281,7 +306,8 @@ func TestFillingStoreFetchesOnceAndWritesBack(t *testing.T) {
 
 	// A second process must find the cache warm.
 	var onDisk Conversations
-	if err := Read(ConversationsFile, &onDisk); err != nil {
+	err := Read(ConversationsFile, &onDisk)
+	if err != nil {
 		t.Fatalf("the fetched list was not written back: %v", err)
 	}
 	if len(onDisk.Channels) != 1 {
@@ -293,7 +319,8 @@ func TestFillingStoreFetchesOnceAndWritesBack(t *testing.T) {
 // read scope of its own.
 func TestFillingStoreSkipsTheFetchWhenWarm(t *testing.T) {
 	isolate(t)
-	if err := Write(UsersFile, Users{Members: []User{{ID: "U1", Name: "stepan"}}}); err != nil {
+	err := Write(UsersFile, Users{Members: []User{{ID: "U1", Name: "stepan"}}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	src := &fakeSource{}

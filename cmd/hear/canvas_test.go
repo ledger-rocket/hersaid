@@ -75,7 +75,8 @@ func TestCanvasTargetRefusesAForeignHost(t *testing.T) {
 		"https://evil.example/docs/T0123ABCDE/F0123ABCDEF",
 		"https://acme.slack.com.evil.example/docs/T0123ABCDE/F0123ABCDEF",
 	} {
-		if got, err := canvasTarget(in); err == nil {
+		got, err := canvasTarget(in)
+		if err == nil {
 			t.Errorf("canvasTarget(%q) = %q, want a refusal", in, got)
 		}
 	}
@@ -139,9 +140,13 @@ func TestCanvasJSONCarriesTheMarkdown(t *testing.T) {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
 	var got struct {
-		Kind, ID, Title, Body string
+		Kind  string `json:"kind"`
+		ID    string `json:"id"`
+		Title string `json:"title"`
+		Body  string `json:"body"`
 	}
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+	err := json.Unmarshal([]byte(stdout), &got)
+	if err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, stdout)
 	}
 	if got.Kind != "canvas" || got.ID != "F0123ABCDEF" || got.Title != "Deployment Plan" {

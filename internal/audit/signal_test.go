@@ -42,17 +42,19 @@ func TestOnAbortRecordsAndExits(t *testing.T) {
 
 			got := make(chan os.Signal, 1)
 			stop := OnAbort(func(sig os.Signal) {
-				if err := l.Post(Post{
+				err := l.Post(Post{
 					Channel: "#eng", Phase: Abort, OK: Unknown,
 					Error: "interrupted by " + sig.String(),
-				}); err != nil {
+				})
+				if err != nil {
 					t.Error(err)
 				}
 				got <- sig
 			})
 			defer stop()
 
-			if err := syscall.Kill(os.Getpid(), tc.sig); err != nil {
+			err := syscall.Kill(os.Getpid(), tc.sig)
+			if err != nil {
 				t.Fatal(err)
 			}
 
@@ -99,7 +101,8 @@ func TestStopUnregistersTheHandler(t *testing.T) {
 	signal.Notify(guard, syscall.SIGTERM)
 	defer signal.Stop(guard)
 
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+	err := syscall.Kill(os.Getpid(), syscall.SIGTERM)
+	if err != nil {
 		t.Fatal(err)
 	}
 	select {

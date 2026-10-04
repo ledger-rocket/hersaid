@@ -16,7 +16,8 @@ func TestACredentialUnderTheOldNameIsNotRead(t *testing.T) {
 	unsetEnv(t, "SLACK_READ_TOKEN")
 	keyringWith(t, map[string]string{"slack-read": "xoxp-an-old-token-0000"})
 
-	if _, err := ResolveRead(); !errors.Is(err, ErrNotFound) {
+	_, err := ResolveRead()
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound — the old keychain item must not resolve", err)
 	}
 }
@@ -27,14 +28,17 @@ func TestAFileUnderTheOldNameIsNotRead(t *testing.T) {
 	unsetEnv(t, "SLACK_READ_TOKEN")
 	keyringWith(t, nil)
 	dir := filepath.Join(cfg, "slackr")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	err := os.MkdirAll(dir, 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "read.token"), []byte("xoxp-an-old-file-token"), 0o600); err != nil {
+	err = os.WriteFile(filepath.Join(dir, "read.token"), []byte("xoxp-an-old-file-token"), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := ResolveRead(); !errors.Is(err, ErrNotFound) {
+	_, err = ResolveRead()
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound — the old token file must not resolve", err)
 	}
 }

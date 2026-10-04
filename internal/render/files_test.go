@@ -20,7 +20,8 @@ func TestTranscriptNamesTheFilesOnAMessage(t *testing.T) {
 			{ID: "F2", Name: "out.log", Size: 14336},
 		},
 	}}
-	if err := WriteTranscript(&b, msgs, Names{"U1": "jane"}, Options{Location: utc}); err != nil {
+	err := WriteTranscript(&b, msgs, Names{"U1": "jane"}, Options{Location: utc})
+	if err != nil {
 		t.Fatal(err)
 	}
 	got := b.String()
@@ -37,7 +38,8 @@ func TestOneFileIsSingular(t *testing.T) {
 		TS: "1785708834.862009", User: "U1",
 		Files: []slackread.File{{ID: "F1", Name: "trace.pdf", Size: 10}},
 	}}
-	if err := WriteTranscript(&b, msgs, Names{}, Options{Location: utc}); err != nil {
+	err := WriteTranscript(&b, msgs, Names{}, Options{Location: utc})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got := b.String(); !strings.Contains(got, "1 file:") {

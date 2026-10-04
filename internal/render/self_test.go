@@ -26,7 +26,8 @@ func TestTheReaderIsNamedYouAndComesFirst(t *testing.T) {
 	o := opts()
 	o.SelfID = "SELF"
 
-	if err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", "SELF"), five, o); err != nil {
+	err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", "SELF"), five, o)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), ":tada: 5 (you, A, B +2)") {
@@ -41,7 +42,8 @@ func TestPromotingTheReaderKeepsTheOverflowHonest(t *testing.T) {
 	o := opts()
 	o.SelfID = "SELF"
 
-	if err := WriteTranscript(&b, reacted(50, "U1", "U2", "U3", "U4", "SELF"), five, o); err != nil {
+	err := WriteTranscript(&b, reacted(50, "U1", "U2", "U3", "U4", "SELF"), five, o)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), ":tada: 50 (you, A, B +47)") {
@@ -55,7 +57,8 @@ func TestTheReaderIsNotDuplicatedWhenAlreadyListed(t *testing.T) {
 	o := opts()
 	o.SelfID = "SELF"
 
-	if err := WriteTranscript(&b, reacted(3, "SELF", "U1", "U2"), five, o); err != nil {
+	err := WriteTranscript(&b, reacted(3, "SELF", "U1", "U2"), five, o)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), ":tada: 3 (you, A, B)") {
@@ -72,7 +75,8 @@ func TestAReactionTheReaderHasNotGivenIsUnchanged(t *testing.T) {
 	o := opts()
 	o.SelfID = "SELF"
 
-	if err := WriteTranscript(&b, reacted(2, "U1", "U2"), five, o); err != nil {
+	err := WriteTranscript(&b, reacted(2, "U1", "U2"), five, o)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), ":tada: 2 (A, B)") {
@@ -86,7 +90,8 @@ func TestAReactionTheReaderHasNotGivenIsUnchanged(t *testing.T) {
 func TestWithoutAnIdentityTheLineIsUnchanged(t *testing.T) {
 	var b bytes.Buffer
 
-	if err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", "SELF"), five, opts()); err != nil {
+	err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", "SELF"), five, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), ":tada: 5 (A, B, C +2)") {

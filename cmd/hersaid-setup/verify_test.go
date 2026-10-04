@@ -122,7 +122,8 @@ func TestScopeHeaderNameIsMatchedHoweverSlackSpellsIt(t *testing.T) {
 		io.WriteString(w, okBody)
 	})
 
-	if _, err := verify(context.Background(), slackhttp.New(slackhttp.DefaultTimeout), s.URL, writeToken, writeRole); err != nil {
+	_, err := verify(context.Background(), slackhttp.New(slackhttp.DefaultTimeout), s.URL, writeToken, writeRole)
+	if err != nil {
 		t.Fatalf("a lower-case header name was not read: %v", err)
 	}
 }
@@ -179,7 +180,8 @@ func TestVerifyRejectsAMalformedReply(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("auth.test", `<html>not json</html>`)
 
-	if _, err := verify(context.Background(), slackhttp.New(slackhttp.DefaultTimeout), s.URL, readToken, readRole); err == nil {
+	_, err := verify(context.Background(), slackhttp.New(slackhttp.DefaultTimeout), s.URL, readToken, readRole)
+	if err == nil {
 		t.Fatal("a reply that is not JSON was accepted")
 	}
 }

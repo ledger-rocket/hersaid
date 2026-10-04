@@ -28,7 +28,8 @@ func TestReactionsAreNamedAndAttributed(t *testing.T) {
 	}}
 	names := Names{"U1": "Stepan", "U2": "Raj"}
 
-	if err := WriteTranscript(&b, msgs, names, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, names, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := "08-02 22:13  bot  topic\n" +
@@ -45,7 +46,8 @@ func TestNoReactionLineWithoutReactions(t *testing.T) {
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.862009", Username: "bot", Text: "topic"}}
 
-	if err := WriteTranscript(&b, msgs, Names{}, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, Names{}, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got, want := b.String(), "08-02 22:13  bot  topic\n"; got != want {
@@ -65,7 +67,8 @@ func TestReactionsPrecedeTheReplyHint(t *testing.T) {
 	o := opts()
 	o.ThreadCommand = "hear thread #eng"
 
-	if err := WriteTranscript(&b, msgs, Names{"U1": "Stepan"}, o); err != nil {
+	err := WriteTranscript(&b, msgs, Names{"U1": "Stepan"}, o)
+	if err != nil {
 		t.Fatal(err)
 	}
 	reactions := strings.Index(b.String(), ":eyes:")
@@ -91,7 +94,8 @@ func TestALongReactorListIsTruncated(t *testing.T) {
 	}}
 	names := Names{"U1": "A", "U2": "B", "U3": "C", "U4": "D", "U5": "E"}
 
-	if err := WriteTranscript(&b, msgs, names, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, names, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), ":tada: 5 (A, B, C +2)") {
@@ -111,7 +115,8 @@ func TestAnUnknownReactorKeepsItsID(t *testing.T) {
 		},
 	}}
 
-	if err := WriteTranscript(&b, msgs, Names{"U1": "Stepan"}, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, Names{"U1": "Stepan"}, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), ":eyes: 2 (Stepan, UNKNOWN)") {
@@ -175,7 +180,8 @@ func TestTheOverflowCountsFromTheTotalNotTheReturnedIDs(t *testing.T) {
 	}}
 	names := Names{"U1": "A", "U2": "B", "U3": "C", "U4": "D", "U5": "E"}
 
-	if err := WriteTranscript(&b, msgs, names, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, names, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), ":tada: 50 (A, B, C +47)") {
@@ -192,7 +198,8 @@ func TestAReactionWithNoNamedReactorsHasNoParentheses(t *testing.T) {
 		Reactions: []slackread.Reaction{{Name: "tada", Count: 4}},
 	}}
 
-	if err := WriteTranscript(&b, msgs, Names{}, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, Names{}, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "()") {

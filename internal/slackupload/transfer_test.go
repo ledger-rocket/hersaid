@@ -34,7 +34,8 @@ func client(t *testing.T, timeout time.Duration) *Client {
 func local(t *testing.T, n int) Local {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "trace.pdf")
-	if err := os.WriteFile(path, []byte(strings.Repeat("x", n)), 0o600); err != nil {
+	err := os.WriteFile(path, []byte(strings.Repeat("x", n)), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Open(path)
@@ -70,6 +71,12 @@ func (s *sink) get() (string, string, []byte, int64) {
 	return s.auth, s.ctype, s.body, s.length
 }
 
+func (s *sink) authorization() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.auth
+}
+
 func uploadHost(t *testing.T, status int) (*httptest.Server, *sink) {
 	t.Helper()
 	rec := &sink{}
@@ -92,10 +99,11 @@ func TestTheTransferCarriesNoBearer(t *testing.T) {
 	srv, rec := uploadHost(t, http.StatusOK)
 	f := local(t, 64)
 
-	if err := client(t, 5*time.Second).transfer(context.Background(), srv.URL+"/u?"+canary, f); err != nil {
+	err := client(t, 5*time.Second).transfer(context.Background(), srv.URL+"/u?"+canary, f)
+	if err != nil {
 		t.Fatal(err)
 	}
-	auth, _, _, _ := rec.get()
+	auth := rec.authorization()
 	if auth != "" {
 		t.Fatalf("the upload endpoint saw Authorization %q, want none", auth)
 	}
@@ -108,7 +116,8 @@ func TestTheTransferSendsExactlyTheDeclaredBytes(t *testing.T) {
 	srv, rec := uploadHost(t, http.StatusOK)
 	f := local(t, 2048)
 
-	if err := client(t, 5*time.Second).transfer(context.Background(), srv.URL+"/u?"+canary, f); err != nil {
+	err := client(t, 5*time.Second).transfer(context.Background(), srv.URL+"/u?"+canary, f)
+	if err != nil {
 		t.Fatal(err)
 	}
 	_, ctype, body, length := rec.get()
@@ -184,7 +193,8 @@ func TestAFileThatChangesWhileSendingIsRefused(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)
 		// Grown underneath the descriptor, at the same inode.
-		if err := os.WriteFile(f.Path, []byte(strings.Repeat("y", 4096)), 0o600); err != nil {
+		err := os.WriteFile(f.Path, []byte(strings.Repeat("y", 4096)), 0o600)
+		if err != nil {
 			t.Error(err)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -306,7 +316,8 @@ func TestTheTransferBoundIsTheSizeAwareOneNotTheRequestTimeout(t *testing.T) {
 	if d := TransferDeadline(base, f.Size); d <= 4*base {
 		t.Fatalf("TransferDeadline(%v) = %v, want room for the reply", base, d)
 	}
-	if err := client(t, base).transfer(context.Background(), srv.URL+"/u?"+canary, f); err != nil {
+	err := client(t, base).transfer(context.Background(), srv.URL+"/u?"+canary, f)
+	if err != nil {
 		t.Fatalf("transfer() error = %v; the request timeout must not cap the transfer", err)
 	}
 }

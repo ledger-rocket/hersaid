@@ -25,7 +25,8 @@ func TestTranscriptLineFormatIsStable(t *testing.T) {
 	names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: "stepan"}}})
 	msgs := []slackread.Message{{TS: "1785708834.862009", User: "U1", Text: "ship it"}}
 
-	if err := WriteTranscript(&b, msgs, names, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, names, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if want := "08-02 22:13  stepan  ship it\n"; b.String() != want {
@@ -43,7 +44,8 @@ func TestShowTSPrefixesTheRawTimestamp(t *testing.T) {
 	o := opts()
 	o.ShowTS = true
 
-	if err := WriteTranscript(&b, msgs, Names{}, o); err != nil {
+	err := WriteTranscript(&b, msgs, Names{}, o)
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := "1785708834.862009  08-02 22:13  bot  a\n" + strings.Repeat(" ", 20) + "b\n"
@@ -59,7 +61,8 @@ func TestMultiLineTextIsIndentedToTheTextColumn(t *testing.T) {
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.000000", Username: "bot", Text: "one\ntwo\nthree"}}
 
-	if err := WriteTranscript(&b, msgs, Names{}, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, Names{}, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
@@ -87,7 +90,8 @@ func TestTheIndentIsAConstantRatherThanAnAlignment(t *testing.T) {
 		{TS: "1785708834.000000", Username: "abcde", Text: "one\ntwo"},
 		{TS: "1785708834.000000", Username: "a-much-longer-name", Text: "one\ntwo"},
 	}
-	if err := WriteTranscript(&b, msgs, Names{}, opts()); err != nil {
+	err := WriteTranscript(&b, msgs, Names{}, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimRight(b.String(), "\n"), "\n")
@@ -109,7 +113,8 @@ func TestReplyHintNamesTheThreadCommand(t *testing.T) {
 	o := opts()
 	o.ThreadCommand = "hear thread #eng"
 
-	if err := WriteTranscript(&b, msgs, Names{}, o); err != nil {
+	err := WriteTranscript(&b, msgs, Names{}, o)
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := "08-02 22:13  bot  topic\n" +
@@ -125,7 +130,8 @@ func TestNoReplyHintWithoutReplies(t *testing.T) {
 	o := opts()
 	o.ThreadCommand = "hear thread #eng"
 
-	if err := WriteTranscript(&b, msgs, Names{}, o); err != nil {
+	err := WriteTranscript(&b, msgs, Names{}, o)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(b.String(), "⤷") {
@@ -252,7 +258,8 @@ func TestSearchLineNamesTheChannel(t *testing.T) {
 	m := slackread.SearchMatch{Message: slackread.Message{TS: "1785708834.862009", Username: "bob", Text: "hi <@U1>"}}
 	m.Channel.Name = "eng"
 
-	if err := WriteSearch(&b, []slackread.SearchMatch{m}, names, opts()); err != nil {
+	err := WriteSearch(&b, []slackread.SearchMatch{m}, names, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if want := "#eng  bob  hi @ann\n"; b.String() != want {
@@ -262,7 +269,8 @@ func TestSearchLineNamesTheChannel(t *testing.T) {
 
 func TestSearchLineFallsBackToQuestionMarks(t *testing.T) {
 	var b bytes.Buffer
-	if err := WriteSearch(&b, []slackread.SearchMatch{{}}, Names{}, opts()); err != nil {
+	err := WriteSearch(&b, []slackread.SearchMatch{{}}, Names{}, opts())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if want := "#?  ?  \n"; b.String() != want {
@@ -311,7 +319,8 @@ func TestStructuredMessagesAreNeverNull(t *testing.T) {
 // sequence would make every hand-inspection of the output harder for nothing.
 func TestJSONLeavesSlackMarkupReadable(t *testing.T) {
 	var b bytes.Buffer
-	if err := JSON(&b, Message{Text: "<@U1> & <https://example.com|link>"}); err != nil {
+	err := JSON(&b, Message{Text: "<@U1> & <https://example.com|link>"})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "<@U1> & <https://example.com|link>") {
@@ -319,7 +328,8 @@ func TestJSONLeavesSlackMarkupReadable(t *testing.T) {
 	}
 	// Still valid JSON, which is the point of not hand-rolling the encoder.
 	var back Message
-	if err := json.Unmarshal(b.Bytes(), &back); err != nil {
+	err = json.Unmarshal(b.Bytes(), &back)
+	if err != nil {
 		t.Fatalf("output does not parse: %v", err)
 	}
 	if back.Text != "<@U1> & <https://example.com|link>" {
@@ -356,7 +366,8 @@ func TestTheStructuredTimeIsUTCWhereTheTranscriptIsLocal(t *testing.T) {
 	// Options{} is what the commands pass for a transcript: no zone named,
 	// meaning the reader's own.
 	var b strings.Builder
-	if err := WriteTranscript(&b, []slackread.Message{{TS: ts, Text: "hi"}}, Names{}, Options{}); err != nil {
+	err := WriteTranscript(&b, []slackread.Message{{TS: ts, Text: "hi"}}, Names{}, Options{})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if want := "08-03 03:13"; !strings.Contains(b.String(), want) {

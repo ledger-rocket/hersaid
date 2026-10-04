@@ -129,14 +129,16 @@ func closeFiles(files []slackupload.Local) {
 // request rather than a field Slack is asked to honour.
 func mimetypeOf(path string, f *os.File) string {
 	if t := mime.TypeByExtension(filepath.Ext(path)); t != "" {
-		if base, _, err := mime.ParseMediaType(t); err == nil {
+		base, _, err := mime.ParseMediaType(t)
+		if err == nil {
 			return base
 		}
 		return t
 	}
 	var head [512]byte
 	n, _ := io.ReadFull(f, head[:])
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
+	_, err := f.Seek(0, io.SeekStart)
+	if err != nil {
 		return "application/octet-stream"
 	}
 	if n == 0 {
@@ -333,7 +335,8 @@ func upload(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL st
 	// survives SIGKILL, and its ok is null because nothing is known yet.
 	intent := rec
 	intent.Phase, intent.OK = audit.Intent, audit.Unknown
-	if err := log.Post(intent); err != nil {
+	err = log.Post(intent)
+	if err != nil {
 		return fail(stderr, "%v — refusing to send", err)
 	}
 
@@ -404,7 +407,8 @@ func upload(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL st
 	// Best effort, as a send's is: the message is already delivered, so a
 	// permalink failure must not turn a success into an error.
 	if rec.TS != "" {
-		if link, perr := api.Permalink(ctx, target.ID, rec.TS); perr == nil {
+		link, perr := api.Permalink(ctx, target.ID, rec.TS)
+		if perr == nil {
 			rec.Permalink = link
 		}
 	}

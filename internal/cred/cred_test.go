@@ -52,17 +52,20 @@ func isolate(t *testing.T) string {
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
 	t.Setenv(key, "")
-	if err := os.Unsetenv(key); err != nil {
+	err := os.Unsetenv(key)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func writeToken(t *testing.T, cfgDir, dir, name, contents string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(cfgDir, dir), 0o700); err != nil {
+	err := os.MkdirAll(filepath.Join(cfgDir, dir), 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfgDir, dir, name), []byte(contents), 0o600); err != nil {
+	err = os.WriteFile(filepath.Join(cfgDir, dir, name), []byte(contents), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -80,7 +83,8 @@ func TestEmptyEnvVarMeansAbsentAndStopsResolution(t *testing.T) {
 
 	t.Setenv("SLACK_WRITE_TOKEN", "")
 
-	if _, err := ResolveWrite(); !errors.Is(err, ErrNotFound) {
+	_, err := ResolveWrite()
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("ResolveWrite() error = %v, want ErrNotFound", err)
 	}
 }
@@ -92,7 +96,8 @@ func TestWhitespaceOnlyEnvVarMeansAbsent(t *testing.T) {
 	noKeyring(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "  \n\t ")
 
-	if _, err := ResolveWrite(); !errors.Is(err, ErrNotFound) {
+	_, err := ResolveWrite()
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("ResolveWrite() error = %v, want ErrNotFound", err)
 	}
 }
@@ -195,7 +200,8 @@ func TestNoSourceIsErrNotFound(t *testing.T) {
 	noKeyring(t)
 	unsetEnv(t, "SLACK_READ_TOKEN")
 
-	if _, err := ResolveRead(); !errors.Is(err, ErrNotFound) {
+	_, err := ResolveRead()
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("ResolveRead() error = %v, want ErrNotFound", err)
 	}
 }
@@ -222,7 +228,8 @@ func TestRolesDoNotShareSources(t *testing.T) {
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-write-only")
 	keyringWith(t, map[string]string{"hersaid-write": "xoxp-write-keychain"})
 
-	if _, err := ResolveRead(); !errors.Is(err, ErrNotFound) {
+	_, err := ResolveRead()
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("ResolveRead() error = %v; a read must not see the write credential", err)
 	}
 }

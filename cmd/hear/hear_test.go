@@ -53,10 +53,12 @@ func (e *env) run(args ...string) (stdout, stderr string, code int) {
 // have to stub them.
 func (e *env) warm() {
 	e.t.Helper()
-	if err := cache.Write(cache.ConversationsFile, cache.Conversations{Channels: testConvs}); err != nil {
+	err := cache.Write(cache.ConversationsFile, cache.Conversations{Channels: testConvs})
+	if err != nil {
 		e.t.Fatal(err)
 	}
-	if err := cache.Write(cache.UsersFile, cache.Users{Members: testUsers}); err != nil {
+	err = cache.Write(cache.UsersFile, cache.Users{Members: testUsers})
+	if err != nil {
 		e.t.Fatal(err)
 	}
 }
@@ -99,7 +101,8 @@ const twoMessages = `{"ok":true,"messages":[
 
 func decode(t *testing.T, s string, v any) {
 	t.Helper()
-	if err := json.Unmarshal([]byte(s), v); err != nil {
+	err := json.Unmarshal([]byte(s), v)
+	if err != nil {
 		t.Fatalf("output is not JSON (%v): %s", err, s)
 	}
 }
@@ -224,7 +227,8 @@ func TestAColdCacheIsFilledFromSlack(t *testing.T) {
 		t.Fatalf("stdout = %q", stdout)
 	}
 	var c cache.Conversations
-	if err := cache.Read(cache.ConversationsFile, &c); err != nil {
+	err := cache.Read(cache.ConversationsFile, &c)
+	if err != nil {
 		t.Fatalf("the fetched list was not cached: %v", err)
 	}
 	if len(c.Channels) != 1 || c.Channels[0].ID != "C0ENG0000" {
@@ -480,7 +484,8 @@ func TestSinceAcceptsTheUnitsPeopleUse(t *testing.T) {
 func TestSinceRefusesAWindowThatAsksForNothing(t *testing.T) {
 	for _, in := range []string{"0", "0h", "-2h", "soon", "2", "h", "99999999999999999999d"} {
 		t.Run(in, func(t *testing.T) {
-			if d, err := parseSince(in); err == nil {
+			d, err := parseSince(in)
+			if err == nil {
 				t.Fatalf("parseSince(%q) = %v, want an error", in, d)
 			}
 		})
@@ -757,7 +762,8 @@ func TestRefreshClearsTheCache(t *testing.T) {
 	}
 	// Every *.json goes, not only the files this package writes.
 	stray := filepath.Join(dir, "stray.json")
-	if err := os.WriteFile(stray, []byte("{}"), 0o600); err != nil {
+	err = os.WriteFile(stray, []byte("{}"), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -769,7 +775,8 @@ func TestRefreshClearsTheCache(t *testing.T) {
 		t.Fatalf("stdout = %q", stdout)
 	}
 	for _, f := range []string{cache.ConversationsFile, cache.UsersFile, "stray.json"} {
-		if _, err := os.Stat(filepath.Join(dir, f)); !os.IsNotExist(err) {
+		_, err := os.Stat(filepath.Join(dir, f))
+		if !os.IsNotExist(err) {
 			t.Errorf("%s survived refresh (%v)", f, err)
 		}
 	}
@@ -917,12 +924,14 @@ func TestReadingAPersonWithNoDMExplainsWhy(t *testing.T) {
 // interpreted.
 func TestADisplayNameNeverBecomesAReplacementTemplate(t *testing.T) {
 	e := newEnv(t)
-	if err := cache.Write(cache.ConversationsFile, cache.Conversations{Channels: testConvs}); err != nil {
+	err := cache.Write(cache.ConversationsFile, cache.Conversations{Channels: testConvs})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cache.Write(cache.UsersFile, cache.Users{Members: []cache.User{
+	err = cache.Write(cache.UsersFile, cache.Users{Members: []cache.User{
 		{ID: "U0EVIL000", Profile: cache.Profile{DisplayName: "$1${x}"}},
-	}}); err != nil {
+	}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	e.srv.Reply("conversations.history",
@@ -1318,7 +1327,8 @@ func TestWhoamiWarmsTheIdentity(t *testing.T) {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
 	var id cache.Identity
-	if err := cache.Read(cache.IdentityFile, &id); err != nil {
+	err := cache.Read(cache.IdentityFile, &id)
+	if err != nil {
 		t.Fatalf("identity after whoami: %v, want it warmed", err)
 	}
 	if id.UserID != "U0STEPAN0" {
@@ -1339,10 +1349,12 @@ func TestWhoamiSurvivesAnUnwritableCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	err = os.MkdirAll(dir, 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dir, 0o500); err != nil {
+	err = os.Chmod(dir, 0o500)
+	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
@@ -1363,9 +1375,10 @@ func TestWhoamiSurvivesAnUnwritableCache(t *testing.T) {
 func TestAReadIgnoresAnIdentityFromAnotherCredential(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
-	if err := cache.Write(cache.IdentityFile, cache.Identity{
+	err := cache.Write(cache.IdentityFile, cache.Identity{
 		UserID: "U0STEPAN0", User: "stepan", CredentialKey: "a-different-credential",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	e.srv.Reply("conversations.history",
@@ -1392,7 +1405,8 @@ func TestWhoamiRecordsTheCredentialKey(t *testing.T) {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
 	var id cache.Identity
-	if err := cache.Read(cache.IdentityFile, &id); err != nil {
+	err := cache.Read(cache.IdentityFile, &id)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if id.CredentialKey == "" {

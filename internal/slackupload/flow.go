@@ -13,6 +13,7 @@ import (
 // Staged is one file Slack has taken the bytes of but shown to nobody.
 type Staged struct {
 	Local
+
 	// ID is what the completion leg names the file by.
 	ID string
 }
@@ -42,7 +43,8 @@ func (c *Client) Stage(ctx context.Context, files []Local, done func(Staged)) ([
 		// transfer bounds itself by this file's size; a gigabyte held to the
 		// bound that suits a small JSON reply fails on size alone over a link
 		// that is working.
-		if err := c.transfer(ctx, ticket.UploadURL, f); err != nil {
+		err = c.transfer(ctx, ticket.UploadURL, f)
+		if err != nil {
 			return staged, err
 		}
 		s := Staged{Local: f, ID: ticket.FileID}
@@ -124,7 +126,8 @@ func decide(reply *slackwrite.Completion, err error, r ShareRequest) (Shared, er
 	if err != nil {
 		return Shared{}, err
 	}
-	if err := reconcile(reply.Files, r.Files); err != nil {
+	err = reconcile(reply.Files, r.Files)
+	if err != nil {
 		return Shared{}, err
 	}
 	ts, err := consensus(reply.Files, r.ChannelID)

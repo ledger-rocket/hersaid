@@ -96,7 +96,8 @@ func (h *hear) fetchFiles(ch render.ChannelRef, ts string) int {
 		}
 		return code
 	}
-	if err := render.WriteFiles(h.stdout, out); err != nil {
+	err = render.WriteFiles(h.stdout, out)
+	if err != nil {
 		return h.fail(err)
 	}
 	if incomplete {

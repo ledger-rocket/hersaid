@@ -235,7 +235,7 @@ func (s *setup) enrol(r role) int {
 	// Checked after verification, not before: nobody should be asked whether to
 	// replace a working credential with one that turns out to be invalid.
 	if prev, found := lookup(r); found {
-		fmt.Fprintf(s.stdout, "  a %s credential is already stored in %s: %s\n", r.name, prev.where, prev.print)
+		fmt.Fprintf(s.stdout, "  a %s credential is already stored in %s: %s\n", r.name, prev.where, prev.described)
 		answer, err := s.con.Line("  Replace it? [y/N] ")
 		if err != nil {
 			return s.declined(err)
@@ -268,10 +268,11 @@ func (s *setup) enrol(r role) int {
 	// destroying a correct identity is not.
 	_, outrankedByEnv := os.LookupEnv(r.envVar)
 	if !r.needsWriteScope && acct.userID != "" && !outrankedByEnv {
-		if err := cache.Write(cache.IdentityFile, cache.Identity{
+		err := cache.Write(cache.IdentityFile, cache.Identity{
 			UserID: acct.userID, User: acct.user, Team: acct.team,
 			CredentialKey: cred.KeyFor(token),
-		}); err == nil {
+		})
+		if err == nil {
 			fmt.Fprintln(s.stdout, "  cached who it belongs to, so reads mark your own reactions")
 		}
 	}

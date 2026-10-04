@@ -71,7 +71,8 @@ func isolate(t *testing.T) string {
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
 	t.Setenv(key, "")
-	if err := os.Unsetenv(key); err != nil {
+	err := os.Unsetenv(key)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -109,7 +110,7 @@ func slack(t *testing.T, scopes, body string) *slacktest.Server {
 	s := slacktest.New(t)
 	s.ReplyFunc("auth.test", func(w http.ResponseWriter, r *http.Request) {
 		if scopes != "" {
-			w.Header().Set("X-OAuth-Scopes", scopes)
+			w.Header().Set("X-Oauth-Scopes", scopes)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, body)
@@ -125,7 +126,8 @@ const okBody = `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U012
 // path are spelled out here on purpose: they are the contract with cred.
 func storedToken(t *testing.T, r role) (string, bool) {
 	t.Helper()
-	if v, err := keyring.Get(r.service, os.Getenv("USER")); err == nil && v != "" {
+	v, err := keyring.Get(r.service, os.Getenv("USER"))
+	if err == nil && v != "" {
 		return v, true
 	}
 	b, err := os.ReadFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid", r.fileName))
@@ -178,7 +180,7 @@ func TestStoredWriteCredentialIsResolvableByCred(t *testing.T) {
 		if r.Header.Get("Authorization") == "Bearer "+writeToken {
 			scopes = writeScopes
 		}
-		w.Header().Set("X-OAuth-Scopes", scopes)
+		w.Header().Set("X-Oauth-Scopes", scopes)
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, okBody)
 	})
@@ -257,7 +259,8 @@ func TestWriteCredentialNeedsTheFlag(t *testing.T) {
 	if _, ok := storedToken(t, writeRole); ok {
 		t.Fatal("a write credential was stored without --with-write")
 	}
-	if _, err := cred.ResolveWrite(); !errors.Is(err, cred.ErrNotFound) {
+	_, err := cred.ResolveWrite()
+	if !errors.Is(err, cred.ErrNotFound) {
 		t.Fatalf("cred.ResolveWrite error = %v, want ErrNotFound", err)
 	}
 	if !strings.Contains(stdout.String(), "posting is disabled") {
@@ -609,7 +612,8 @@ func TestHelpAndVersionTouchNothing(t *testing.T) {
 				t.Errorf("Slack was called %d times", got)
 			}
 			assertNothingStored(t)
-			if entries, err := os.ReadDir(home); err != nil {
+			entries, err := os.ReadDir(home)
+			if err != nil {
 				t.Fatal(err)
 			} else if len(entries) != 0 {
 				t.Errorf("left %v behind under HOME", entries)
@@ -716,7 +720,8 @@ func TestExistingCredentialIsNotReplacedWithoutConfirmation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			isolate(t)
 			const existing = "xoxp-already-enrolled-token-0000"
-			if err := keyring.Set(readRole.service, os.Getenv("USER"), existing); err != nil {
+			err := keyring.Set(readRole.service, os.Getenv("USER"), existing)
+			if err != nil {
 				t.Fatal(err)
 			}
 			script(t, enrolment(readToken)+tc.confirm)
@@ -829,7 +834,8 @@ func TestAnEnvironmentVariableThatOutranksTheStoredCredentialIsReported(t *testi
 // just verified would be discarded and nobody would have chosen that.
 func TestACRLFPasteDoesNotAnswerTheNextPrompt(t *testing.T) {
 	isolate(t)
-	if err := keyring.Set(readRole.service, os.Getenv("USER"), "xoxp-already-enrolled-token-0000"); err != nil {
+	err := keyring.Set(readRole.service, os.Getenv("USER"), "xoxp-already-enrolled-token-0000")
+	if err != nil {
 		t.Fatal(err)
 	}
 	script(t, "y\r\n"+readToken+"\r\ny\r\n")
@@ -858,7 +864,7 @@ func TestImportGraphExcludesWriteCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.Contains(line, "slackwrite") {
 			t.Fatalf("cmd/hersaid-setup depends on %s", line)
 		}
@@ -880,7 +886,8 @@ func TestEnrolmentSeedsTheIdentity(t *testing.T) {
 	}
 
 	var id cache.Identity
-	if err := cache.Read(cache.IdentityFile, &id); err != nil {
+	err := cache.Read(cache.IdentityFile, &id)
+	if err != nil {
 		t.Fatalf("identity after enrolment: %v, want it seeded", err)
 	}
 	if id.UserID != "U0123ABCD" {
@@ -914,7 +921,8 @@ func TestARefusedTokenSeedsNoIdentity(t *testing.T) {
 		t.Fatalf("exit code = 0, want failure (stdout %q)", stdout.String())
 	}
 	var id cache.Identity
-	if err := cache.Read(cache.IdentityFile, &id); err == nil {
+	err := cache.Read(cache.IdentityFile, &id)
+	if err == nil {
 		t.Fatalf("identity = %+v, want none after a refused token", id)
 	}
 }
@@ -931,7 +939,7 @@ func TestTheWriteRoleDoesNotOverwriteTheIdentity(t *testing.T) {
 			scopes = writeScopes
 			body = `{"ok":true,"user":"other","team":"LedgerRocket","user_id":"UOTHER999"}`
 		}
-		w.Header().Set("X-OAuth-Scopes", scopes)
+		w.Header().Set("X-Oauth-Scopes", scopes)
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, body)
 	})
@@ -942,7 +950,8 @@ func TestTheWriteRoleDoesNotOverwriteTheIdentity(t *testing.T) {
 	}
 
 	var id cache.Identity
-	if err := cache.Read(cache.IdentityFile, &id); err != nil {
+	err := cache.Read(cache.IdentityFile, &id)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if id.UserID != "U0123ABCD" {
@@ -958,7 +967,8 @@ func TestTheWriteRoleDoesNotOverwriteTheIdentity(t *testing.T) {
 func TestEnrolmentLeavesTheIdentityAloneWhenTheEnvVarOutranksIt(t *testing.T) {
 	isolate(t)
 	warm := cache.Identity{UserID: "UENVACCT", User: "env", CredentialKey: cred.KeyFor(envToken)}
-	if err := cache.Write(cache.IdentityFile, warm); err != nil {
+	err := cache.Write(cache.IdentityFile, warm)
+	if err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("SLACK_READ_TOKEN", envToken)
@@ -971,7 +981,8 @@ func TestEnrolmentLeavesTheIdentityAloneWhenTheEnvVarOutranksIt(t *testing.T) {
 	}
 
 	var id cache.Identity
-	if err := cache.Read(cache.IdentityFile, &id); err != nil {
+	err = cache.Read(cache.IdentityFile, &id)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if id != warm {

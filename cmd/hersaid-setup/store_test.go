@@ -30,7 +30,8 @@ func TestStorePrefersTheKeyring(t *testing.T) {
 	if got != readToken {
 		t.Errorf("keyring holds a different token")
 	}
-	if _, err := os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid", "read.token")); err == nil {
+	_, err = os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid", "read.token"))
+	if err == nil {
 		t.Error("a file was written as well as the keyring; a credential lives in one place")
 	}
 }
@@ -64,7 +65,8 @@ func TestStoreFallsBackToAFileWhenThereIsNoKeyring(t *testing.T) {
 	if got := fi.Mode().Perm(); got != 0o600 {
 		t.Errorf("mode = %04o, want 0600", got)
 	}
-	if fi, err := os.Stat(filepath.Dir(path)); err != nil {
+	fi, err = os.Stat(filepath.Dir(path))
+	if err != nil {
 		t.Fatal(err)
 	} else if got := fi.Mode().Perm(); got != 0o700 {
 		t.Errorf("directory mode = %04o, want 0700", got)
@@ -80,14 +82,17 @@ func TestStoreDoesNotInheritTheModeOfTheFileItReplaces(t *testing.T) {
 	noKeyring(t)
 
 	path := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid", "read.token")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	err := os.MkdirAll(filepath.Dir(path), 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+	err = os.WriteFile(path, []byte("old"), 0o644)
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := store(readRole, readToken); err != nil {
+	_, _, err = store(readRole, readToken)
+	if err != nil {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(path)
@@ -105,10 +110,12 @@ func TestStoreDoesNotInheritTheModeOfTheFileItReplaces(t *testing.T) {
 func TestStoreNamesATokenFileTheKeyringNowShadows(t *testing.T) {
 	isolate(t)
 	path := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid", "read.token")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	err := os.MkdirAll(filepath.Dir(path), 0o700)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("xoxp-an-older-enrolment-0000"), 0o600); err != nil {
+	err = os.WriteFile(path, []byte("xoxp-an-older-enrolment-0000"), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -122,7 +129,8 @@ func TestStoreNamesATokenFileTheKeyringNowShadows(t *testing.T) {
 	// Named, not deleted: removing a file nobody asked about is the worse
 	// surprise, and the old token may be the one somebody still wants to revoke
 	// deliberately.
-	if _, err := os.Stat(path); err != nil {
+	_, err = os.Stat(path)
+	if err != nil {
 		t.Errorf("the file was removed: %v", err)
 	}
 }
@@ -135,14 +143,17 @@ func TestStoreNarrowsAConfigDirectoryThatWasAlreadyTooOpen(t *testing.T) {
 	isolate(t)
 	noKeyring(t)
 	dir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	err := os.MkdirAll(dir, 0o755)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dir, 0o755); err != nil {
+	err = os.Chmod(dir, 0o755)
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := store(readRole, readToken); err != nil {
+	_, _, err = store(readRole, readToken)
+	if err != nil {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(dir)
@@ -161,7 +172,8 @@ func TestStoreLeavesNoTemporaryFileBehind(t *testing.T) {
 	isolate(t)
 	noKeyring(t)
 
-	if _, _, err := store(readRole, readToken); err != nil {
+	_, _, err := store(readRole, readToken)
+	if err != nil {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid"))
@@ -190,7 +202,8 @@ func TestStoreRefusesTheFileFallbackWhileTheKeyringStillHoldsACredential(t *test
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			isolate(t)
-			if err := keyring.Set(tc.service, "tester", "xoxp-an-older-enrolment-0000"); err != nil {
+			err := keyring.Set(tc.service, "tester", "xoxp-an-older-enrolment-0000")
+			if err != nil {
 				t.Fatal(err)
 			}
 			// Reads keep working; only the write fails.
@@ -198,14 +211,15 @@ func TestStoreRefusesTheFileFallbackWhileTheKeyringStillHoldsACredential(t *test
 			keyringSet = func(string, string, string) error { return errors.New("keychain denied the write") }
 			t.Cleanup(func() { keyringSet = prev })
 
-			_, _, err := store(readRole, readToken)
+			_, _, err = store(readRole, readToken)
 			if err == nil {
 				t.Fatal("stored a token the commands would never read")
 			}
 			if !strings.Contains(err.Error(), tc.service) {
 				t.Errorf("error %q does not name the item in the way", err)
 			}
-			if _, err := os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid", "read.token")); err == nil {
+			_, err = os.Stat(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hersaid", "read.token"))
+			if err == nil {
 				t.Error("a file was written that nothing would read")
 			}
 		})
@@ -228,15 +242,16 @@ func TestLookupFindsWhatStoreWrote(t *testing.T) {
 			if _, found := lookup(readRole); found {
 				t.Fatal("found a credential before one was stored")
 			}
-			if _, _, err := store(readRole, readToken); err != nil {
+			_, _, err := store(readRole, readToken)
+			if err != nil {
 				t.Fatal(err)
 			}
 			got, found := lookup(readRole)
 			if !found {
 				t.Fatal("did not find the credential it had just written")
 			}
-			if got.print != describe(readToken) {
-				t.Errorf("described it as %q", got.print)
+			if got.described != describe(readToken) {
+				t.Errorf("described it as %q", got.described)
 			}
 			// The write role is a different credential; finding one must not
 			// answer for the other.

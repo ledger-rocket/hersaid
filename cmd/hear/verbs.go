@@ -254,14 +254,16 @@ func (h *hear) search(query string) int {
 		})
 	}
 	opts := render.Options{ShowTS: h.showTS}
-	if err := render.WriteSearch(h.stdout, matches, names, opts); err != nil {
+	err = render.WriteSearch(h.stdout, matches, names, opts)
+	if err != nil {
 		return h.fail(err)
 	}
 	return cli.ExitOK
 }
 
 func (h *hear) refresh() int {
-	if err := cache.Clear(); err != nil {
+	err := cache.Clear()
+	if err != nil {
 		return h.fail(err)
 	}
 	if h.asJSON {
@@ -298,12 +300,14 @@ func (h *hear) transcript(ch render.ChannelRef, threadTS string, msgs []slackrea
 	// leaves the file behind, and marking another account's reaction "you" is
 	// worse than marking nothing.
 	var id cache.Identity
-	if err := cache.Read(cache.IdentityFile, &id); err == nil {
+	err = cache.Read(cache.IdentityFile, &id)
+	if err == nil {
 		if key := h.src.credentialKey(); key != "" && key == id.CredentialKey {
 			opts.SelfID = id.UserID
 		}
 	}
-	if err := render.WriteTranscript(h.stdout, msgs, names, opts); err != nil {
+	err = render.WriteTranscript(h.stdout, msgs, names, opts)
+	if err != nil {
 		return h.fail(err)
 	}
 	return cli.ExitOK
@@ -318,7 +322,8 @@ func (h *hear) names() (render.Names, error) {
 }
 
 func (h *hear) emit(v any) int {
-	if err := render.JSON(h.stdout, v); err != nil {
+	err := render.JSON(h.stdout, v)
+	if err != nil {
 		return h.fail(err)
 	}
 	return cli.ExitOK
@@ -363,11 +368,8 @@ func matches(line, filter string) bool {
 func latest(ctx context.Context, c *slackread.Client, channelID string, n int) ([]slackread.Message, bool, error) {
 	var out []slackread.Message
 	cursor := ""
-	for page := 0; page < maxPages; page++ {
-		limit := n - len(out)
-		if limit > maxLimit {
-			limit = maxLimit
-		}
+	for range maxPages {
+		limit := min(n-len(out), maxLimit)
 		p, err := c.History(ctx, channelID, slackread.HistoryOptions{Limit: limit, Cursor: cursor})
 		if err != nil {
 			return nil, false, err
@@ -398,7 +400,7 @@ func window(ctx context.Context, c *slackread.Client, channelID string, oldest t
 	var out []slackread.Message
 	cursor := ""
 	from := slackTime(oldest)
-	for page := 0; page < maxPages; page++ {
+	for range maxPages {
 		p, err := c.History(ctx, channelID, slackread.HistoryOptions{
 			Limit: pageSize, Oldest: from, Cursor: cursor,
 		})
@@ -421,7 +423,7 @@ func window(ctx context.Context, c *slackread.Client, channelID string, oldest t
 func replies(ctx context.Context, c *slackread.Client, channelID, ts string) ([]slackread.Message, bool, error) {
 	var out []slackread.Message
 	cursor := ""
-	for page := 0; page < maxPages; page++ {
+	for range maxPages {
 		p, err := c.Replies(ctx, channelID, ts, slackread.HistoryOptions{Limit: pageSize, Cursor: cursor})
 		if err != nil {
 			return nil, false, err

@@ -110,7 +110,8 @@ func TestHelpAndVersionTouchNothing(t *testing.T) {
 			if got := s.Hits(); got != 0 {
 				t.Errorf("Slack received %d requests", got)
 			}
-			if entries, err := os.ReadDir(home); err != nil {
+			entries, err := os.ReadDir(home)
+			if err != nil {
 				t.Fatal(err)
 			} else if len(entries) != 0 {
 				t.Errorf("left %v behind under HOME; cache and config must be untouched", entries)
@@ -209,10 +210,11 @@ func TestAnUnversionedBuildStillNamesItsRevision(t *testing.T) {
 		t.Skip("builds a binary")
 	}
 	bin := filepath.Join(t.TempDir(), "hear")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
+	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin, "--version").CombinedOutput()
+	out, err = exec.Command(bin, "--version").CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s --version: %v\n%s", bin, err, out)
 	}
@@ -244,11 +246,12 @@ func TestReleaseLinkerFlagsReachTheirVariables(t *testing.T) {
 		"-X " + pkg + ".commit=0123456789abcdef0123456789abcdef01234567",
 		"-X " + pkg + ".date=2026-08-03T12:00:00Z",
 	}, " ")
-	if out, err := exec.Command("go", "build", "-ldflags", ldflags, "-o", bin, ".").CombinedOutput(); err != nil {
+	out, err := exec.Command("go", "build", "-ldflags", ldflags, "-o", bin, ".").CombinedOutput()
+	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 
-	out, err := exec.Command(bin, "--version").Output()
+	out, err = exec.Command(bin, "--version").Output()
 	if err != nil {
 		t.Fatalf("%s --version: %v", bin, err)
 	}
@@ -307,7 +310,7 @@ func TestImportGraphExcludesWriteCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.Contains(line, "slackwrite") {
 			t.Fatalf("cmd/hear depends on %s", line)
 		}
@@ -330,7 +333,8 @@ func TestBuiltBinaryHasNoWriteEndpoints(t *testing.T) {
 		t.Skip("builds a binary")
 	}
 	bin := filepath.Join(t.TempDir(), "hear")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
+	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 

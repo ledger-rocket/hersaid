@@ -195,7 +195,8 @@ func TestCompleteUploadSendsExactlyTheDeclaredFields(t *testing.T) {
 			s := slacktest.New(t)
 			s.Reply("files.completeUploadExternal", `{"ok":true,"files":[{"id":"F1"}]}`)
 
-			if _, err := client(t, s).CompleteUpload(context.Background(), c.req); err != nil {
+			_, err := client(t, s).CompleteUpload(context.Background(), c.req)
+			if err != nil {
 				t.Fatal(err)
 			}
 			req := s.Last()
@@ -249,7 +250,8 @@ func TestCompleteUploadEncodesTheFilesArgumentAsJSON(t *testing.T) {
 		ID    string `json:"id"`
 		Title string `json:"title"`
 	}
-	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+	err = json.Unmarshal([]byte(raw), &got)
+	if err != nil {
 		t.Fatalf("files = %q, which is not JSON: %v", raw, err)
 	}
 	if len(got) != 2 {
@@ -453,12 +455,14 @@ func TestUploadEndpointsIssueNoRequestWithoutACredential(t *testing.T) {
 	s.Reply("files.completeUploadExternal", `{"ok":true,"files":[{"id":"F1"}]}`)
 
 	c := New(cred.Write{}, slackhttp.New(2*time.Second), s.URL)
-	if _, err := c.GetUploadURL(context.Background(), "trace.pdf", 10); !errors.Is(err, ErrNoCredential) {
+	_, err := c.GetUploadURL(context.Background(), "trace.pdf", 10)
+	if !errors.Is(err, ErrNoCredential) {
 		t.Errorf("GetUploadURL error = %v, want ErrNoCredential", err)
 	}
-	if _, err := c.CompleteUpload(context.Background(), CompleteRequest{
+	_, err = c.CompleteUpload(context.Background(), CompleteRequest{
 		Files: []CompleteFile{{ID: "F1"}}, ChannelID: "C0123ABCD",
-	}); !errors.Is(err, ErrNoCredential) {
+	})
+	if !errors.Is(err, ErrNoCredential) {
 		t.Errorf("CompleteUpload error = %v, want ErrNoCredential", err)
 	}
 	if s.Hits() != 0 {
@@ -474,16 +478,18 @@ func TestUploadEndpointsCarryTheBearer(t *testing.T) {
 	s.Reply("files.completeUploadExternal", `{"ok":true,"files":[{"id":"F1"}]}`)
 	c := client(t, s)
 
-	if _, err := c.GetUploadURL(context.Background(), "trace.pdf", 10); err != nil {
+	_, err := c.GetUploadURL(context.Background(), "trace.pdf", 10)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got := s.Last().Auth; !strings.HasPrefix(got, "Bearer ") {
 		t.Fatalf("getUploadURL Authorization = %q, want a bearer", got)
 	}
 
-	if _, err := c.CompleteUpload(context.Background(), CompleteRequest{
+	_, err = c.CompleteUpload(context.Background(), CompleteRequest{
 		Files: []CompleteFile{{ID: "F1", Title: "trace.pdf"}}, ChannelID: "C0123ABCD",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if got := s.Last().Auth; !strings.HasPrefix(got, "Bearer ") {

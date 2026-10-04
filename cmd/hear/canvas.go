@@ -98,7 +98,8 @@ func (h *hear) canvas(args []string) int {
 		// Not a canvas's own address, so it names a conversation whose canvas
 		// is wanted. That is how a channel canvas is reached: it hangs off the
 		// conversation rather than off any message in it.
-		if id, err = h.channelCanvas(ctx, c, args[0]); err != nil {
+		id, err = h.channelCanvas(ctx, c, args[0])
+		if err != nil {
 			return h.fail(err)
 		}
 	}

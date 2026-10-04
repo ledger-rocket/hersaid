@@ -108,7 +108,8 @@ func completes(s *slacktest.Server, ts string, ids ...string) {
 func tmpFile(t *testing.T, name, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+	err := os.WriteFile(path, []byte(content), 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -367,7 +368,8 @@ func TestTheUploadURLNeverReachesTheOutputOrTheLog(t *testing.T) {
 func TestEveryPreflightRefusalCostsNoRequest(t *testing.T) {
 	dir := t.TempDir()
 	empty := filepath.Join(dir, "empty.log")
-	if err := os.WriteFile(empty, nil, 0o600); err != nil {
+	err := os.WriteFile(empty, nil, 0o600)
+	if err != nil {
 		t.Fatal(err)
 	}
 	huge := filepath.Join(dir, "huge.bin")
@@ -376,19 +378,21 @@ func TestEveryPreflightRefusalCostsNoRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Sparse: the size is a claim about the inode, which is what pre-flight reads.
-	if err := f.Truncate(1_000_000_001); err != nil {
+	err = f.Truncate(1_000_000_001)
+	if err != nil {
 		t.Skipf("sparse files unavailable: %v", err)
 	}
 	f.Close()
 
 	real1 := tmpFile(t, "trace.pdf", "aaaa")
 	link := filepath.Join(filepath.Dir(real1), "same.pdf")
-	if err := os.Symlink(real1, link); err != nil {
+	err = os.Symlink(real1, link)
+	if err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
 	eleven := make([]string, 0, 22)
-	for i := 0; i < 11; i++ {
+	for i := range 11 {
 		eleven = append(eleven, "--file", tmpFile(t, fmt.Sprintf("f%d.log", i), "x"))
 	}
 
@@ -803,7 +807,8 @@ func TestAHostileFilenameCannotDriveTheTerminalThroughARefusal(t *testing.T) {
 
 	name := "empty" + string(rune(0x1b)) + "[31m" + string(rune(0x202e)) + ".log"
 	path := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(path, nil, 0o600); err != nil { // empty: refused by pre-flight
+	err := os.WriteFile(path, nil, 0o600)
+	if err != nil { // empty: refused by pre-flight
 		t.Fatal(err)
 	}
 	code, stdout, stderr := sez(t, s, "--send", "--file", path, "#eng", "text")
@@ -854,7 +859,8 @@ func TestASignalWhileStagingRecordsAFailureAndNamesWhatStaged(t *testing.T) {
 	cmd := startHelper(t, s, "--send", "--file", a, "--file", b, "#eng", "text")
 	waitFor(t, cmd, arrived)
 
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	err := cmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
 		t.Fatal(err)
 	}
 	waitOrKill(t, cmd)
@@ -898,7 +904,8 @@ func TestASignalWhileSharingRecordsUnknownExactlyOnce(t *testing.T) {
 	cmd := startHelper(t, s, "--send", "--file", a, "#eng", "text")
 	waitFor(t, cmd, arrived)
 
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	err := cmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
 		t.Fatal(err)
 	}
 	waitOrKill(t, cmd)
@@ -991,7 +998,7 @@ func waitOrKill(t *testing.T, cmd *exec.Cmd) {
 // So every goroutine that returns from writeOutcome must already be able to see
 // the record on disk. A loser that returned first would be free to exit.
 func TestNoWriterReturnsBeforeTheOutcomeIsDurable(t *testing.T) {
-	for round := 0; round < 40; round++ {
+	for round := range 40 {
 		path := filepath.Join(t.TempDir(), "posts.jsonl")
 		log, err := audit.Open(path)
 		if err != nil {
@@ -1004,13 +1011,12 @@ func TestNoWriterReturnsBeforeTheOutcomeIsDurable(t *testing.T) {
 		var early atomic.Int32
 		var wrote atomic.Int32
 		start := make(chan struct{})
-		for i := 0; i < 8; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 8 {
+			wg.Go(func() {
 				<-start
 				before := p.writtenAlready()
-				if err := p.writeOutcome(io.Discard, log, rec); err != nil {
+				err := p.writeOutcome(io.Discard, log, rec)
+				if err != nil {
 					t.Error(err)
 				}
 				if !before {
@@ -1020,7 +1026,7 @@ func TestNoWriterReturnsBeforeTheOutcomeIsDurable(t *testing.T) {
 				if !bytes.Contains(b, []byte(`"phase":"outcome"`)) {
 					early.Add(1)
 				}
-			}()
+			})
 		}
 		close(start)
 		wg.Wait()
@@ -1046,14 +1052,14 @@ func TestTheProgressValueIsSafeToReadWhileItGrows(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 200; i++ {
+		for range 200 {
 			p.stagedFile("F1")
 			p.enter(completing)
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 200; i++ {
+		for range 200 {
 			_ = p.recordForLocked(base, syscall.SIGTERM)
 		}
 	}()
@@ -1073,7 +1079,8 @@ func TestAHostileFilenameCannotDriveTheTerminalThroughAStagingRefusal(t *testing
 
 	name := "in" + string(rune(0x1b)) + "[31mnocent" + string(rune(0x202e)) + "fdp.pdf"
 	path := filepath.Join(t.TempDir(), name)
-	if err := os.WriteFile(path, []byte("real content"), 0o600); err != nil {
+	err := os.WriteFile(path, []byte("real content"), 0o600)
+	if err != nil {
 		t.Skipf("the filesystem refused the name: %v", err)
 	}
 

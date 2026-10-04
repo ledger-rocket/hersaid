@@ -238,12 +238,14 @@ func (c *Client) PostMessage(ctx context.Context, channel, text, threadTS string
 
 	var out struct {
 		envelope
+
 		TS      string `json:"ts"`
 		Message struct {
 			Text string `json:"text"`
 		} `json:"message"`
 	}
-	if err := c.post(ctx, method, form, &out); err != nil {
+	err := c.post(ctx, method, form, &out)
+	if err != nil {
 		return nil, err
 	}
 	return &PostMessageResponse{TS: out.TS, Text: out.Message.Text}, nil
@@ -260,12 +262,14 @@ func (c *Client) Update(ctx context.Context, channelID, ts, text string) (*PostM
 
 	var out struct {
 		envelope
+
 		TS      string `json:"ts"`
 		Message struct {
 			Text string `json:"text"`
 		} `json:"message"`
 	}
-	if err := c.post(ctx, method, form, &out); err != nil {
+	err := c.post(ctx, method, form, &out)
+	if err != nil {
 		return nil, err
 	}
 	return &PostMessageResponse{TS: out.TS, Text: out.Message.Text}, nil
@@ -298,9 +302,11 @@ func (c *Client) Permalink(ctx context.Context, channel, messageTS string) (stri
 
 	var out struct {
 		envelope
+
 		Permalink string `json:"permalink"`
 	}
-	if err := c.post(ctx, method, form, &out); err != nil {
+	err := c.post(ctx, method, form, &out)
+	if err != nil {
 		return "", err
 	}
 	return out.Permalink, nil
@@ -315,16 +321,6 @@ func (c *Client) AddReaction(ctx context.Context, channel, timestamp, emoji stri
 // RemoveReaction takes an emoji off a message. It is attempted at most once.
 func (c *Client) RemoveReaction(ctx context.Context, channel, timestamp, emoji string) error {
 	return c.reaction(ctx, methodRemoveReaction, channel, timestamp, emoji)
-}
-
-func (c *Client) reaction(ctx context.Context, method, channel, timestamp, emoji string) error {
-	form := url.Values{}
-	form.Set("channel", channel)
-	form.Set("timestamp", timestamp)
-	form.Set("name", emoji)
-
-	var out envelope
-	return c.post(ctx, method, form, &out)
 }
 
 // UploadTicket is files.getUploadURLExternal's reply: the token for the next
@@ -352,10 +348,12 @@ func (c *Client) GetUploadURL(ctx context.Context, filename string, length int64
 
 	var out struct {
 		envelope
+
 		FileID    string `json:"file_id"`
 		UploadURL string `json:"upload_url"`
 	}
-	if err := c.post(ctx, method, form, &out); err != nil {
+	err := c.post(ctx, method, form, &out)
+	if err != nil {
 		return nil, err
 	}
 	if out.FileID == "" || out.UploadURL == "" {
@@ -441,12 +439,24 @@ func (c *Client) CompleteUpload(ctx context.Context, req CompleteRequest) (*Comp
 
 	var out struct {
 		envelope
+
 		Files []SharedFile `json:"files"`
 	}
-	if err := c.post(ctx, method, form, &out); err != nil {
+	err = c.post(ctx, method, form, &out)
+	if err != nil {
 		return nil, err
 	}
 	return &Completion{Files: out.Files}, nil
+}
+
+func (c *Client) reaction(ctx context.Context, method, channel, timestamp, emoji string) error {
+	form := url.Values{}
+	form.Set("channel", channel)
+	form.Set("timestamp", timestamp)
+	form.Set("name", emoji)
+
+	var out envelope
+	return c.post(ctx, method, form, &out)
 }
 
 // envelope is the part of every Slack reply that decides success.
@@ -492,7 +502,8 @@ func (c *Client) post(ctx context.Context, method string, form url.Values, out e
 		// The request left; a truncated reply says nothing about what Slack did.
 		return &TransportError{Method: method, Err: err}
 	}
-	if err := json.Unmarshal(body, out); err != nil {
+	err = json.Unmarshal(body, out)
+	if err != nil {
 		return &APIError{Method: method, Code: CodeMalformed}
 	}
 	if ok, code := out.status(); !ok {

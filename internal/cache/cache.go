@@ -151,7 +151,8 @@ func Write(name string, v any) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	err = os.MkdirAll(dir, 0o700)
+	if err != nil {
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
 	tmp, err := os.CreateTemp(dir, "."+name+".*")
@@ -159,18 +160,22 @@ func Write(name string, v any) error {
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
 	defer os.Remove(tmp.Name()) // no-op once the rename has succeeded
-	if err := tmp.Chmod(0o600); err != nil {
+	err = tmp.Chmod(0o600)
+	if err != nil {
 		tmp.Close()
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
-	if _, err := tmp.Write(body); err != nil {
+	_, err = tmp.Write(body)
+	if err != nil {
 		tmp.Close()
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
-	if err := tmp.Close(); err != nil {
+	err = tmp.Close()
+	if err != nil {
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
-	if err := os.Rename(tmp.Name(), filepath.Join(dir, name)); err != nil {
+	err = os.Rename(tmp.Name(), filepath.Join(dir, name))
+	if err != nil {
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
 	return nil
@@ -193,7 +198,8 @@ func Read(name string, v any) error {
 	if len(b) == 0 {
 		return fmt.Errorf("%w: %s", ErrCold, name)
 	}
-	if err := json.Unmarshal(b, v); err != nil {
+	err = json.Unmarshal(b, v)
+	if err != nil {
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
 	return nil
@@ -211,7 +217,8 @@ func Clear() error {
 		return err
 	}
 	for _, m := range matches {
-		if err := os.Remove(m); err != nil && !errors.Is(err, os.ErrNotExist) {
+		err := os.Remove(m)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
@@ -255,7 +262,8 @@ func (s *Store) Conversations(ctx context.Context) ([]Conversation, error) {
 			return nil, ferr
 		}
 		c = Conversations{Channels: list}
-		if werr := Write(ConversationsFile, c); werr != nil {
+		werr := Write(ConversationsFile, c)
+		if werr != nil {
 			return nil, werr
 		}
 		err = nil
@@ -280,7 +288,8 @@ func (s *Store) Users(ctx context.Context) ([]User, error) {
 			return nil, ferr
 		}
 		u = Users{Members: list}
-		if werr := Write(UsersFile, u); werr != nil {
+		werr := Write(UsersFile, u)
+		if werr != nil {
 			return nil, werr
 		}
 		err = nil

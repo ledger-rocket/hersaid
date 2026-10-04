@@ -117,7 +117,8 @@ func fields(t *testing.T, rec any) map[string]bool {
 		t.Fatal(err)
 	}
 	var m map[string]json.RawMessage
-	if err := json.Unmarshal(b, &m); err != nil {
+	err = json.Unmarshal(b, &m)
+	if err != nil {
 		t.Fatal(err)
 	}
 	out := map[string]bool{}
@@ -160,7 +161,8 @@ func TestUntrustedTextRoundTripsUnchanged(t *testing.T) {
 		Text      string `json:"text"`
 		SlackText string `json:"slack_text"`
 	}
-	if err := json.Unmarshal(b, &back); err != nil {
+	err = json.Unmarshal(b, &back)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if back.Text != nasty || back.SlackText != nasty {
@@ -177,7 +179,8 @@ func TestLoggedBytesEqualMarshalledBytes(t *testing.T) {
 		Channel: "#eng", ChannelID: "C0123ABCD", OK: Succeeded,
 		Text: "<b> & \"quoted\"",
 	}
-	if err := l.Post(rec); err != nil {
+	err := l.Post(rec)
+	if err != nil {
 		t.Fatal(err)
 	}
 	want, err := json.Marshal(rec)
@@ -208,7 +211,8 @@ func openTemp(t *testing.T) (*Log, string) {
 // its mode is not advisory.
 func TestLogFileIsPrivate(t *testing.T) {
 	l, path := openTemp(t)
-	if err := l.Post(Post{Channel: "#eng", Phase: DryRun, OK: Succeeded}); err != nil {
+	err := l.Post(Post{Channel: "#eng", Phase: DryRun, OK: Succeeded})
+	if err != nil {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(path)
@@ -231,7 +235,8 @@ func TestLogFileIsPrivate(t *testing.T) {
 func TestOpenTightensAnExistingLog(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "posts.jsonl")
-	if err := os.WriteFile(path, nil, 0o644); err != nil {
+	err := os.WriteFile(path, nil, 0o644)
+	if err != nil {
 		t.Fatal(err)
 	}
 	l, err := Open(path)
@@ -255,17 +260,18 @@ func TestConcurrentWritersInterleaveWholeLines(t *testing.T) {
 
 	const writers, each = 8, 40
 	var wg sync.WaitGroup
-	for w := 0; w < writers; w++ {
+	for w := range writers {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			for i := 0; i < each; i++ {
-				if err := l.Post(Post{
+			for range each {
+				err := l.Post(Post{
 					Channel: "#eng",
 					Phase:   Outcome,
 					OK:      Succeeded,
 					Text:    strings.Repeat("x", 200+w),
-				}); err != nil {
+				})
+				if err != nil {
 					t.Error(err)
 					return
 				}
@@ -285,11 +291,13 @@ func TestConcurrentWritersInterleaveWholeLines(t *testing.T) {
 	for sc.Scan() {
 		lines++
 		var m map[string]any
-		if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
+		err := json.Unmarshal(sc.Bytes(), &m)
+		if err != nil {
 			t.Fatalf("line %d is not whole JSON: %v\n%s", lines, err, sc.Text())
 		}
 	}
-	if err := sc.Err(); err != nil {
+	err = sc.Err()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if want := writers * each; lines != want {
@@ -301,10 +309,11 @@ func TestConcurrentWritersInterleaveWholeLines(t *testing.T) {
 // that happened without its record is the thing the log exists to prevent.
 func TestWriteFailureIsReported(t *testing.T) {
 	l, _ := openTemp(t)
-	if err := l.Close(); err != nil {
+	err := l.Close()
+	if err != nil {
 		t.Fatal(err)
 	}
-	err := l.Post(Post{Channel: "#eng", Phase: Outcome, OK: Succeeded})
+	err = l.Post(Post{Channel: "#eng", Phase: Outcome, OK: Succeeded})
 	if err == nil {
 		t.Fatal("Post on a closed log returned nil; a lost record must be an error")
 	}
@@ -318,7 +327,8 @@ func TestWriteFailureIsReported(t *testing.T) {
 // process without this one closing the file.
 func TestRecordIsDurableBeforePostReturns(t *testing.T) {
 	l, path := openTemp(t)
-	if err := l.Post(Post{Channel: "#eng", Phase: Intent, OK: Unknown}); err != nil {
+	err := l.Post(Post{Channel: "#eng", Phase: Intent, OK: Unknown})
+	if err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(path)
@@ -335,7 +345,8 @@ func TestRecordIsDurableBeforePostReturns(t *testing.T) {
 
 func TestActorFallsBackWhenUserIsUnset(t *testing.T) {
 	t.Setenv("USER", "")
-	if err := os.Unsetenv("USER"); err != nil {
+	err := os.Unsetenv("USER")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if Actor() == "" {
