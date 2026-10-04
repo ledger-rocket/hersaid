@@ -735,7 +735,7 @@ func TestTheNoHardLinkFallbackStillRefusesToOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmpName, tmp, err := d.temp()
+	tmpName, tmp, err := d.createTemp()
 	if err != nil {
 		t.Fatal(err)
 	}

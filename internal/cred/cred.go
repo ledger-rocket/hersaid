@@ -55,8 +55,8 @@ var (
 	}
 )
 
-// configDir is the directory under XDG_CONFIG_HOME that holds the file
-// fallback.
+// configDir is the directory under XDG_CONFIG_HOME that holds the
+// file fallback.
 const configDir = "hersaid"
 
 // WriteEnvVar is the variable that overrides the stored write credential.

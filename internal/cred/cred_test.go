@@ -236,7 +236,7 @@ func TestRolesDoNotShareSources(t *testing.T) {
 	}
 }
 
-// Only a recognised Slack token type is echoed. Which of xoxp/xoxb a token is
+// Only a recognised Slack token type is echoed. Whether a token is xoxp or xoxb
 // is public knowledge and worth a diagnostic; anything else in this position is
 // a secret of some other kind — the wrong password, an unrelated API key —
 // pasted by mistake, and its first characters are as sensitive as the rest.

@@ -187,17 +187,17 @@ func TestNewClampsANonPositiveTimeout(t *testing.T) {
 // negative timeout fails every request instantly.
 func TestTimeoutFromEnvIsCappedSoItsConsumersCannotOverflow(t *testing.T) {
 	t.Setenv(TimeoutEnvVar, "86400")
-	max, err := TimeoutFromEnv()
+	ceiling, err := TimeoutFromEnv()
 	if err != nil {
 		t.Fatalf("TimeoutFromEnv() at the cap error = %v, want it accepted", err)
 	}
-	if max != 24*time.Hour {
-		t.Fatalf("TimeoutFromEnv() = %v, want 24h", max)
+	if ceiling != 24*time.Hour {
+		t.Fatalf("TimeoutFromEnv() = %v, want 24h", ceiling)
 	}
-	for _, factor := range []time.Duration{2, 10} {
-		if scaled := max * factor; scaled <= 0 {
+	for _, factor := range []int64{2, 10} {
+		if scaled := time.Duration(int64(ceiling) * factor); scaled <= 0 {
 			t.Errorf("%v × %d = %v; every consumer's multiple must stay positive",
-				max, factor, scaled)
+				ceiling, factor, scaled)
 		}
 	}
 

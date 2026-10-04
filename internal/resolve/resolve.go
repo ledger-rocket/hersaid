@@ -124,7 +124,7 @@ func resolveChannel(ctx context.Context, cat Catalog, can Capability, target str
 	convs, err := cat.Conversations(ctx)
 	if err != nil {
 		// A cold cache is only fatal for a caller that cannot pass a name on.
-		if !(errors.Is(err, cache.ErrCold) && can.PassThroughName) {
+		if !errors.Is(err, cache.ErrCold) || !can.PassThroughName {
 			return t, err
 		}
 	} else {

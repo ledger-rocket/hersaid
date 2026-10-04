@@ -127,26 +127,26 @@ func (e *redirectError) Error() string { return e.reason }
 
 // Fetch downloads every file in files into dir, one Result each, in order.
 //
-// It is best effort: a file with no bytes behind it, one larger than max, and
+// It is best effort: a file with no bytes behind it, one larger than maxBytes, and
 // one Slack refuses each leave the others alone. dir is created on the first
 // file actually written, so a message whose files are all links leaves no empty
 // directory behind.
 //
-// max bounds each file separately, in bytes.
-func (c *Client) Fetch(ctx context.Context, files []slackread.File, out, msgDir string, max int64) []Result {
+// maxBytes bounds each file separately, in bytes.
+func (c *Client) Fetch(ctx context.Context, files []slackread.File, out, msgDir string, maxBytes int64) []Result {
 	results := make([]Result, 0, len(files))
 	d := &dest{out: out, msgDir: msgDir}
 	defer d.close()
 
 	taken := map[string]bool{}
 	for _, f := range files {
-		if reason := skipReason(f, max); reason != "" {
+		if reason := skipReason(f, maxBytes); reason != "" {
 			results = append(results, Result{File: f, Status: Skipped, Reason: reason})
 			continue
 		}
 		name := unique(safeName(f), f.ID, taken)
 		taken[foldName(name)] = true
-		n, err := c.download(ctx, f, d, name, max)
+		n, err := c.download(ctx, f, d, name, maxBytes)
 		if err != nil {
 			results = append(results, Result{File: f, Status: Failed, Reason: err.Error()})
 			continue
@@ -160,7 +160,7 @@ func (c *Client) Fetch(ctx context.Context, files []slackread.File, out, msgDir 
 // The size test is against what Slack says the file is: it saves a download
 // that would be abandoned anyway, and the real bound is enforced on the bytes
 // that arrive.
-func skipReason(f slackread.File, max int64) string {
+func skipReason(f slackread.File, maxBytes int64) string {
 	switch {
 	case f.Mode == "external" || f.IsExternal:
 		return "external file, no bytes to fetch"
@@ -170,8 +170,8 @@ func skipReason(f slackread.File, max int64) string {
 		return "email body, not a stored file"
 	case f.URLPrivateDownload == "":
 		return "no download url"
-	case f.Size > max:
-		return fmt.Sprintf("%d bytes exceeds the %d byte limit", f.Size, max)
+	case f.Size > maxBytes:
+		return fmt.Sprintf("%d bytes exceeds the %d byte limit", f.Size, maxBytes)
 	}
 	return ""
 }
@@ -183,9 +183,9 @@ func skipReason(f slackread.File, max int64) string {
 // read rather than saved: it is a document to look at, and 30KB of HTML has no
 // business becoming a file on the way to being rendered.
 //
-// max bounds what is held in memory, on bytes that arrive rather than on the
+// maxBytes bounds what is held in memory, on bytes that arrive rather than on the
 // size Slack declared.
-func (c *Client) Read(ctx context.Context, f slackread.File, max int64) ([]byte, error) {
+func (c *Client) Read(ctx context.Context, f slackread.File, maxBytes int64) ([]byte, error) {
 	resp, body, cancel, err := c.open(ctx, f)
 	if err != nil {
 		return nil, err
@@ -193,15 +193,15 @@ func (c *Client) Read(ctx context.Context, f slackread.File, max int64) ([]byte,
 	defer cancel()
 	defer resp.Body.Close()
 
-	if max >= math.MaxInt64 {
-		max = math.MaxInt64 - 1
+	if maxBytes == math.MaxInt64 {
+		maxBytes = math.MaxInt64 - 1
 	}
-	buf, err := io.ReadAll(io.LimitReader(body, max+1))
+	buf, err := io.ReadAll(io.LimitReader(body, maxBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(buf)) > max {
-		return nil, fmt.Errorf("%w the %d byte limit", errLongerThan, max)
+	if int64(len(buf)) > maxBytes {
+		return nil, fmt.Errorf("%w the %d byte limit", errLongerThan, maxBytes)
 	}
 	return buf, nil
 }
@@ -255,14 +255,14 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-func (c *Client) download(ctx context.Context, f slackread.File, d *dest, name string, max int64) (int64, error) {
+func (c *Client) download(ctx context.Context, f slackread.File, d *dest, name string, maxBytes int64) (int64, error) {
 	resp, body, cancel, err := c.open(ctx, f)
 	if err != nil {
 		return 0, err
 	}
 	defer cancel()
 	defer resp.Body.Close()
-	return writeFile(body, d, name, max, f.Size)
+	return writeFile(body, d, name, maxBytes, f.Size)
 }
 
 // open makes the request and hands back a response whose body is the file. The
@@ -328,9 +328,9 @@ func (c *Client) timeout() time.Duration {
 	return slackhttp.DefaultTimeout
 }
 
-// signIn is the refusal a token without files:read earns. Slack answers such a
+// errSignIn is the refusal a token without files:read earns. Slack answers such a
 // request with HTTP 200 and its sign-in page, so the status says nothing.
-var signIn = errors.New("Slack answered with a web page rather than the file, " +
+var errSignIn = errors.New("Slack answered with a web page rather than the file, " +
 	"which is what a token without the files:read scope gets")
 
 // checkBodyIsTheFile refuses a response that is a web page where a file was
@@ -356,11 +356,11 @@ func checkBodyIsTheFile(resp *http.Response, f slackread.File, body *bufio.Reade
 		return nil
 	}
 	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(f.Mimetype)), CanvasMimetype) {
-		return signIn
+		return errSignIn
 	}
 	head, _ := body.Peek(1024)
 	if isWholeDocument(head) {
-		return signIn
+		return errSignIn
 	}
 	return nil
 }
@@ -458,10 +458,10 @@ func (d *dest) close() {
 func (d *dest) path(name string) string { return filepath.Join(d.out, d.msgDir, name) }
 func (d *dest) rel(name string) string  { return path.Join(d.msgDir, name) }
 
-// temp creates a file inside the message directory that no other name refers
+// createTemp creates a file inside the message directory that no other name refers
 // to. os.Root has no CreateTemp, and O_EXCL makes the loop safe without one:
 // whoever creates the name owns it.
-func (d *dest) temp() (string, *os.File, error) {
+func (d *dest) createTemp() (string, *os.File, error) {
 	for i := range 1000 {
 		name := fmt.Sprintf(".hear-%d", i)
 		f, err := d.root.OpenFile(d.rel(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
@@ -485,34 +485,34 @@ func (d *dest) temp() (string, *os.File, error) {
 // check and the act.
 //
 // declared is the size Slack attributes to the file, or zero when it says
-// nothing. It is not trusted as a bound — max is enforced on what arrives — but
+// nothing. It is not trusted as a bound — maxBytes is enforced on what arrives — but
 // a body that stops short of it is a truncation the transport did not report,
 // and writing it would produce a file that looks complete and is not.
-func writeFile(body io.Reader, d *dest, name string, max, declared int64) (int64, error) {
+func writeFile(body io.Reader, d *dest, name string, maxBytes, declared int64) (int64, error) {
 	err := d.ready()
 	if err != nil {
 		return 0, err
 	}
-	tmpName, tmp, err := d.temp()
+	tmpName, tmp, err := d.createTemp()
 	if err != nil {
 		return 0, err
 	}
 	defer d.root.Remove(d.rel(tmpName))
 	defer tmp.Close()
 
-	// max+1 so that a file of exactly max bytes is written and one byte more is
+	// maxBytes+1 so that a file of exactly maxBytes bytes is written and one byte more is
 	// seen as the overrun it is. Clamped here rather than only at the flag that
 	// usually supplies it: at MaxInt64 the increment wraps negative, LimitReader
 	// then reads nothing, and an empty file would be reported as a success.
-	if max >= math.MaxInt64 {
-		max = math.MaxInt64 - 1
+	if maxBytes == math.MaxInt64 {
+		maxBytes = math.MaxInt64 - 1
 	}
-	n, err := io.Copy(tmp, io.LimitReader(body, max+1))
+	n, err := io.Copy(tmp, io.LimitReader(body, maxBytes+1))
 	if err != nil {
 		return 0, err
 	}
-	if n > max {
-		return 0, fmt.Errorf("%w the %d byte limit", errLongerThan, max)
+	if n > maxBytes {
+		return 0, fmt.Errorf("%w the %d byte limit", errLongerThan, maxBytes)
 	}
 	if declared > 0 && n < declared {
 		return 0, fmt.Errorf("%w %d bytes, fewer than the %d Slack declared", errReceived, n, declared)
@@ -575,7 +575,7 @@ func (d *dest) copyExclusive(tmpName, name string) error {
 	}
 	defer src.Close()
 
-	copyName, dst, err := d.temp()
+	copyName, dst, err := d.createTemp()
 	if err != nil {
 		d.root.Remove(d.rel(name))
 		return err

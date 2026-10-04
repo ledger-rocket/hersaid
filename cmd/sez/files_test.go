@@ -116,8 +116,9 @@ func tmpFile(t *testing.T, name, content string) string {
 }
 
 func endpointsCalled(s *slacktest.Server) []string {
-	out := []string{}
-	for _, r := range s.Requests() {
+	reqs := s.Requests()
+	out := make([]string, 0, len(reqs))
+	for _, r := range reqs {
 		out = append(out, r.Endpoint)
 	}
 	return out
@@ -958,7 +959,13 @@ var releases sync.Map // *testing.T -> chan struct{}
 
 func releaseChan(t *testing.T) chan struct{} {
 	v, _ := releases.LoadOrStore(t, make(chan struct{}))
-	return v.(chan struct{})
+	ch, ok := v.(chan struct{})
+	if !ok {
+		// Only chan struct{} values are ever stored. Not t.Fatalf: releaseOn
+		// calls this from a goroutine of its own.
+		panic(fmt.Sprintf("releases holds %T, want a chan struct{}", v))
+	}
+	return ch
 }
 
 // release arranges for every held handler in this test to be let go before the

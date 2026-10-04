@@ -762,7 +762,10 @@ func TestADeleteRecordsTheFilesItRemoved(t *testing.T) {
 		t.Fatalf("files = %#v, want both names recorded", last["files"])
 	}
 	for i, want := range []string{"trace.pdf", "out.log"} {
-		m := files[i].(map[string]any)
+		m, ok := files[i].(map[string]any)
+		if !ok {
+			t.Fatalf("files[%d] = %#v, want an object", i, files[i])
+		}
 		if got, _ := m["name"].(string); got != want {
 			t.Errorf("files[%d].name = %v, want %s", i, m["name"], want)
 		}
@@ -807,7 +810,10 @@ func TestTheRecordKeepsTheNameSlackHolds(t *testing.T) {
 	if !ok || len(files) != 1 {
 		t.Fatalf("files = %#v, want the one file", recs[len(recs)-1]["files"])
 	}
-	m := files[0].(map[string]any)
+	m, ok := files[0].(map[string]any)
+	if !ok {
+		t.Fatalf("files[0] = %#v, want an object", files[0])
+	}
 	if got, _ := m["name"].(string); got != raw {
 		t.Fatalf("recorded name = %q, want the raw name Slack holds", got)
 	}

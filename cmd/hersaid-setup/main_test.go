@@ -56,9 +56,9 @@ func isolate(t *testing.T) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
-	// Enrolment seeds the identity cache, so this must be pinned inside the
-	// temp home: a developer with XDG_CACHE_HOME set would otherwise have a
-	// test run overwrite their real identity.json.
+	// Enrolment seeds the identity cache, so this must be pinned inside
+	// the temp home: a developer with XDG_CACHE_HOME set would otherwise have
+	// a test run overwrite their real identity.json.
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
 	t.Setenv("USER", "tester")
 	unsetEnv(t, "SLACK_READ_TOKEN")

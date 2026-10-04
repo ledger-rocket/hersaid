@@ -216,8 +216,8 @@ func TestASparseTableDoesNotExpandToItsBoundingBox(t *testing.T) {
 func TestAnchorTextCannotForgeASecondLink(t *testing.T) {
 	got := md(t, `<p><a href="https://evil.example">click](https://safe.example) [APPROVED</a></p>`)
 	// An escaped bracket is text, not syntax, so only the unescaped pairs count.
-	if real := strings.Count(got, "](") - strings.Count(got, `\](`); real != 1 {
-		t.Fatalf("= %q, want exactly one real link, found %d", got, real)
+	if links := strings.Count(got, "](") - strings.Count(got, `\](`); links != 1 {
+		t.Fatalf("= %q, want exactly one real link, found %d", got, links)
 	}
 	if !strings.Contains(got, `\]`) || !strings.Contains(got, `\[`) {
 		t.Fatalf("= %q, want the brackets in the label escaped", got)

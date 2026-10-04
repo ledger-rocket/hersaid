@@ -352,7 +352,7 @@ func upload(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL st
 		return fail(stderr, "%v — refusing to send", err)
 	}
 
-	prog := &progress{}
+	prog := &progress{phase: staging}
 	pending := rec
 	stop := audit.OnAbort(func(sig os.Signal) {
 		_ = prog.writeOnSignal(stderr, log, pending, sig)

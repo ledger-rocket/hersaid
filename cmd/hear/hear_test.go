@@ -718,11 +718,11 @@ func TestUnknownOptionIsRefused(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
 
-	_, stderr, code := e.run("read", "#eng", "--sicne", "2h")
+	_, stderr, code := e.run("read", "#eng", "--sinec", "2h")
 	if code != 2 {
 		t.Fatalf("exit = %d, want 2", code)
 	}
-	if !strings.Contains(stderr, "unknown option: --sicne") {
+	if !strings.Contains(stderr, "unknown option: --sinec") {
 		t.Fatalf("stderr = %q", stderr)
 	}
 	if got := e.srv.Hits(); got != 0 {

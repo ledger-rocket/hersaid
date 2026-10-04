@@ -99,6 +99,17 @@ linters:
   - recvcheck
   - testableexamples
   - unqueryvet
+  - predeclared
+  - godox
+  - dupword
+  - misspell
+  - prealloc
+  - unused
+  - durationcheck
+  - gocritic
+  - forcetypeassert
+  - errname
+  - errorlint
   - err113
   - maintidx
   - nestif
@@ -229,28 +240,17 @@ linters:
   # finding count on main when this file was adopted (PRO-7722). A PR that brings one to
   # 0 moves it back to enable in the same change.
   disable:
-  - errorlint # 1
   - errcheck # 200
   - wrapcheck # 54
-  - errname # 1
   - staticcheck # 10
-  - forcetypeassert # 3
-  - gocritic # 1
-  - durationcheck # 1
   - noctx # 19
-  - unused # 1
   - paralleltest # 558
   - gosec # 8
-  - prealloc # 1
   - revive # 7
-  - misspell # 2
   - exhaustive # 8
-  - dupword # 1
   - goconst # 20
-  - godox # 3
   - dupl # 4
   - nonamedreturns # 24
-  - predeclared # 7
   - cyclop # 22
   - gocognit # 10
   - funlen # 1
