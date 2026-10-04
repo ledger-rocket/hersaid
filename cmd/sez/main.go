@@ -125,6 +125,84 @@ type current struct {
 	Files []audit.File
 }
 
+// chooseVerb picks what the invocation does to a message, or returns the usage
+// refusal for a combination of flags that names no one thing.
+func chooseVerb(f flags, thread string) (verb, string) {
+	refusal := flagConflict(f, thread)
+	if refusal != "" {
+		return verbSend, refusal
+	}
+	if f.edit {
+		return verbEdit, ""
+	}
+	if f.del {
+		return verbDelete, ""
+	}
+	return verbSend, ""
+}
+
+// flagConflict is the usage refusal for --edit or --delete combined with a
+// flag that addresses, or adds, something else; empty when there is none.
+// Every conflict involves --edit or --delete, so without either there is none.
+func flagConflict(f flags, thread string) string {
+	switch {
+	case !f.edit && !f.del:
+		return ""
+	// --edit and --delete name one message, as --thread does; they exclude each
+	// other and the thread parent, all three addressing a different message.
+	case f.edit && f.del:
+		return "--edit and --delete name one message; give one"
+	case thread != "":
+		return "--edit and --delete name a message; --thread excludes them"
+	// Refused rather than ignored, as every other meaningless combination here
+	// is: a flag accepted and silently dropped teaches that it did something.
+	case f.del && f.md:
+		return "--delete sends no text, so --md has nothing to convert"
+	// Slack offers no way to attach a file to a message that already exists, so
+	// --file substitutes the send endpoint rather than adding to it.
+	case len(f.files) > 0:
+		return "--file attaches files to a new message; it cannot combine with --edit or --delete"
+	}
+	return ""
+}
+
+// messageText is the text the invocation sends: none for a delete or a bare
+// upload, otherwise the arguments or stdin, with --md applied. done reports
+// that the invocation ends here with code.
+func messageText(stderr io.Writer, f flags, v verb, rest []string, stdin io.Reader) (string, int, bool) {
+	if v == verbDelete {
+		if len(rest) > 0 {
+			return "", cli.Usage(stderr, name, usage, "--delete takes a target and a ts and nothing else"), true
+		}
+		return "", 0, false
+	}
+	if len(f.files) > 0 && len(rest) == 0 {
+		// The files are the message. Reading stdin here would block on a
+		// terminal for input nobody is going to type.
+		return "", 0, false
+	}
+	text, err := readText(rest, stdin)
+	if err != nil {
+		return "", fail(stderr, "%v", err), true
+	}
+	// A comment asked for and answered with blank space is a mistake.
+	// Requesting no comment is what omitting the argument does.
+	if strings.TrimSpace(text) == "" {
+		return "", fail(stderr, "refusing to send an empty message"), true
+	}
+	// Converted here, so that everything downstream — the render, the audit
+	// record and the wire — sees the one text Slack will be given. Rendering
+	// what was typed while sending something else is the thing --send exists to
+	// prevent.
+	//
+	// Trailing newlines go too: an editor's final newline is not a blank line
+	// somebody meant to send.
+	if f.md {
+		text = trimTrailingNewlines(mrkdwn.Convert(text))
+	}
+	return text, 0, false
+}
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, slackwrite.SlackAPI))
 }
@@ -141,30 +219,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	if len(rest) == 0 {
 		return cli.Usage(stderr, name, usage, "")
 	}
-	// --edit and --delete name one message, as --thread does; they exclude each
-	// other and the thread parent, all three addressing a different message.
-	verb := verbSend
-	if f.edit && f.del {
-		return cli.Usage(stderr, name, usage, "--edit and --delete name one message; give one")
-	}
-	if (f.edit || f.del) && thread != "" {
-		return cli.Usage(stderr, name, usage, "--edit and --delete name a message; --thread excludes them")
-	}
-	// Refused rather than ignored, as every other meaningless combination here
-	// is: a flag accepted and silently dropped teaches that it did something.
-	if f.del && f.md {
-		return cli.Usage(stderr, name, usage, "--delete sends no text, so --md has nothing to convert")
-	}
-	// Slack offers no way to attach a file to a message that already exists, so
-	// --file substitutes the send endpoint rather than adding to it.
-	if len(f.files) > 0 && (f.edit || f.del) {
-		return cli.Usage(stderr, name, usage,
-			"--file attaches files to a new message; it cannot combine with --edit or --delete")
-	}
-	if f.edit {
-		verb = verbEdit
-	} else if f.del {
-		verb = verbDelete
+	verb, refusal := chooseVerb(f, thread)
+	if refusal != "" {
+		return cli.Usage(stderr, name, usage, refusal)
 	}
 
 	channel := rest[0]
@@ -182,36 +239,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		rest = rest[1:]
 	}
 
-	text := ""
-	var err error
-	if verb == verbDelete {
-		if len(rest) > 0 {
-			return cli.Usage(stderr, name, usage, "--delete takes a target and a ts and nothing else")
-		}
-	} else if len(f.files) > 0 && len(rest) == 0 {
-		// The files are the message. Reading stdin here would block on a
-		// terminal for input nobody is going to type.
-		text = ""
-	} else {
-		text, err = readText(rest, stdin)
-		if err != nil {
-			return fail(stderr, "%v", err)
-		}
-		// A comment asked for and answered with blank space is a mistake.
-		// Requesting no comment is what omitting the argument does.
-		if strings.TrimSpace(text) == "" {
-			return fail(stderr, "refusing to send an empty message")
-		}
-		// Converted here, so that everything downstream — the render, the audit
-		// record and the wire — sees the one text Slack will be given. Rendering
-		// what was typed while sending something else is the thing --send exists to
-		// prevent.
-		//
-		// Trailing newlines go too: an editor's final newline is not a blank line
-		// somebody meant to send.
-		if f.md {
-			text = trimTrailingNewlines(mrkdwn.Convert(text))
-		}
+	text, code, done := messageText(stderr, f, verb, rest, stdin)
+	if done {
+		return code
 	}
 
 	// Resolved once: a second lookup would mean a second keyring access, which on

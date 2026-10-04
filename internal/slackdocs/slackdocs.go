@@ -95,72 +95,79 @@ func (w *writer) block(n *html.Node, depth int) {
 		}
 		return
 	}
-	if n.Type == html.ElementNode {
-		switch n.DataAtom {
-		case atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6:
-			level := int(n.Data[1] - '0')
-			w.emit(strings.Repeat("#", level) + " " + inline(n))
-			return
-		case atom.P, atom.Div:
-			// A div is a block in canvas markup, but it is also the wrapper
-			// around everything, so it only emits when it holds text directly
-			// rather than other blocks.
-			if hasBlockChild(n) {
-				w.children(n, depth+1)
-				return
-			}
-			if s := inline(n); strings.TrimSpace(s) != "" {
-				w.emit(s)
-			}
-			return
-		case atom.Ul, atom.Ol:
-			w.list = append(w.list, listState{ordered: n.DataAtom == atom.Ol})
-			var items []string
-			for c := n.FirstChild; c != nil; c = c.NextSibling {
-				if c.Type != html.ElementNode {
-					continue
-				}
-				switch c.DataAtom {
-				case atom.Li:
-					items = append(items, w.item(c, depth+1))
-				case atom.Ul, atom.Ol:
-					// A list directly inside a list, which the parser will hand
-					// back for markup that omitted the item around it. Rendered
-					// rather than dropped.
-					w.block(c, depth+1)
-				}
-			}
-			w.list = w.list[:len(w.list)-1]
-			if len(items) > 0 {
-				w.emit(strings.Join(items, "\n"))
-			}
-			return
-		case atom.Pre:
-			body := strings.TrimRight(textOf(n), "\n")
-			fence := "```"
-			for strings.Contains(body, fence) {
-				fence += "`"
-			}
-			w.emit(fence + "\n" + body + "\n" + fence)
-			return
-		case atom.Blockquote:
-			for line := range strings.SplitSeq(inline(n), "\n") {
-				w.emit("> " + line)
-			}
-			return
-		case atom.Hr:
-			w.emit("---")
-			return
-		case atom.Table:
-			if t := w.table(n); t != "" {
-				w.emit(t)
-			}
-			return
-		case atom.Script, atom.Style, atom.Head:
-			return
-		}
+	if n.Type == html.ElementNode && w.element(n, depth) {
+		return
 	}
 	w.children(n, depth+1)
+}
+
+// element renders the block-level elements block knows, and reports whether n
+// was one of them. Anything else is walked through by block.
+func (w *writer) element(n *html.Node, depth int) bool {
+	switch n.DataAtom {
+	case atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6:
+		level := int(n.Data[1] - '0')
+		w.emit(strings.Repeat("#", level) + " " + inline(n))
+		return true
+	case atom.P, atom.Div:
+		// A div is a block in canvas markup, but it is also the wrapper
+		// around everything, so it only emits when it holds text directly
+		// rather than other blocks.
+		if hasBlockChild(n) {
+			w.children(n, depth+1)
+			return true
+		}
+		if s := inline(n); strings.TrimSpace(s) != "" {
+			w.emit(s)
+		}
+		return true
+	case atom.Ul, atom.Ol:
+		w.list = append(w.list, listState{ordered: n.DataAtom == atom.Ol})
+		var items []string
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type != html.ElementNode {
+				continue
+			}
+			switch c.DataAtom {
+			case atom.Li:
+				items = append(items, w.item(c, depth+1))
+			case atom.Ul, atom.Ol:
+				// A list directly inside a list, which the parser will hand
+				// back for markup that omitted the item around it. Rendered
+				// rather than dropped.
+				w.block(c, depth+1)
+			}
+		}
+		w.list = w.list[:len(w.list)-1]
+		if len(items) > 0 {
+			w.emit(strings.Join(items, "\n"))
+		}
+		return true
+	case atom.Pre:
+		body := strings.TrimRight(textOf(n), "\n")
+		fence := "```"
+		for strings.Contains(body, fence) {
+			fence += "`"
+		}
+		w.emit(fence + "\n" + body + "\n" + fence)
+		return true
+	case atom.Blockquote:
+		for line := range strings.SplitSeq(inline(n), "\n") {
+			w.emit("> " + line)
+		}
+		return true
+	case atom.Hr:
+		w.emit("---")
+		return true
+	case atom.Table:
+		if t := w.table(n); t != "" {
+			w.emit(t)
+		}
+		return true
+	case atom.Script, atom.Style, atom.Head:
+		return true
+	}
+	return false
 }
 
 func (w *writer) children(n *html.Node, depth int) {

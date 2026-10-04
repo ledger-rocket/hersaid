@@ -99,6 +99,8 @@ linters:
   - recvcheck
   - testableexamples
   - unqueryvet
+  - maintidx
+  - nestif
   - whitespace
   - funcorder
   - musttag
@@ -254,8 +256,6 @@ linters:
   - mnd # 23
   - err113 # 78
   - gosmopolitan # 5
-  - maintidx # 1
-  - nestif # 2
 severity:
   default: error
   rules:
