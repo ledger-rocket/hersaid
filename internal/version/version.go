@@ -157,12 +157,15 @@ func (i Info) withDefaults() Info {
 // String reports the running build of name.
 func String(name string) string { return Current(name).String() }
 
+// shortCommitLen is the customary length of an abbreviated revision.
+const shortCommitLen = 7
+
 // shortCommit abbreviates a full revision to the customary seven characters.
 // Anything that is not a plain hex revision is passed through untouched — all
 // of it, since truncating "abcdef0-release" to "abcdef0" would turn a label
 // someone chose into something that looks like a revision.
 func shortCommit(c string) string {
-	if len(c) <= 7 {
+	if len(c) <= shortCommitLen {
 		return c
 	}
 	for _, r := range c {
@@ -170,7 +173,7 @@ func shortCommit(c string) string {
 			return c
 		}
 	}
-	return c[:7]
+	return c[:shortCommitLen]
 }
 
 // day reduces a timestamp to the date. A build date is used to answer "roughly

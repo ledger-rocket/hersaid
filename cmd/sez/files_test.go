@@ -21,6 +21,16 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
+// phaseIntent is the audit phase recorded before any request, as the log's
+// JSON spells it.
+const phaseIntent = string(audit.Intent)
+
+// epCompleteUpload is the Slack method that shares staged files.
+const epCompleteUpload = "files.completeUploadExternal"
+
+// tracePDF is the file name most upload tests attach.
+const tracePDF = "trace.pdf"
+
 // sink is the fake object storage Slack's upload URL points at.
 type sink struct {
 	mu     sync.Mutex
@@ -102,7 +112,7 @@ func completes(s *slacktest.Server, ts string, ids ...string) {
 		}
 		parts = append(parts, fmt.Sprintf(`{"id":%q%s}`, id, shares))
 	}
-	s.Reply("files.completeUploadExternal", `{"ok":true,"files":[`+strings.Join(parts, ",")+`]}`)
+	s.Reply(epCompleteUpload, `{"ok":true,"files":[`+strings.Join(parts, ",")+`]}`)
 }
 
 func tmpFile(t *testing.T, name, content string) string {
@@ -161,7 +171,7 @@ func TestFilesAreStagedThenSharedAsOneMessage(t *testing.T) {
 	completes(s, "1785712596.256909", "F0000001", "F0000002")
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://acme.slack.com/archives/C0123ENG01/p1"}`)
 
-	a := tmpFile(t, "trace.pdf", strings.Repeat("a", 40))
+	a := tmpFile(t, tracePDF, strings.Repeat("a", 40))
 	b := tmpFile(t, "out.log", strings.Repeat("b", 14))
 
 	code, stdout, stderr := sez(t, s, "--send", "--file", a, "--file", b, "#eng", "here's the repro")
@@ -189,7 +199,7 @@ func TestFilesAreStagedThenSharedAsOneMessage(t *testing.T) {
 
 	var share *slacktest.Request
 	for _, r := range s.Requests() {
-		if r.Endpoint == "files.completeUploadExternal" {
+		if r.Endpoint == epCompleteUpload {
 			rr := r
 			share = &rr
 		}
@@ -220,7 +230,7 @@ func TestFilesAreStagedThenSharedAsOneMessage(t *testing.T) {
 	}
 
 	recs := readLog(t, logPath)
-	if got := phases(recs); len(got) < 2 || got[0] != "intent" || got[len(got)-1] != "outcome" {
+	if got := phases(recs); len(got) < 2 || got[0] != phaseIntent || got[len(got)-1] != "outcome" {
 		t.Fatalf("phases = %v, want intent first and outcome last", got)
 	}
 	last := recs[len(recs)-1]
@@ -243,7 +253,7 @@ func TestFilesAreStagedThenSharedAsOneMessage(t *testing.T) {
 	if got, _ := files[0]["path"].(string); got != a {
 		t.Errorf("files[0].path = %v, want the absolute path the render showed", files[0]["path"])
 	}
-	if got, _ := files[0]["name"].(string); got != "trace.pdf" {
+	if got, _ := files[0]["name"].(string); got != tracePDF {
 		t.Errorf("files[0].name = %v", files[0]["name"])
 	}
 	if got, _ := files[0]["size"].(float64); int(got) != 40 {
@@ -267,7 +277,7 @@ func TestFilesAreStagedThenSharedAsOneMessage(t *testing.T) {
 	if v, present := got[0]["id"]; !present || v != nil {
 		t.Errorf("intent files[0].id = %v (present=%t), want an explicit null", v, present)
 	}
-	if got[0]["path"] != a || got[0]["name"] != "trace.pdf" {
+	if got[0]["path"] != a || got[0]["name"] != tracePDF {
 		t.Errorf("intent files[0] = %v, want the path and name it was about to send", got[0])
 	}
 	if n, _ := got[0]["size"].(float64); int(n) != 40 {
@@ -300,7 +310,7 @@ func TestAFailedTransferSharesNothingAtAll(t *testing.T) {
 		`{"ok":false,"error":"file_uploads_disabled"}`)
 	completes(s, "1.1", "F0000001")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	b := tmpFile(t, "out.log", "bbbb")
 
 	code, stdout, stderr := sez(t, s, "--send", "--file", a, "--file", b, "#eng", "both attached")
@@ -308,7 +318,7 @@ func TestAFailedTransferSharesNothingAtAll(t *testing.T) {
 		t.Fatalf("exit = 0, want failure (stdout: %s)", stdout)
 	}
 	for _, r := range s.Requests() {
-		if r.Endpoint == "files.completeUploadExternal" {
+		if r.Endpoint == epCompleteUpload {
 			t.Fatal("the sharing leg ran; a failure before it must post nothing")
 		}
 	}
@@ -340,7 +350,7 @@ func TestTheUploadURLNeverReachesTheOutputOrTheLog(t *testing.T) {
 	uploadHosts = slackhosts.Allow("127.0.0.1")
 	t.Cleanup(func() { uploadHosts = saved })
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, stdout, stderr := sez(t, s, "--send", "--file", a, "#eng", "here")
 	if code == 0 {
 		t.Fatal("exit = 0, want the transfer to have failed")
@@ -385,7 +395,7 @@ func TestEveryPreflightRefusalCostsNoRequest(t *testing.T) {
 	}
 	f.Close()
 
-	real1 := tmpFile(t, "trace.pdf", "aaaa")
+	real1 := tmpFile(t, tracePDF, "aaaa")
 	link := filepath.Join(filepath.Dir(real1), "same.pdf")
 	err = os.Symlink(real1, link)
 	if err != nil {
@@ -443,14 +453,14 @@ func TestWithFilesAndNoTextNothingIsReadFromStdin(t *testing.T) {
 	stages(s, sinkURL, "F0000001")
 	completes(s, "1.1", "F0000001")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--send", "--file", a, "#eng"}, refusingReader{t}, &stdout, &stderr, s.URL)
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr.String())
 	}
 	for _, r := range s.Requests() {
-		if r.Endpoint != "files.completeUploadExternal" {
+		if r.Endpoint != epCompleteUpload {
 			continue
 		}
 		if got := r.BodyFields(); strings.Contains(strings.Join(got, ","), "initial_comment") {
@@ -468,13 +478,13 @@ func TestWithFilesADashStillReadsTheCommentFromStdin(t *testing.T) {
 	stages(s, sinkURL, "F0000001")
 	completes(s, "1.1", "F0000001")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, _, stderr := sezStdin(t, s, "piped comment\n", "--send", "--file", a, "#eng", "-")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
 	for _, r := range s.Requests() {
-		if r.Endpoint == "files.completeUploadExternal" {
+		if r.Endpoint == epCompleteUpload {
 			if got := r.Body.Get("initial_comment"); got != "piped comment" {
 				t.Fatalf("initial_comment = %q, want what was piped", got)
 			}
@@ -492,7 +502,7 @@ func TestAWhitespaceOnlyCommentIsStillRefused(t *testing.T) {
 	s := slacktest.New(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, _, _ := sezStdin(t, s, "   \n", "--send", "--file", a, "#eng", "-")
 	if code == 0 {
 		t.Fatal("exit = 0, want a refusal")
@@ -521,14 +531,14 @@ func TestWithoutFilesAnEmptyMessageIsStillRefused(t *testing.T) {
 // ---------------------------------------------------------------- refusals
 
 func TestFilesCannotBeAttachedToAnExistingMessage(t *testing.T) {
-	for _, verb := range []string{"--edit", "--delete"} {
+	for _, verb := range []string{flagEdit, "--delete"} {
 		t.Run(verb, func(t *testing.T) {
 			isolate(t)
 			seedCache(t)
 			s := slacktest.New(t)
 			t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 
-			a := tmpFile(t, "trace.pdf", "aaaa")
+			a := tmpFile(t, tracePDF, "aaaa")
 			code, _, stderr := sez(t, s, "--send", verb, "--file", a, "#eng", "1785712596.256909", "text")
 			if code != 2 {
 				t.Fatalf("exit = %d, want 2 (usage)", code)
@@ -566,7 +576,7 @@ func TestTheDryRunShowsEachFileByItsAbsolutePath(t *testing.T) {
 	s := slacktest.New(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 
-	a := tmpFile(t, "trace.pdf", strings.Repeat("a", 2048))
+	a := tmpFile(t, tracePDF, strings.Repeat("a", 2048))
 	code, stdout, _ := sez(t, s, "--file", a, "#eng", "here's the repro")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
@@ -587,7 +597,7 @@ func TestTheDryRunSaysWhenThereIsNoComment(t *testing.T) {
 	s := slacktest.New(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--file", a, "#eng"}, refusingReader{t}, &stdout, &stderr, s.URL)
 	if code != 0 {
@@ -630,14 +640,14 @@ func TestAThreadedUploadCarriesItsParent(t *testing.T) {
 	stages(s, sinkURL, "F0000001")
 	completes(s, "1.1", "F0000001")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, _, stderr := sez(t, s, "--send", "--thread", "1785708834.862009",
 		"--file", a, "#eng", "in the thread")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
 	for _, r := range s.Requests() {
-		if r.Endpoint == "files.completeUploadExternal" {
+		if r.Endpoint == epCompleteUpload {
 			if got := r.Body.Get("thread_ts"); got != "1785708834.862009" {
 				t.Fatalf("thread_ts = %q, want the parent given", got)
 			}
@@ -659,7 +669,7 @@ func TestTheWriteAllowlistRefusesAnUploadBeforeAnythingStages(t *testing.T) {
 	s := slacktest.New(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, _, _ := sez(t, s, "--send", "--file", a, "#eng", "text")
 	if code == 0 {
 		t.Fatal("exit = 0, want the allowlist to refuse")
@@ -677,7 +687,7 @@ func TestAnUnresolvedChannelFailsBeforeAnythingStages(t *testing.T) {
 	s := slacktest.New(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, _, _ := sez(t, s, "--send", "--file", a, "#eng", "text")
 	if code == 0 {
 		t.Fatal("exit = 0, want the unresolved channel refused")
@@ -696,13 +706,13 @@ func TestMarkdownIsConvertedInTheComment(t *testing.T) {
 	stages(s, sinkURL, "F0000001")
 	completes(s, "1.1", "F0000001")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, _, stderr := sez(t, s, "--send", "--md", "--file", a, "#eng", "**bold**")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
 	for _, r := range s.Requests() {
-		if r.Endpoint == "files.completeUploadExternal" {
+		if r.Endpoint == epCompleteUpload {
 			if got := r.Body.Get("initial_comment"); got != "*bold*" {
 				t.Fatalf("initial_comment = %q, want mrkdwn", got)
 			}
@@ -722,7 +732,7 @@ func TestAnUploadWithoutAShareTimestampStillSucceeds(t *testing.T) {
 	stages(s, sinkURL, "F0000001")
 	completes(s, "", "F0000001")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, stdout, stderr := sez(t, s, "--send", "--file", a, "#eng", "text")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
@@ -751,7 +761,7 @@ func TestNoByteLeavesForAHostOutsideTheAllowlist(t *testing.T) {
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	stages(s, sinkURL, "F0000001")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	code, _, stderr := sez(t, s, "--send", "--file", a, "#eng", "text")
 	if code == 0 {
 		t.Fatal("exit = 0, want the upload host refused")
@@ -763,7 +773,7 @@ func TestNoByteLeavesForAHostOutsideTheAllowlist(t *testing.T) {
 		t.Errorf("the refusal quoted the upload URL: %q", stderr)
 	}
 	for _, r := range s.Requests() {
-		if r.Endpoint == "files.completeUploadExternal" {
+		if r.Endpoint == epCompleteUpload {
 			t.Fatal("the sharing leg ran after a refused transfer")
 		}
 	}
@@ -789,11 +799,11 @@ func TestTheIntentIsOnDiskBeforeTheFirstRequest(t *testing.T) {
 	})
 	completes(s, "1.1", "F0000001")
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	if code, _, stderr := sez(t, s, "--send", "--file", a, "#eng", "text"); code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
-	if len(atFirstRequest) != 1 || atFirstRequest[0] != "intent" {
+	if len(atFirstRequest) != 1 || atFirstRequest[0] != phaseIntent {
 		t.Fatalf("phases when the first request arrived = %v, want exactly [intent]", atFirstRequest)
 	}
 }
@@ -895,13 +905,13 @@ func TestASignalWhileSharingRecordsUnknownExactlyOnce(t *testing.T) {
 	stages(s, sinkURL, "F0000001")
 
 	arrived := make(chan struct{})
-	s.ReplyFunc("files.completeUploadExternal", func(w http.ResponseWriter, r *http.Request) {
+	s.ReplyFunc(epCompleteUpload, func(w http.ResponseWriter, r *http.Request) {
 		close(arrived)
 		<-releaseOn(t, r)
 	})
 	release(t)
 
-	a := tmpFile(t, "trace.pdf", "aaaa")
+	a := tmpFile(t, tracePDF, "aaaa")
 	cmd := startHelper(t, s, "--send", "--file", a, "#eng", "text")
 	waitFor(t, cmd, arrived)
 
@@ -914,7 +924,7 @@ func TestASignalWhileSharingRecordsUnknownExactlyOnce(t *testing.T) {
 	recs := readLog(t, logPath)
 	var outcomes int
 	for _, r := range recs {
-		if p, _ := r["phase"].(string); p != "intent" {
+		if p, _ := r["phase"].(string); p != phaseIntent {
 			outcomes++
 		}
 	}

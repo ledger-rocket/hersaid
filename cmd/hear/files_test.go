@@ -14,6 +14,10 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/render"
 )
 
+// fixtureTS is the ts of the message the hear fixtures serve: the files tests
+// read its attachments, and the permalink tests address it.
+const fixtureTS = "1785708834.862009"
+
 // fileHost serves the bytes a stubbed file points at. It stands in for
 // files.slack.com, which is a different host from the API and so cannot be the
 // fake Slack itself.
@@ -42,7 +46,7 @@ func TestFilesWritesIntoADirectoryPerMessage(t *testing.T) {
 		`{"id":"F0123ABCD","name":"trace.pdf","mimetype":"application/pdf","size":9,"mode":"hosted","url_private_download":%q}`, url))
 
 	out := t.TempDir()
-	stdout, stderr, code := e.run("files", "#eng", "1785708834.862009", "--out", out)
+	stdout, stderr, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", out)
 
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
@@ -75,7 +79,7 @@ func TestMaxSizeReachesTheDownloadBound(t *testing.T) {
 		`{"id":"F0123ABCD","name":"big.pdf","mimetype":"application/pdf","size":0,"mode":"hosted","url_private_download":%q}`, url))
 
 	out := t.TempDir()
-	stdout, _, code := e.run("files", "#eng", "1785708834.862009", "--out", out, "--max-size", "1K")
+	stdout, _, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", out, "--max-size", "1K")
 
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1; 2048 bytes must not pass a 1K ceiling", code)
@@ -96,13 +100,13 @@ func TestFilesAsksForExactlyTheOneMessage(t *testing.T) {
 	e.warm()
 	e.messageWithFiles(`{"id":"F1","name":"a link","mode":"external"}`)
 
-	e.run("files", "#eng", "1785708834.862009", "--out", t.TempDir())
+	e.run(cmdFiles, "#eng", fixtureTS, "--out", t.TempDir())
 
 	q := e.query(0)
 	for _, c := range []struct{ key, want string }{
-		{"channel", "C0ENG0000"},
-		{"oldest", "1785708834.862009"},
-		{"latest", "1785708834.862009"},
+		{"channel", engID},
+		{"oldest", fixtureTS},
+		{"latest", fixtureTS},
 		{"inclusive", "true"},
 		{"limit", "1"},
 	} {
@@ -123,7 +127,7 @@ func TestFilesExitsNonZeroWhenAnythingWasSkipped(t *testing.T) {
 			`{"id":"F2","name":"design-notes","mode":"external","is_external":true}`, url))
 
 	out := t.TempDir()
-	stdout, _, code := e.run("files", "#eng", "1785708834.862009", "--out", out)
+	stdout, _, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", out)
 
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
@@ -147,7 +151,7 @@ func TestFilesJSONReportsEachFile(t *testing.T) {
 			`{"id":"F2","name":"design-notes","mode":"external"}`, url))
 
 	out := t.TempDir()
-	stdout, _, code := e.run("files", "#eng", "1785708834.862009", "--out", out, "--json")
+	stdout, _, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", out, "--json")
 
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
@@ -170,7 +174,7 @@ func TestFilesJSONReportsEachFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout)
 	}
-	if got.Kind != "files" || got.TS != "1785708834.862009" || got.Channel.Name != "eng" {
+	if got.Kind != render.KindFiles || got.TS != fixtureTS || got.Channel.Name != "eng" {
 		t.Fatalf("envelope = %+v, want it to name the message", got)
 	}
 	if len(got.Files) != 2 {
@@ -194,7 +198,7 @@ func TestFilesJSONNamesNoDirectoryWhenNothingWasWritten(t *testing.T) {
 	e.warm()
 	e.messageWithFiles(`{"id":"F1","name":"a link","mode":"external"}`)
 
-	stdout, _, code := e.run("files", "#eng", "1785708834.862009", "--out", t.TempDir(), "--json")
+	stdout, _, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", t.TempDir(), "--json")
 
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
@@ -218,9 +222,9 @@ func TestFilesFollowsAPermalinkToTheMessageItNames(t *testing.T) {
 		`{"ok":true,"messages":[{"ts":"1785708834.862009","user":"U0STEPAN0","files":[{"id":"F1","name":"a link","mode":"external"}]}]}`)
 
 	link := "https://acme.slack.com/archives/C0ENG0000/p1785708834862009?thread_ts=1785700000.000100"
-	e.run("files", link, "--out", t.TempDir())
+	e.run(cmdFiles, link, "--out", t.TempDir())
 
-	if got := e.query(0).Get("latest"); got != "1785708834.862009" {
+	if got := e.query(0).Get("latest"); got != fixtureTS {
 		t.Fatalf("latest = %q, want the message the link names, not its thread", got)
 	}
 }
@@ -242,7 +246,7 @@ func TestFilesFindsAFileOnAThreadReply(t *testing.T) {
 		url))
 
 	out := t.TempDir()
-	stdout, stderr, code := e.run("files", "#eng", "1785708834.862009", "--out", out)
+	stdout, stderr, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", out)
 
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
@@ -257,7 +261,7 @@ func TestFilesFindsAFileOnAThreadReply(t *testing.T) {
 	// The reply is asked for by its own timestamp, which is what
 	// conversations.replies accepts alongside a parent's.
 	if got := e.srv.Requests()[1]; got.Endpoint != "conversations.replies" ||
-		got.Query.Get("ts") != "1785708834.862009" {
+		got.Query.Get("ts") != fixtureTS {
 		t.Fatalf("second request = %s ts=%q, want replies for the message's own ts",
 			got.Endpoint, got.Query.Get("ts"))
 	}
@@ -269,7 +273,7 @@ func TestFilesDoesNotAskForARepliesPageItDoesNotNeed(t *testing.T) {
 	e.warm()
 	e.messageWithFiles(`{"id":"F1","name":"a link","mode":"external"}`)
 
-	e.run("files", "#eng", "1785708834.862009", "--out", t.TempDir())
+	e.run(cmdFiles, "#eng", fixtureTS, "--out", t.TempDir())
 
 	for _, r := range e.srv.Requests() {
 		if r.Endpoint == "conversations.replies" {
@@ -284,7 +288,7 @@ func TestFilesRefusesAMessageWithNoFiles(t *testing.T) {
 	e.srv.Reply("conversations.history",
 		`{"ok":true,"messages":[{"ts":"1785708834.862009","user":"U0STEPAN0","text":"just words"}]}`)
 
-	_, stderr, code := e.run("files", "#eng", "1785708834.862009", "--out", t.TempDir())
+	_, stderr, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", t.TempDir())
 
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
@@ -306,12 +310,12 @@ func TestFilesReportsATimestampThatNamesNothing(t *testing.T) {
 	e.srv.Reply("conversations.history", `{"ok":true,"messages":[]}`)
 	e.srv.Reply("conversations.replies", `{"ok":false,"error":"thread_not_found"}`)
 
-	_, stderr, code := e.run("files", "#eng", "1785708834.862009", "--out", t.TempDir())
+	_, stderr, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", t.TempDir())
 
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
-	for _, want := range []string{"1785708834.862009", "thread_not_found"} {
+	for _, want := range []string{fixtureTS, "thread_not_found"} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("stderr = %q, want it to contain %q", stderr, want)
 		}
@@ -327,7 +331,7 @@ func TestFilesReportsATimestampAbsentFromItsThread(t *testing.T) {
 	e.srv.Reply("conversations.replies",
 		`{"ok":true,"messages":[{"ts":"1785700000.000100","user":"U0ANN0000","text":"the parent"}]}`)
 
-	_, stderr, code := e.run("files", "#eng", "1785708834.862009", "--out", t.TempDir())
+	_, stderr, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", t.TempDir())
 
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
@@ -343,27 +347,27 @@ func TestFilesUsage(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no arguments", []string{"files"}, "needs an address and a ts"},
-		{"no ts", []string{"files", "#eng"}, "needs an address and a ts"},
-		{"too many", []string{"files", "#eng", "1.1", "2.2"}, "needs an address and a ts"},
+		{"no arguments", []string{cmdFiles}, "needs an address and a ts"},
+		{"no ts", []string{cmdFiles, "#eng"}, "needs an address and a ts"},
+		{"too many", []string{cmdFiles, "#eng", "1.1", "2.2"}, "needs an address and a ts"},
 		{
 			"a permalink and a ts",
-			[]string{"files", "https://acme.slack.com/archives/C0ENG0000/p1785708834862009", "1.1"},
+			[]string{cmdFiles, "https://acme.slack.com/archives/C0ENG0000/p1785708834862009", "1.1"},
 			"already names the timestamp",
 		},
 		{"--out on read", []string{"read", "#eng", "--out", "/tmp"}, "apply to files"},
 		{"--max-size on thread", []string{"thread", "#eng", "1.1", "--max-size", "1M"}, "apply to files"},
-		{"--out with no directory", []string{"files", "#eng", "1.1", "--out"}, "needs a directory"},
-		{"--max-size with no size", []string{"files", "#eng", "1.1", "--max-size"}, "needs a size"},
-		{"--max-size nonsense", []string{"files", "#eng", "1.1", "--max-size", "big"}, "not a size"},
-		{"--max-size zero", []string{"files", "#eng", "1.1", "--max-size", "0"}, "larger than nothing"},
+		{"--out with no directory", []string{cmdFiles, "#eng", "1.1", "--out"}, "needs a directory"},
+		{"--max-size with no size", []string{cmdFiles, "#eng", "1.1", "--max-size"}, "needs a size"},
+		{"--max-size nonsense", []string{cmdFiles, "#eng", "1.1", "--max-size", "big"}, "not a size"},
+		{"--max-size zero", []string{cmdFiles, "#eng", "1.1", "--max-size", "0"}, "larger than nothing"},
 		// The ceiling has to stay one below the maximum: the download reads a
 		// byte past it to tell a file of exactly the limit from an overrun, and
 		// at the maximum that addition wraps negative — which reads no bytes at
 		// all and calls the empty result a success.
 		{
 			"--max-size at the int64 maximum",
-			[]string{"files", "#eng", "1.1", "--max-size", "9223372036854775807"},
+			[]string{cmdFiles, "#eng", "1.1", "--max-size", "9223372036854775807"},
 			"larger than any file Slack stores",
 		},
 	} {
@@ -417,8 +421,8 @@ func TestMessageDirIsAlwaysOneElement(t *testing.T) {
 	for _, c := range []struct {
 		name, id, ts, want string
 	}{
-		{"eng", "C0ENG0000", "1785708834.862009", "eng-1785708834.862009"},
-		{"", "D0STEPAN0", "1785708834.862009", "D0STEPAN0-1785708834.862009"},
+		{"eng", engID, fixtureTS, "eng-1785708834.862009"},
+		{"", "D0STEPAN0", fixtureTS, "D0STEPAN0-1785708834.862009"},
 		{"../etc", "C1", "1.1", "..-etc-1.1"},
 		{"..", "C1", "1.1", "--1.1"},
 		{"a b/c", "C1", "1.1", "a-b-c-1.1"},

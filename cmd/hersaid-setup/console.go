@@ -143,9 +143,13 @@ func onAbort(f func()) (stop func()) {
 	}
 }
 
+// signalExitBase is the shell convention: a process killed by signal n exits
+// with 128+n.
+const signalExitBase = 128
+
 func exitCode(sig os.Signal) int {
 	if s, ok := sig.(syscall.Signal); ok {
-		return 128 + int(s)
+		return signalExitBase + int(s)
 	}
 	return 1
 }

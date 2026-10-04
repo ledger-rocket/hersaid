@@ -8,6 +8,9 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
 
+// selfID is the reader's own user id in these tests.
+const selfID = "SELF"
+
 func reacted(count int, users ...string) []slackread.Message {
 	return []slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
@@ -15,7 +18,7 @@ func reacted(count int, users ...string) []slackread.Message {
 	}}
 }
 
-var five = Names{"U1": "A", "U2": "B", "U3": "C", "U4": "D", "SELF": "Stepan"}
+var five = Names{"U1": "A", "U2": "B", "U3": "C", "U4": "D", selfID: "Stepan"}
 
 // The reader is named "you" and placed first. Slack does not order the users
 // array, so past three reactors the reader's own name would otherwise fall into
@@ -24,9 +27,9 @@ var five = Names{"U1": "A", "U2": "B", "U3": "C", "U4": "D", "SELF": "Stepan"}
 func TestTheReaderIsNamedYouAndComesFirst(t *testing.T) {
 	var b bytes.Buffer
 	o := opts()
-	o.SelfID = "SELF"
+	o.SelfID = selfID
 
-	err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", "SELF"), five, o)
+	err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", selfID), five, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,9 +43,9 @@ func TestTheReaderIsNamedYouAndComesFirst(t *testing.T) {
 func TestPromotingTheReaderKeepsTheOverflowHonest(t *testing.T) {
 	var b bytes.Buffer
 	o := opts()
-	o.SelfID = "SELF"
+	o.SelfID = selfID
 
-	err := WriteTranscript(&b, reacted(50, "U1", "U2", "U3", "U4", "SELF"), five, o)
+	err := WriteTranscript(&b, reacted(50, "U1", "U2", "U3", "U4", selfID), five, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,9 +58,9 @@ func TestPromotingTheReaderKeepsTheOverflowHonest(t *testing.T) {
 func TestTheReaderIsNotDuplicatedWhenAlreadyListed(t *testing.T) {
 	var b bytes.Buffer
 	o := opts()
-	o.SelfID = "SELF"
+	o.SelfID = selfID
 
-	err := WriteTranscript(&b, reacted(3, "SELF", "U1", "U2"), five, o)
+	err := WriteTranscript(&b, reacted(3, selfID, "U1", "U2"), five, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +76,7 @@ func TestTheReaderIsNotDuplicatedWhenAlreadyListed(t *testing.T) {
 func TestAReactionTheReaderHasNotGivenIsUnchanged(t *testing.T) {
 	var b bytes.Buffer
 	o := opts()
-	o.SelfID = "SELF"
+	o.SelfID = selfID
 
 	err := WriteTranscript(&b, reacted(2, "U1", "U2"), five, o)
 	if err != nil {
@@ -90,7 +93,7 @@ func TestAReactionTheReaderHasNotGivenIsUnchanged(t *testing.T) {
 func TestWithoutAnIdentityTheLineIsUnchanged(t *testing.T) {
 	var b bytes.Buffer
 
-	err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", "SELF"), five, opts())
+	err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", selfID), five, opts())
 	if err != nil {
 		t.Fatal(err)
 	}

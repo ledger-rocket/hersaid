@@ -15,6 +15,13 @@ import (
 	"path/filepath"
 )
 
+// privateDirPerm and privateFilePerm keep what hersaid writes readable by its
+// owner only.
+const (
+	privateDirPerm  = 0o700
+	privateFilePerm = 0o600
+)
+
 // File names under the cache directory.
 const (
 	ConversationsFile = "chans.json"
@@ -151,7 +158,7 @@ func Write(name string, v any) error {
 	if err != nil {
 		return err
 	}
-	err = os.MkdirAll(dir, 0o700)
+	err = os.MkdirAll(dir, privateDirPerm)
 	if err != nil {
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
@@ -160,7 +167,7 @@ func Write(name string, v any) error {
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
 	defer os.Remove(tmp.Name()) // no-op once the rename has succeeded
-	err = tmp.Chmod(0o600)
+	err = tmp.Chmod(privateFilePerm)
 	if err != nil {
 		tmp.Close()
 		return fmt.Errorf("cache %s: %w", name, err)

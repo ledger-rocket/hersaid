@@ -23,6 +23,9 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
+// helloText is the message most send tests post.
+const helloText = "hello"
+
 // isolate stops a real credential, cache or audit log on the developer's
 // machine reaching a test, and gives each test its own log to assert on.
 func isolate(t *testing.T) string {
@@ -134,7 +137,7 @@ func TestCredentialGateIssuesNoRequest(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.postMessage", `{"ok":true,"ts":"1.2"}`)
 
-	code, stdout, stderr := sez(t, s, "--send", "#eng", "hello")
+	code, stdout, stderr := sez(t, s, "--send", "#eng", helloText)
 
 	if code == 0 {
 		t.Fatalf("exit code = 0; a refused send must be non-zero (stdout %q)", stdout)
@@ -166,7 +169,7 @@ func TestExplicitlyEmptyTokenIsTreatedAsAbsent(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.postMessage", `{"ok":true,"ts":"1.2"}`)
 
-	code, _, stderr := sez(t, s, "--send", "#eng", "hello")
+	code, _, stderr := sez(t, s, "--send", "#eng", helloText)
 
 	if code == 0 {
 		t.Fatal("exit code = 0; an explicitly empty token must close the gate")
@@ -282,13 +285,13 @@ func TestIntentIsRecordedBeforeTheRequestBegins(t *testing.T) {
 		t.Fatalf("exit code = %d (stderr %q)", code, stderr)
 	}
 
-	if got := phases(atRequest); !reflect.DeepEqual(got, []string{"intent"}) {
+	if got := phases(atRequest); !reflect.DeepEqual(got, []string{phaseIntent}) {
 		t.Fatalf("audit at the moment of the request = %v, want [intent]", got)
 	}
 	if atRequest[0]["ok"] != nil {
 		t.Fatalf("intent ok = %v, want null — the outcome is not yet known", atRequest[0]["ok"])
 	}
-	if got := phases(readLog(t, log)); !reflect.DeepEqual(got, []string{"intent", "outcome"}) {
+	if got := phases(readLog(t, log)); !reflect.DeepEqual(got, []string{phaseIntent, "outcome"}) {
 		t.Fatalf("audit phases = %v, want [intent outcome]", got)
 	}
 }
@@ -315,7 +318,7 @@ func TestPostSendTransportFailureIsRecordedAsUnknown(t *testing.T) {
 	}
 
 	recs := readLog(t, log)
-	if got := phases(recs); !reflect.DeepEqual(got, []string{"intent", "outcome"}) {
+	if got := phases(recs); !reflect.DeepEqual(got, []string{phaseIntent, "outcome"}) {
 		t.Fatalf("audit phases = %v, want [intent outcome]", got)
 	}
 	if recs[1]["ok"] != nil {
@@ -347,7 +350,7 @@ func TestAnUnrecognisedRefusalIsNotTreatedAsSent(t *testing.T) {
 				t.Fatalf("stdout = %q; nothing was sent", stdout)
 			}
 			recs := readLog(t, log)
-			if got := phases(recs); !reflect.DeepEqual(got, []string{"intent", "outcome"}) {
+			if got := phases(recs); !reflect.DeepEqual(got, []string{phaseIntent, "outcome"}) {
 				t.Fatalf("audit phases = %v", got)
 			}
 			if recs[1]["ok"] != false {
@@ -368,7 +371,7 @@ func TestAPIRefusalIsRecordedAsFailed(t *testing.T) {
 		t.Fatal("exit code = 0; a refused post must be non-zero")
 	}
 	recs := readLog(t, log)
-	if got := phases(recs); !reflect.DeepEqual(got, []string{"intent", "outcome"}) {
+	if got := phases(recs); !reflect.DeepEqual(got, []string{phaseIntent, "outcome"}) {
 		t.Fatalf("audit phases = %v", got)
 	}
 	if recs[1]["ok"] != false {
@@ -466,7 +469,7 @@ func TestALostOutcomeRecordIsFatalAndStillReportsDelivery(t *testing.T) {
 		t.Fatalf("stderr = %q, want it to name the lost record", stderr.String())
 	}
 	// The intent record survives: it was durable before the request left.
-	if got := phases(readLog(t, logPath)); !reflect.DeepEqual(got, []string{"intent"}) {
+	if got := phases(readLog(t, logPath)); !reflect.DeepEqual(got, []string{phaseIntent}) {
 		t.Fatalf("audit phases = %v, want [intent] — the outcome is the record that was lost", got)
 	}
 }
@@ -573,7 +576,7 @@ func TestAllowlistPermitsAListedTarget(t *testing.T) {
 	if got := s.Hits(); got != 2 {
 		t.Fatalf("Slack received %d requests, want 2 (post + permalink)", got)
 	}
-	if got := phases(readLog(t, log)); !reflect.DeepEqual(got, []string{"intent", "outcome"}) {
+	if got := phases(readLog(t, log)); !reflect.DeepEqual(got, []string{phaseIntent, "outcome"}) {
 		t.Fatalf("audit phases = %v", got)
 	}
 }
@@ -933,12 +936,12 @@ func TestStdinTrailingNewlinesAreDropped(t *testing.T) {
 	if code, _, stderr := sezStdin(t, s, "hello\n\n\n", "--send", "#eng"); code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr)
 	}
-	if got := sent(t, s); got != "hello" {
-		t.Fatalf("text on the wire = %q, want %q", got, "hello")
+	if got := sent(t, s); got != helloText {
+		t.Fatalf("text on the wire = %q, want %q", got, helloText)
 	}
 	recs := readLog(t, log)
-	if got := recs[len(recs)-1]["text"]; got != "hello" {
-		t.Fatalf("audit text = %q, want %q", got, "hello")
+	if got := recs[len(recs)-1]["text"]; got != helloText {
+		t.Fatalf("audit text = %q, want %q", got, helloText)
 	}
 }
 
@@ -1473,7 +1476,7 @@ func TestSignalDuringTheSendWindowStillRecords(t *testing.T) {
 	s := slacktest.New(t)
 	arrived := heldOpen(t, s)
 
-	cmd := startHelper(t, s, "--send", "#eng", "hello")
+	cmd := startHelper(t, s, "--send", "#eng", helloText)
 	waitFor(t, cmd, arrived)
 
 	err := cmd.Process.Signal(syscall.SIGTERM)
@@ -1491,7 +1494,7 @@ func TestSignalDuringTheSendWindowStillRecords(t *testing.T) {
 	}
 
 	recs := readLog(t, log)
-	if got := phases(recs); !reflect.DeepEqual(got, []string{"intent", "abort"}) {
+	if got := phases(recs); !reflect.DeepEqual(got, []string{phaseIntent, "abort"}) {
 		t.Fatalf("audit phases = %v, want [intent abort]", got)
 	}
 	if recs[1]["ok"] != nil {
@@ -1510,7 +1513,7 @@ func TestSigkillLeavesTheIntentRecord(t *testing.T) {
 	s := slacktest.New(t)
 	arrived := heldOpen(t, s)
 
-	cmd := startHelper(t, s, "--send", "#eng", "hello")
+	cmd := startHelper(t, s, "--send", "#eng", helloText)
 	waitFor(t, cmd, arrived)
 
 	err := cmd.Process.Kill()
@@ -1520,10 +1523,10 @@ func TestSigkillLeavesTheIntentRecord(t *testing.T) {
 	_ = cmd.Wait()
 
 	recs := readLog(t, log)
-	if got := phases(recs); !reflect.DeepEqual(got, []string{"intent"}) {
+	if got := phases(recs); !reflect.DeepEqual(got, []string{phaseIntent}) {
 		t.Fatalf("audit phases = %v, want exactly [intent]", got)
 	}
-	if recs[0]["text"] != "hello" || recs[0]["channel"] != "#eng" {
+	if recs[0]["text"] != helloText || recs[0]["channel"] != "#eng" {
 		t.Fatalf("intent record = %v, want it to say what was about to go out", recs[0])
 	}
 }
@@ -1537,7 +1540,7 @@ func TestAColdCacheNamesTheCommandThatFillsIt(t *testing.T) {
 	s := slacktest.New(t)
 	delivers(s)
 
-	code, _, stderr := sez(t, s, "--send", "@sam", "hello")
+	code, _, stderr := sez(t, s, "--send", "@sam", helloText)
 	if code == 0 {
 		t.Fatal("exit code = 0; nobody could be resolved")
 	}
@@ -1566,7 +1569,7 @@ func TestASignalDuringThePermalinkFetchStillRecords(t *testing.T) {
 		<-r.Context().Done()
 	})
 
-	cmd := startHelper(t, s, "--send", "#eng", "hello")
+	cmd := startHelper(t, s, "--send", "#eng", helloText)
 	waitFor(t, cmd, arrived)
 
 	err := cmd.Process.Signal(syscall.SIGTERM)
@@ -1583,7 +1586,7 @@ func TestASignalDuringThePermalinkFetchStillRecords(t *testing.T) {
 	}
 
 	recs := readLog(t, log)
-	if got := phases(recs); !reflect.DeepEqual(got, []string{"intent", "abort"}) {
+	if got := phases(recs); !reflect.DeepEqual(got, []string{phaseIntent, "abort"}) {
 		t.Fatalf("audit phases = %v, want [intent abort]", got)
 	}
 	if recs[1]["ok"] != nil {
@@ -1601,7 +1604,7 @@ func TestMissingScopeExplainsTheFix(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.postMessage", `{"ok":false,"error":"missing_scope"}`)
 
-	code, _, stderr := sez(t, s, "--send", "#eng", "hello")
+	code, _, stderr := sez(t, s, "--send", "#eng", helloText)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -1621,7 +1624,7 @@ func TestOtherRefusalsGetNoScopeAdvice(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.postMessage", `{"ok":false,"error":"channel_not_found"}`)
 
-	code, _, stderr := sez(t, s, "--send", "#eng", "hello")
+	code, _, stderr := sez(t, s, "--send", "#eng", helloText)
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}

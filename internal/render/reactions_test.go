@@ -65,7 +65,7 @@ func TestReactionsPrecedeTheReplyHint(t *testing.T) {
 		Reactions: []slackread.Reaction{{Name: "eyes", Count: 1, Users: []string{"U1"}}},
 	}}
 	o := opts()
-	o.ThreadCommand = "hear thread #eng"
+	o.ThreadCommand = threadCmd
 
 	err := WriteTranscript(&b, msgs, Names{"U1": "Stepan"}, o)
 	if err != nil {

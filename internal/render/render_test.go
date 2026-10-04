@@ -11,6 +11,12 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
 
+// stampUTC is a message time as the JSON form writes it.
+const stampUTC = "2026-08-02T22:13:54Z"
+
+// threadCmd is the command a thread hint names for #eng.
+const threadCmd = "hear thread #eng"
+
 // utc keeps the date column deterministic. time.Local cannot be used for this:
 // it is resolved once per process, so a test that set TZ would pass or fail
 // depending on what ran before it.
@@ -111,7 +117,7 @@ func TestReplyHintNamesTheThreadCommand(t *testing.T) {
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.862009", Username: "bot", Text: "topic", ReplyCount: 3}}
 	o := opts()
-	o.ThreadCommand = "hear thread #eng"
+	o.ThreadCommand = threadCmd
 
 	err := WriteTranscript(&b, msgs, Names{}, o)
 	if err != nil {
@@ -128,7 +134,7 @@ func TestNoReplyHintWithoutReplies(t *testing.T) {
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.862009", Username: "bot", Text: "topic"}}
 	o := opts()
-	o.ThreadCommand = "hear thread #eng"
+	o.ThreadCommand = threadCmd
 
 	err := WriteTranscript(&b, msgs, Names{}, o)
 	if err != nil {
@@ -297,7 +303,7 @@ func TestStructuredMessagesCarryRawAndRenderedText(t *testing.T) {
 	if m.TextRendered != "hi @ann" {
 		t.Errorf("TextRendered = %q, want the mention resolved", m.TextRendered)
 	}
-	if m.Time != "2026-08-02T22:13:54Z" {
+	if m.Time != stampUTC {
 		t.Errorf("Time = %q", m.Time)
 	}
 	if m.User != "U2" || m.TS != "1785708834.862009" || m.ReplyCount != 2 {
@@ -360,7 +366,7 @@ func TestTheStructuredTimeIsUTCWhereTheTranscriptIsLocal(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("got %d messages, want 1", len(got))
 	}
-	if want := "2026-08-02T22:13:54Z"; got[0].Time != want {
+	if want := stampUTC; got[0].Time != want {
 		t.Errorf("structured time = %q, want %q — the local zone is leaking into it", got[0].Time, want)
 	}
 	// Options{} is what the commands pass for a transcript: no zone named,
@@ -387,7 +393,7 @@ func TestASearchHitsTimeIsUTC(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("got %d hits, want 1", len(got))
 	}
-	if want := "2026-08-02T22:13:54Z"; got[0].Time != want {
+	if want := stampUTC; got[0].Time != want {
 		t.Errorf("hit time = %q, want %q", got[0].Time, want)
 	}
 }

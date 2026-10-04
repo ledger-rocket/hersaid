@@ -20,7 +20,7 @@ func TestAGateRefusalIsRecorded(t *testing.T) {
 	watchCredential(t)
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--send", "#eng", "hello"}, strings.NewReader(""), &stdout, &stderr, s.URL)
+	code := run([]string{"--send", "#eng", helloText}, strings.NewReader(""), &stdout, &stderr, s.URL)
 
 	if code == 0 {
 		t.Fatal("exit = 0; a refused send must fail")
@@ -43,7 +43,7 @@ func TestAGateRefusalIsRecorded(t *testing.T) {
 	if e, _ := r["error"].(string); !strings.Contains(e, "credential") {
 		t.Fatalf("error = %v, want it to name the missing credential", r["error"])
 	}
-	if txt, _ := r["text"].(string); txt != "hello" {
+	if txt, _ := r["text"].(string); txt != helloText {
 		t.Fatalf("text = %v, want the message that was refused", r["text"])
 	}
 }

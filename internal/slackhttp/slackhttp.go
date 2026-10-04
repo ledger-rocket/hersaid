@@ -83,6 +83,13 @@ func TimeoutFromEnv() (time.Duration, error) {
 	return time.Duration(n) * time.Second, nil
 }
 
+// keepAlivePeriod is the TCP keep-alive interval; idleConnTimeout is how long an
+// idle pooled connection is kept. They are separate knobs that happen to agree.
+const (
+	keepAlivePeriod = 30 * time.Second
+	idleConnTimeout = 30 * time.Second
+)
+
 func newTransport() *http.Transport {
 	return &http.Transport{
 		// nil, not ProxyFromEnvironment: no environment variable may route a
@@ -90,11 +97,11 @@ func newTransport() *http.Transport {
 		Proxy: nil,
 		DialContext: (&net.Dialer{
 			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
+			KeepAlive: keepAlivePeriod,
 		}).DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          4,
-		IdleConnTimeout:       30 * time.Second,
+		IdleConnTimeout:       idleConnTimeout,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},

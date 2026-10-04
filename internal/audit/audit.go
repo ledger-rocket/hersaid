@@ -21,6 +21,13 @@ import (
 	"time"
 )
 
+// privateDirPerm and privateFilePerm keep what hersaid writes readable by its
+// owner only.
+const (
+	privateDirPerm  = 0o700
+	privateFilePerm = 0o600
+)
+
 var (
 	errAuditNoLogPath  = errors.New("audit: no log path")
 	errAuditShortWrite = errors.New("audit: short write")
@@ -351,11 +358,11 @@ func Open(path string) (*Log, error) {
 	if path == "" {
 		return nil, errAuditNoLogPath
 	}
-	err := os.MkdirAll(filepath.Dir(path), 0o700)
+	err := os.MkdirAll(filepath.Dir(path), privateDirPerm)
 	if err != nil {
 		return nil, fmt.Errorf("audit: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, privateFilePerm)
 	if err != nil {
 		return nil, fmt.Errorf("audit: %w", err)
 	}
@@ -363,7 +370,7 @@ func Open(path string) (*Log, error) {
 	// An existing log may predate this, or have been created by another tool.
 	// Warned about rather than refused: losing the record is worse than a
 	// permissive mode on a file the user already owns.
-	err = f.Chmod(0o600)
+	err = f.Chmod(privateFilePerm)
 	if err != nil {
 		l.warnings = append(l.warnings,
 			fmt.Sprintf("cannot enforce 0600 on %s: %v", path, err))
@@ -453,9 +460,13 @@ func OnAbort(f func(sig os.Signal)) (stop func()) {
 	}
 }
 
+// signalExitBase is the shell convention: a process killed by signal n exits
+// with 128+n.
+const signalExitBase = 128
+
 func exitCode(sig os.Signal) int {
 	if s, ok := sig.(syscall.Signal); ok {
-		return 128 + int(s)
+		return signalExitBase + int(s)
 	}
 	return 1
 }

@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+// typed is what the masked-read tests type before the key under test.
+const typed = "abc"
+
 // read drives the production masking loop over a scripted input and returns
 // what it accepted alongside what it put on screen.
 func read(t *testing.T, input string) (got, echoed string, err error) {
@@ -62,8 +65,8 @@ func TestBackspaceRemovesACharacterAndItsAsterisk(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got != "abc" {
-				t.Errorf("read %q, want %q", got, "abc")
+			if got != typed {
+				t.Errorf("read %q, want %q", got, typed)
 			}
 			// Three asterisks, then the erase sequence, then one more.
 			if want := "***\b \b*\n"; echoed != want {
@@ -114,12 +117,12 @@ func TestEnterEndsInput(t *testing.T) {
 		{name: "carriage return", key: "\r"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, _, err := read(t, "abc"+tc.key+"ignored")
+			got, _, err := read(t, typed+tc.key+"ignored")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got != "abc" {
-				t.Errorf("read %q, want %q", got, "abc")
+			if got != typed {
+				t.Errorf("read %q, want %q", got, typed)
 			}
 		})
 	}
@@ -128,12 +131,12 @@ func TestEnterEndsInput(t *testing.T) {
 // Input that ends without a newline yields what was typed. A truncated token
 // fails verification, which says more than an unexplained empty prompt would.
 func TestEndOfInputYieldsWhatWasTyped(t *testing.T) {
-	got, _, err := read(t, "abc")
+	got, _, err := read(t, typed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "abc" {
-		t.Errorf("read %q, want %q", got, "abc")
+	if got != typed {
+		t.Errorf("read %q, want %q", got, typed)
 	}
 }
 

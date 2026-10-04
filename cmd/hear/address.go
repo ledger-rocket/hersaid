@@ -102,12 +102,19 @@ func parsePermalink(target string) (permalink, bool, error) {
 // stops at hours, and "7d" is the length most reads are asked for.
 var sinceUnit = regexp.MustCompile(`^([0-9]+)([smhdw])$`)
 
+// day and week are what --since counts them as: 24 hours, and seven of those,
+// whatever the clock did.
+const (
+	day  = 24 * time.Hour
+	week = 7 * day
+)
+
 var sinceUnits = map[string]time.Duration{
 	"s": time.Second,
 	"m": time.Minute,
 	"h": time.Hour,
-	"d": 24 * time.Hour,
-	"w": 7 * 24 * time.Hour,
+	"d": day,
+	"w": week,
 }
 
 // sizeUnit is a byte count written the way a person says it: a number, an
@@ -116,11 +123,13 @@ var sinceUnits = map[string]time.Duration{
 var sizeUnit = regexp.MustCompile(`^([0-9]+)([KMGkmg]?)[Bb]?$`)
 
 // The steps are 1024, matching how a file's size is reported everywhere else.
+const kibibyte = 1 << 10
+
 var sizeUnits = map[string]int64{
 	"":  1,
-	"k": 1 << 10,
-	"m": 1 << 20,
-	"g": 1 << 30,
+	"k": kibibyte,
+	"m": kibibyte * kibibyte,
+	"g": kibibyte * kibibyte * kibibyte,
 }
 
 // parseSize reads a per-file ceiling. Zero is refused: it asks for no bytes at

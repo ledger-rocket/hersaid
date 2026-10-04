@@ -10,6 +10,9 @@ import (
 	"testing"
 )
 
+// engName is the conversation name the cache tests store.
+const engName = "eng"
+
 func isolate(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -22,7 +25,7 @@ func isolate(t *testing.T) string {
 func TestOnDiskShapeIsTheAPIResponse(t *testing.T) {
 	dir := isolate(t)
 	err := Write(ConversationsFile, Conversations{Channels: []Conversation{
-		{ID: "C0123ABCD", Name: "eng"},
+		{ID: "C0123ABCD", Name: engName},
 		{ID: "D0123ABCD", IsIM: true, User: "U0123ABCD"},
 	}})
 	if err != nil {
@@ -42,7 +45,7 @@ func TestOnDiskShapeIsTheAPIResponse(t *testing.T) {
 	if len(shaped.Channels) != 2 {
 		t.Fatalf("channels = %v", shaped.Channels)
 	}
-	if shaped.Channels[0]["id"] != "C0123ABCD" || shaped.Channels[0]["name"] != "eng" {
+	if shaped.Channels[0]["id"] != "C0123ABCD" || shaped.Channels[0]["name"] != engName {
 		t.Fatalf("first channel = %v, want the id/name keys jq reads", shaped.Channels[0])
 	}
 	if shaped.Channels[1]["is_im"] != true || shaped.Channels[1]["user"] != "U0123ABCD" {
@@ -135,7 +138,7 @@ func TestACacheWrittenByHandIsRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Channels) != 1 || c.Channels[0].Name != "eng" {
+	if len(c.Channels) != 1 || c.Channels[0].Name != engName {
 		t.Fatalf("channels = %+v", c.Channels)
 	}
 }
@@ -288,7 +291,7 @@ func TestOfflineStoreNeverFetches(t *testing.T) {
 
 func TestFillingStoreFetchesOnceAndWritesBack(t *testing.T) {
 	isolate(t)
-	src := &fakeSource{convs: []Conversation{{ID: "C0123ABCD", Name: "eng"}}}
+	src := &fakeSource{convs: []Conversation{{ID: "C0123ABCD", Name: engName}}}
 	s := Filling(src)
 
 	for range 3 {
@@ -296,7 +299,7 @@ func TestFillingStoreFetchesOnceAndWritesBack(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(got) != 1 || got[0].Name != "eng" {
+		if len(got) != 1 || got[0].Name != engName {
 			t.Fatalf("conversations = %+v", got)
 		}
 	}

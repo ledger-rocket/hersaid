@@ -35,6 +35,16 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
 
+// schemeHTTPS is the one scheme a bearer may travel over to a remote host.
+const schemeHTTPS = "https"
+
+// privateDirPerm and privateFilePerm keep what hersaid writes readable by its
+// owner only.
+const (
+	privateDirPerm  = 0o700
+	privateFilePerm = 0o600
+)
+
 var (
 	errLongerThan           = errors.New("longer than")
 	errRefusingDownloadOver = errors.New("refusing to download over")
@@ -218,7 +228,7 @@ func (c *Client) permits(rawURL string) error {
 		return fmt.Errorf("download url: %w", err)
 	}
 	host := u.Hostname()
-	if u.Scheme != "https" && !isLoopback(host) {
+	if u.Scheme != schemeHTTPS && !isLoopback(host) {
 		return fmt.Errorf("%w %s: a bearer may not travel in clear", errRefusingDownloadOver, u.Scheme)
 	}
 	if !c.hosts.PermitsBearer(host) {
@@ -238,7 +248,7 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 			req.URL.Hostname(), maxHops)}
 	}
 	first := via[0].URL
-	if first.Scheme == "https" && req.URL.Scheme != "https" {
+	if first.Scheme == schemeHTTPS && req.URL.Scheme != schemeHTTPS {
 		return &redirectError{fmt.Sprintf("refusing a redirect to %s: that is a downgrade from https",
 			req.URL.Hostname())}
 	}
@@ -430,7 +440,7 @@ func (d *dest) ready() error {
 	}
 	// --out itself is the caller's own argument, so creating it and following
 	// it is intended. Everything below it is not the caller's choice.
-	err := os.MkdirAll(d.out, 0o700)
+	err := os.MkdirAll(d.out, privateDirPerm)
 	if err != nil {
 		return err
 	}
@@ -438,7 +448,7 @@ func (d *dest) ready() error {
 	if err != nil {
 		return err
 	}
-	err = root.Mkdir(d.msgDir, 0o700)
+	err = root.Mkdir(d.msgDir, privateDirPerm)
 	if err != nil && !errors.Is(err, os.ErrExist) {
 		root.Close()
 		return err
@@ -464,7 +474,7 @@ func (d *dest) rel(name string) string  { return path.Join(d.msgDir, name) }
 func (d *dest) createTemp() (string, *os.File, error) {
 	for i := range 1000 {
 		name := fmt.Sprintf(".hear-%d", i)
-		f, err := d.root.OpenFile(d.rel(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		f, err := d.root.OpenFile(d.rel(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, privateFilePerm)
 		if err == nil {
 			return name, f, nil
 		}
@@ -559,7 +569,7 @@ func (d *dest) place(tmpName, name string) error {
 // offers an atomic no-clobber rename, and an empty file is visibly not a
 // download where half a PDF is not.
 func (d *dest) copyExclusive(tmpName, name string) error {
-	claim, err := d.root.OpenFile(d.rel(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	claim, err := d.root.OpenFile(d.rel(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, privateFilePerm)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("%s %w", d.path(name), errExists)

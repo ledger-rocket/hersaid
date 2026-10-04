@@ -13,6 +13,12 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
+// fileID is a file shared with the addressed message.
+const fileID = "F0123ABCD"
+
+// editTS is the message the edit and delete tests address.
+const editTS = "1785712599.000100"
+
 var errHearNotFound = errors.New("hear: not found")
 
 // stubRead replaces the read that pairs sez with hear. sez holds the write
@@ -43,7 +49,7 @@ func TestEditRendersBeforeAndAfter(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.update", `{"ok":true,"ts":"1785712599.000100","message":{"text":"x"}}`)
 
-	code, stdout, stderr := sez(t, s, "--edit", "#eng", "1785712599.000100", "the new wording")
+	code, stdout, stderr := sez(t, s, flagEdit, "#eng", editTS, "the new wording")
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
@@ -67,7 +73,7 @@ func TestDeleteRendersWhatWillBeDestroyed(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.delete", `{"ok":true}`)
 
-	code, stdout, stderr := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	code, stdout, stderr := sez(t, s, "--delete", "#eng", editTS)
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
@@ -83,7 +89,7 @@ func TestDeleteRendersWhatWillBeDestroyed(t *testing.T) {
 // change is refused. Not warned about — refused. The reader was promised sight
 // of what changes, and a tool that could not show it has not earned the send.
 func TestASendIsRefusedWhenTheMessageCannotBeRead(t *testing.T) {
-	for _, verb := range []string{"--edit", "--delete"} {
+	for _, verb := range []string{flagEdit, "--delete"} {
 		t.Run(verb, func(t *testing.T) {
 			isolate(t)
 			seedCache(t)
@@ -93,8 +99,8 @@ func TestASendIsRefusedWhenTheMessageCannotBeRead(t *testing.T) {
 			s.Reply("chat.update", `{"ok":true,"ts":"1.1","message":{"text":"x"}}`)
 			s.Reply("chat.delete", `{"ok":true}`)
 
-			args := []string{"--send", verb, "#eng", "1785712599.000100"}
-			if verb == "--edit" {
+			args := []string{"--send", verb, "#eng", editTS}
+			if verb == flagEdit {
 				args = append(args, "replacement")
 			}
 			code, stdout, _ := sez(t, s, args...)
@@ -117,14 +123,14 @@ func TestEditSendsTheUpdate(t *testing.T) {
 	s.Reply("chat.update", `{"ok":true,"ts":"1785712599.000100","message":{"text":"after"}}`)
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://example.slack.test/archives/C0123ENG01/p12"}`)
 
-	code, _, stderr := sez(t, s, "--send", "--edit", "#eng", "1785712599.000100", "after")
+	code, _, stderr := sez(t, s, "--send", flagEdit, "#eng", editTS, "after")
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
 	// Named rather than taken from Last: the edit is followed by a permalink
 	// fetch, so the final request is not the one under test.
 	upd := requestTo(t, s, "chat.update")
-	if got := upd.Body.Get("ts"); got != "1785712599.000100" {
+	if got := upd.Body.Get("ts"); got != editTS {
 		t.Fatalf("ts = %q", got)
 	}
 	if got := upd.Body.Get("text"); got != "after" {
@@ -150,7 +156,7 @@ func TestTheDeletedTextIsRecorded(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.delete", `{"ok":true}`)
 
-	code, _, stderr := sez(t, s, "--send", "--delete", "#eng", "1785712599.000100")
+	code, _, stderr := sez(t, s, "--send", "--delete", "#eng", editTS)
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
@@ -204,11 +210,11 @@ func TestEveryDeleteRecordNamesTheMessage(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.delete", `{"ok":true}`)
 
-	if code, _, stderr := sez(t, s, "--send", "--delete", "#eng", "1785712599.000100"); code != 0 {
+	if code, _, stderr := sez(t, s, "--send", "--delete", "#eng", editTS); code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
 	for _, r := range readLog(t, log) {
-		if got := r["ts"]; got != "1785712599.000100" {
+		if got := r["ts"]; got != editTS {
 			t.Fatalf("ts = %v on a %v line, want the addressed message on every line", got, r["phase"])
 		}
 	}
@@ -218,8 +224,8 @@ func TestEveryDeleteRecordNamesTheMessage(t *testing.T) {
 // thread parent: all three name a different message.
 func TestTheMessageVerbsAreMutuallyExclusive(t *testing.T) {
 	for _, args := range [][]string{
-		{"--edit", "--delete", "#eng", "1785712599.000100"},
-		{"--delete", "--thread", "1785712599.000100", "#eng", "1785712599.000100"},
+		{flagEdit, "--delete", "#eng", editTS},
+		{"--delete", "--thread", editTS, "#eng", editTS},
 	} {
 		isolate(t)
 		seedCache(t)
@@ -257,7 +263,7 @@ func TestAFailedReadReportsWhatHearSaid(t *testing.T) {
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 
-	code, _, stderr := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	code, _, stderr := sez(t, s, "--delete", "#eng", editTS)
 	if code == 0 {
 		t.Fatal("exit = 0, want a refusal")
 	}
@@ -287,7 +293,7 @@ func TestAHangingReadIsBounded(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		code, _, stderr := sez(t, s, "--delete", "#eng", "1785712599.000100")
+		code, _, stderr := sez(t, s, "--delete", "#eng", editTS)
 		done <- result{code, stderr}
 	}()
 	select {
@@ -307,7 +313,7 @@ func TestAHangingReadIsBounded(t *testing.T) {
 // The happy path through the real subprocess, so the decoding is exercised too.
 func TestViaHearReadsTheMatchingMessage(t *testing.T) {
 	fakeHear(t, `echo '{"messages":[{"ts":"1.1","text":"other","blocks":false},{"ts":"1785712599.000100","text":"wanted","blocks":false}]}'`)
-	got, err := viaHear(context.Background(), "C1", "1785712599.000100", verbEdit)
+	got, err := viaHear(context.Background(), "C1", editTS, verbEdit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,14 +328,14 @@ func TestViaHearReadsTheMatchingMessage(t *testing.T) {
 func TestADeleteReadsAMessageThatCarriesFiles(t *testing.T) {
 	fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"look at these","blocks":false,`+
 		`"files":[{"name":"trace.pdf"},{"name":"out.log"}]}]}'`)
-	got, err := viaHear(context.Background(), "C1", "1785712599.000100", verbDelete)
+	got, err := viaHear(context.Background(), "C1", editTS, verbDelete)
 	if err != nil {
 		t.Fatalf("viaHear() error = %v; a delete may proceed on a message with files", err)
 	}
 	if got.Text != "look at these" {
 		t.Fatalf("text = %q", got.Text)
 	}
-	if len(got.Files) != 2 || got.Files[0].Name != "trace.pdf" || got.Files[1].Name != "out.log" {
+	if len(got.Files) != 2 || got.Files[0].Name != tracePDF || got.Files[1].Name != "out.log" {
 		t.Fatalf("files = %+v, want both named so the render can show them", got.Files)
 	}
 }
@@ -340,7 +346,7 @@ func TestADeleteReadsAMessageThatCarriesFiles(t *testing.T) {
 func TestAnEditStillRefusesAMessageThatCarriesFiles(t *testing.T) {
 	fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"look","blocks":false,`+
 		`"files":[{"name":"trace.pdf"}]}]}'`)
-	_, err := viaHear(context.Background(), "C1", "1785712599.000100", verbEdit)
+	_, err := viaHear(context.Background(), "C1", editTS, verbEdit)
 	if err == nil {
 		t.Fatal("viaHear() = nil error, want an edit refused")
 	}
@@ -354,7 +360,7 @@ func TestAnEditStillRefusesAMessageThatCarriesFiles(t *testing.T) {
 func TestBlocksAreStillRefusedForBoth(t *testing.T) {
 	for _, v := range []verb{verbEdit, verbDelete} {
 		fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"fallback","blocks":true}]}'`)
-		_, err := viaHear(context.Background(), "C1", "1785712599.000100", v)
+		_, err := viaHear(context.Background(), "C1", editTS, v)
 		if err == nil {
 			t.Fatalf("verb %v: viaHear() = nil error, want blocks refused", v)
 		}
@@ -376,7 +382,7 @@ func TestAnEditRecordsTheWordingItReplaced(t *testing.T) {
 	s.Reply("chat.update", `{"ok":true,"ts":"1785712599.000100","message":{"text":"what it says now"}}`)
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://example.slack.test/archives/C0123ENG01/p12"}`)
 
-	if code, _, stderr := sez(t, s, "--send", "--edit", "#eng", "1785712599.000100", "what it says now"); code != 0 {
+	if code, _, stderr := sez(t, s, "--send", flagEdit, "#eng", editTS, "what it says now"); code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
 	for _, r := range readLog(t, log) {
@@ -397,7 +403,7 @@ func TestAnAmbiguousEditIsRecordedAsUnknown(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.update", `{"ok":false,"error":"internal_error"}`)
 
-	code, _, stderr := sez(t, s, "--send", "--edit", "#eng", "1785712599.000100", "after")
+	code, _, stderr := sez(t, s, "--send", flagEdit, "#eng", editTS, "after")
 	if code == 0 {
 		t.Fatal("exit = 0, want a failure")
 	}
@@ -419,7 +425,7 @@ func TestAMissingScopeOnADeleteExplainsTheFix(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("chat.delete", `{"ok":false,"error":"missing_scope"}`)
 
-	code, _, stderr := sez(t, s, "--send", "--delete", "#eng", "1785712599.000100")
+	code, _, stderr := sez(t, s, "--send", "--delete", "#eng", editTS)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
@@ -442,7 +448,7 @@ echo '{"messages":[{"ts":"1785712599.000100","text":"safe","blocks":false}]}'`)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 
-	code, stdout, stderr := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	code, stdout, stderr := sez(t, s, "--delete", "#eng", editTS)
 	if strings.Contains(stderr, "LEAKED") {
 		t.Fatal("the read subprocess received SLACK_WRITE_TOKEN")
 	}
@@ -459,7 +465,7 @@ echo '{"messages":[{"ts":"1785712599.000100","text":"safe","blocks":false}]}'`)
 // existing blocks from a text-only chat.update, so the replacement would not be
 // what the message became. Neither verb may proceed on a partial view.
 func TestAMessageThatCannotBeShownIsNotChanged(t *testing.T) {
-	for _, verb := range []string{"--edit", "--delete"} {
+	for _, verb := range []string{flagEdit, "--delete"} {
 		t.Run(verb, func(t *testing.T) {
 			isolate(t)
 			seedCache(t)
@@ -469,8 +475,8 @@ func TestAMessageThatCannotBeShownIsNotChanged(t *testing.T) {
 			s.Reply("chat.update", `{"ok":true,"ts":"1.1","message":{"text":"x"}}`)
 			s.Reply("chat.delete", `{"ok":true}`)
 
-			args := []string{"--send", verb, "#eng", "1785712599.000100"}
-			if verb == "--edit" {
+			args := []string{"--send", verb, "#eng", editTS}
+			if verb == flagEdit {
 				args = append(args, "replacement")
 			}
 			code, _, stderr := sez(t, s, args...)
@@ -500,7 +506,7 @@ func TestAnEditKeepsTheAddressedTSWhenSlackEchoesNone(t *testing.T) {
 	s.Reply("chat.update", `{"ok":true,"message":{"text":"after"}}`)
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://example.slack.test/archives/C0123ENG01/p12"}`)
 
-	code, stdout, stderr := sez(t, s, "--send", "--edit", "#eng", "1785712599.000100", "after")
+	code, stdout, stderr := sez(t, s, "--send", flagEdit, "#eng", editTS, "after")
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
@@ -508,7 +514,7 @@ func TestAnEditKeepsTheAddressedTSWhenSlackEchoesNone(t *testing.T) {
 		t.Fatalf("stdout = %q, want the addressed ts reported", stdout)
 	}
 	for _, r := range readLog(t, log) {
-		if got := r["ts"]; got != "1785712599.000100" {
+		if got := r["ts"]; got != editTS {
 			t.Fatalf("ts = %v on a %v line, want the addressed message", got, r["phase"])
 		}
 	}
@@ -526,7 +532,7 @@ func TestAnEditRecordsAPermalink(t *testing.T) {
 	s.Reply("chat.update", `{"ok":true,"ts":"1785712599.000100","message":{"text":"after"}}`)
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://example.slack.test/archives/C0123ENG01/p12"}`)
 
-	if code, _, stderr := sez(t, s, "--send", "--edit", "#eng", "1785712599.000100", "after"); code != 0 {
+	if code, _, stderr := sez(t, s, "--send", flagEdit, "#eng", editTS, "after"); code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
 	recs := readLog(t, log)
@@ -551,7 +557,7 @@ func TestChangeRenderBlockShape(t *testing.T) {
 	}{
 		{
 			"edit",
-			[]string{"--edit", "#eng", "1785712599.000100", "the new wording"},
+			[]string{flagEdit, "#eng", editTS, "the new wording"},
 			"--- dry run: nothing sent ---\n" +
 				"channel : #eng -> C0123ENG01\n" +
 				"message : 1785712599.000100\n" +
@@ -566,7 +572,7 @@ func TestChangeRenderBlockShape(t *testing.T) {
 		// from the wrong message.
 		{
 			"delete",
-			[]string{"--delete", "#eng", "1785712599.000100"},
+			[]string{"--delete", "#eng", editTS},
 			"--- dry run: nothing sent ---\n" +
 				"channel : #eng -> C0123ENG01\n" +
 				"message : 1785712599.000100\n" +
@@ -612,7 +618,7 @@ func TestASlackEchoNeverReplacesTheAddressedTS(t *testing.T) {
 	s.Reply("chat.update", `{"ok":true,"ts":"9999999999.999999","message":{"text":"after"}}`)
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://example.slack.test/archives/C0123ENG01/p12"}`)
 
-	code, stdout, stderr := sez(t, s, "--send", "--edit", "#eng", "1785712599.000100", "after")
+	code, stdout, stderr := sez(t, s, "--send", flagEdit, "#eng", editTS, "after")
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
@@ -620,11 +626,11 @@ func TestASlackEchoNeverReplacesTheAddressedTS(t *testing.T) {
 		t.Fatalf("stdout = %q, want the addressed ts, not Slack's echo", stdout)
 	}
 	for _, r := range readLog(t, log) {
-		if got := r["ts"]; got != "1785712599.000100" {
+		if got := r["ts"]; got != editTS {
 			t.Fatalf("ts = %v on a %v line, want the addressed message", got, r["phase"])
 		}
 	}
-	if got := requestTo(t, s, "chat.getPermalink").Body.Get("message_ts"); got != "" && got != "1785712599.000100" {
+	if got := requestTo(t, s, "chat.getPermalink").Body.Get("message_ts"); got != "" && got != editTS {
 		t.Fatalf("permalink fetched for ts %q, want the addressed message", got)
 	}
 }
@@ -637,7 +643,7 @@ func TestASlackEchoNeverReplacesTheAddressedTS(t *testing.T) {
 func TestAnOlderHearThatCannotSayWhyIsRefused(t *testing.T) {
 	for _, v := range []verb{verbEdit, verbDelete} {
 		fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"fallback","partial":true}]}'`)
-		_, err := viaHear(context.Background(), "C1", "1785712599.000100", v)
+		_, err := viaHear(context.Background(), "C1", editTS, v)
 		if err == nil {
 			t.Fatalf("verb %v: viaHear() = nil error; an unexplained partial must be refused", v)
 		}
@@ -655,7 +661,7 @@ func TestAnOlderHearThatCannotSayWhyIsRefused(t *testing.T) {
 func TestAnOlderHearIsRefusedEvenWhenItClaimsNothing(t *testing.T) {
 	for _, v := range []verb{verbEdit, verbDelete} {
 		fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"plain"}]}'`)
-		_, err := viaHear(context.Background(), "C1", "1785712599.000100", v)
+		_, err := viaHear(context.Background(), "C1", editTS, v)
 		if err == nil {
 			t.Fatalf("verb %v: viaHear() = nil error; a hear that cannot describe content must be refused", v)
 		}
@@ -671,15 +677,15 @@ func TestAFileWithNoPrintableNameFallsBackToItsID(t *testing.T) {
 	hostile := string(rune(0x202e)) + string(rune(0x200e))
 	fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"look","blocks":false,`+
 		`"files":[{"id":"F0123ABCD","name":"`+hostile+`"}]}]}'`)
-	got, err := viaHear(context.Background(), "C1", "1785712599.000100", verbDelete)
+	got, err := viaHear(context.Background(), "C1", editTS, verbDelete)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The raw name is kept; the id is what the render falls back to.
-	if len(got.Files) != 1 || got.Files[0].ID != "F0123ABCD" {
+	if len(got.Files) != 1 || got.Files[0].ID != fileID {
 		t.Fatalf("files = %+v, want the id carried through", got.Files)
 	}
-	if label := fileLabel(got.Files[0]); label != "F0123ABCD" {
+	if label := fileLabel(got.Files[0]); label != fileID {
 		t.Fatalf("fileLabel = %q, want the id where the name cannot be shown", label)
 	}
 }
@@ -693,12 +699,12 @@ func TestTheDeleteRenderNamesEveryFile(t *testing.T) {
 	seedCache(t)
 	stubReadFull(t, current{
 		Text:  "look at these",
-		Files: []audit.File{{Name: "trace.pdf"}, {Name: "out.log"}},
+		Files: []audit.File{{Name: tracePDF}, {Name: "out.log"}},
 	}, nil)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 
-	_, stdout, _ := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	_, stdout, _ := sez(t, s, "--delete", "#eng", editTS)
 	want := "--- dry run: nothing sent ---\n" +
 		"channel : #eng -> C0123ENG01\n" +
 		"message : 1785712599.000100\n" +
@@ -725,7 +731,7 @@ func TestTheDeleteRenderCannotBeDrivenByAFilename(t *testing.T) {
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 
-	code, stdout, stderr := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	code, stdout, stderr := sez(t, s, "--delete", "#eng", editTS)
 	// Asserting only that the hostile runes are absent would pass on an empty
 	// render, which is the one outcome that proves nothing: the render has to
 	// have happened and shown the name.
@@ -747,12 +753,12 @@ func TestTheDeleteRenderCannotBeDrivenByAFilename(t *testing.T) {
 func TestADeleteRecordsTheFilesItRemoved(t *testing.T) {
 	logPath := isolate(t)
 	seedCache(t)
-	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: "trace.pdf"}, {Name: "out.log"}}}, nil)
+	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: tracePDF}, {Name: "out.log"}}}, nil)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 	s.Reply("chat.delete", `{"ok":true}`)
 
-	if code, _, stderr := sez(t, s, "--send", "--delete", "#eng", "1785712599.000100"); code != 0 {
+	if code, _, stderr := sez(t, s, "--send", "--delete", "#eng", editTS); code != 0 {
 		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
 	}
 	recs := readLog(t, logPath)
@@ -761,7 +767,7 @@ func TestADeleteRecordsTheFilesItRemoved(t *testing.T) {
 	if !ok || len(files) != 2 {
 		t.Fatalf("files = %#v, want both names recorded", last["files"])
 	}
-	for i, want := range []string{"trace.pdf", "out.log"} {
+	for i, want := range []string{tracePDF, "out.log"} {
 		m, ok := files[i].(map[string]any)
 		if !ok {
 			t.Fatalf("files[%d] = %#v, want an object", i, files[i])
@@ -780,7 +786,7 @@ func TestAHearThatKnowsSomethingThisSezDoesNotIsRefused(t *testing.T) {
 	for _, v := range []verb{verbEdit, verbDelete} {
 		fakeHear(t, `echo '{"messages":[{"ts":"1785712599.000100","text":"fallback",`+
 			`"partial":true,"blocks":false}]}'`)
-		_, err := viaHear(context.Background(), "C1", "1785712599.000100", v)
+		_, err := viaHear(context.Background(), "C1", editTS, v)
 		if err == nil {
 			t.Fatalf("verb %v: viaHear() = nil error; an unexplained partial must be refused", v)
 		}
@@ -797,12 +803,12 @@ func TestTheRecordKeepsTheNameSlackHolds(t *testing.T) {
 	logPath := isolate(t)
 	seedCache(t)
 	raw := "in" + string(rune(0x202e)) + "voice.pdf"
-	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: raw, ID: "F0123ABCD"}}}, nil)
+	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: raw, ID: fileID}}}, nil)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 	s.Reply("chat.delete", `{"ok":true}`)
 
-	if code, _, stderr := sez(t, s, "--send", "--delete", "#eng", "1785712599.000100"); code != 0 {
+	if code, _, stderr := sez(t, s, "--send", "--delete", "#eng", editTS); code != 0 {
 		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
 	}
 	recs := readLog(t, logPath)
@@ -817,7 +823,7 @@ func TestTheRecordKeepsTheNameSlackHolds(t *testing.T) {
 	if got, _ := m["name"].(string); got != raw {
 		t.Fatalf("recorded name = %q, want the raw name Slack holds", got)
 	}
-	if got, _ := m["id"].(string); got != "F0123ABCD" {
+	if got, _ := m["id"].(string); got != fileID {
 		t.Fatalf("recorded id = %q, want the id that reconciles against files.info", got)
 	}
 }
@@ -830,11 +836,11 @@ func TestTheRecordKeepsTheNameSlackHolds(t *testing.T) {
 func TestTheDeleteRenderSaysTheFilesOutliveTheMessage(t *testing.T) {
 	isolate(t)
 	seedCache(t)
-	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: "trace.pdf"}}}, nil)
+	stubReadFull(t, current{Text: "look", Files: []audit.File{{Name: tracePDF}}}, nil)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 
-	code, stdout, stderr := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	code, stdout, stderr := sez(t, s, "--delete", "#eng", editTS)
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
@@ -851,7 +857,7 @@ func TestADeleteWithNoFilesSaysNothingAboutThem(t *testing.T) {
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 
-	_, stdout, _ := sez(t, s, "--delete", "#eng", "1785712599.000100")
+	_, stdout, _ := sez(t, s, "--delete", "#eng", editTS)
 	if strings.Contains(stdout, "stay in Slack") {
 		t.Fatalf("render = %q, want no note where there are no files", stdout)
 	}

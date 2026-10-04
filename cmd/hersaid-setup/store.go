@@ -11,6 +11,13 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+// privateDirPerm and privateFilePerm keep what hersaid writes readable by its
+// owner only.
+const (
+	privateDirPerm  = 0o700
+	privateFilePerm = 0o600
+)
+
 var errKeychainWouldNotTake = errors.New("the keychain would not take the token, and it already holds")
 
 // configDir is the directory under XDG_CONFIG_HOME that holds the file
@@ -61,14 +68,14 @@ func store(r role, token string) (where string, shadowed []string, err error) {
 		return "", nil, err
 	}
 	dir := filepath.Dir(path)
-	err = os.MkdirAll(dir, 0o700)
+	err = os.MkdirAll(dir, privateDirPerm)
 	if err != nil {
 		return "", nil, err
 	}
 	// MkdirAll applies its mode only to directories it creates, so the chmod is
 	// unconditional: one somebody made group-readable years ago would otherwise
 	// stay that way.
-	err = os.Chmod(dir, 0o700)
+	err = os.Chmod(dir, privateDirPerm)
 	if err != nil {
 		return "", nil, err
 	}
@@ -90,7 +97,7 @@ func writeTokenFile(path, token string) error {
 		return err
 	}
 	defer os.Remove(tmp.Name()) // a no-op once the rename has succeeded
-	err = tmp.Chmod(0o600)
+	err = tmp.Chmod(privateFilePerm)
 	if err != nil {
 		tmp.Close()
 		return err

@@ -32,6 +32,9 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/termsafe"
 )
 
+// flagEdit names the message to replace.
+const flagEdit = "--edit"
+
 var (
 	errHear               = errors.New("hear")
 	errHearNoAnswerWithin = errors.New("hear: no answer within")
@@ -211,6 +214,10 @@ func messageText(stderr io.Writer, f flags, v verb, rest []string, stdin io.Read
 	}
 	return text, 0, false
 }
+
+// hearWaitDelay is how long viaHear waits for hear's stdout to close after the
+// context has killed it.
+const hearWaitDelay = 5 * time.Second
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, slackwrite.SlackAPI))
@@ -710,7 +717,7 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 	// The context kills hear, but Output waits for the stdout pipe to close,
 	// and anything that outlived the kill still holds it. Without this the
 	// bound is a property of the child's process tree rather than of this code.
-	cmd.WaitDelay = 5 * time.Second
+	cmd.WaitDelay = hearWaitDelay
 	out, err := cmd.Output()
 	if err != nil {
 		// hear's own stderr, when it left any: this path fails closed, and a
@@ -935,7 +942,7 @@ func parseFlags(args []string, stdout, stderr io.Writer) (f flags, done bool, co
 			f.send, args = false, args[1:]
 		case "--md":
 			f.md, args = true, args[1:]
-		case "--edit":
+		case flagEdit:
 			f.edit, args = true, args[1:]
 		case "--delete":
 			f.del, args = true, args[1:]

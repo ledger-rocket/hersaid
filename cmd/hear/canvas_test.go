@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ledger-rocket/hersaid/internal/render"
 )
 
 // canvasHost serves a canvas the way Slack does: an HTML fragment under the
@@ -89,7 +91,7 @@ func TestCanvasPrintsMarkdown(t *testing.T) {
 	url := canvasHost(t, body)
 	e.canvasFile("F0123ABCDEF", "Plan", url)
 
-	stdout, stderr, code := e.run("canvas", "https://acme.slack.com/docs/T0123ABCDE/F0123ABCDEF")
+	stdout, stderr, code := e.run(cmdCanvas, "https://acme.slack.com/docs/T0123ABCDE/F0123ABCDEF")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
@@ -103,7 +105,7 @@ func TestCanvasAsksForTheFileTheLinkNames(t *testing.T) {
 	e := newEnv(t)
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, "<h1>Plan</h1>"))
 
-	if _, stderr, code := e.run("canvas", "F0123ABCDEF"); code != 0 {
+	if _, stderr, code := e.run(cmdCanvas, "F0123ABCDEF"); code != 0 {
 		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
 	}
 	for _, r := range e.srv.Requests() {
@@ -122,7 +124,7 @@ func TestCanvasHTMLPrintsWhatSlackServed(t *testing.T) {
 	body := `<div class="quip-canvas-content"><h1>Plan</h1></div>`
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, body))
 
-	stdout, stderr, code := e.run("canvas", "--html", "F0123ABCDEF")
+	stdout, stderr, code := e.run(cmdCanvas, "--html", "F0123ABCDEF")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
@@ -135,7 +137,7 @@ func TestCanvasJSONCarriesTheMarkdown(t *testing.T) {
 	e := newEnv(t)
 	e.canvasFile("F0123ABCDEF", "Deployment Plan", canvasHost(t, "<h1>Plan</h1><p>body</p>"))
 
-	stdout, stderr, code := e.run("canvas", "--json", "F0123ABCDEF")
+	stdout, stderr, code := e.run(cmdCanvas, "--json", "F0123ABCDEF")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
@@ -149,7 +151,7 @@ func TestCanvasJSONCarriesTheMarkdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, stdout)
 	}
-	if got.Kind != "canvas" || got.ID != "F0123ABCDEF" || got.Title != "Deployment Plan" {
+	if got.Kind != render.KindCanvas || got.ID != "F0123ABCDEF" || got.Title != "Deployment Plan" {
 		t.Fatalf("envelope = %+v", got)
 	}
 	if !strings.Contains(got.Body, "# Plan") {
@@ -165,7 +167,7 @@ func TestCanvasRefusesAFileThatIsNotOne(t *testing.T) {
 		`{"ok":true,"file":{"id":"F0123ABCD","name":"trace.pdf","mimetype":"application/pdf",`+
 			`"mode":"hosted","size":10,"url_private_download":"https://files.slack.com/x"}}`)
 
-	_, stderr, code := e.run("canvas", "F0123ABCD")
+	_, stderr, code := e.run(cmdCanvas, "F0123ABCD")
 	if code == 0 {
 		t.Fatal("exit = 0, want a refusal")
 	}
@@ -178,7 +180,7 @@ func TestCanvasReportsSlacksRefusal(t *testing.T) {
 	e := newEnv(t)
 	e.srv.Reply("files.info", `{"ok":false,"error":"file_not_found"}`)
 
-	_, stderr, code := e.run("canvas", "F0123ABCDEF")
+	_, stderr, code := e.run(cmdCanvas, "F0123ABCDEF")
 	if code == 0 {
 		t.Fatal("exit = 0, want a refusal")
 	}
@@ -194,7 +196,7 @@ func TestACanvasCannotDriveTheTerminal(t *testing.T) {
 	body := "<h1>Plan" + string(rune(0x1b)) + "[31m" + string(rune(0x202e)) + "</h1>"
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, body))
 
-	stdout, _, code := e.run("canvas", "F0123ABCDEF")
+	stdout, _, code := e.run(cmdCanvas, "F0123ABCDEF")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -207,8 +209,8 @@ func TestACanvasCannotDriveTheTerminal(t *testing.T) {
 
 func TestCanvasUsage(t *testing.T) {
 	for _, args := range [][]string{
-		{"canvas"},
-		{"canvas", "F1", "F2"},
+		{cmdCanvas},
+		{cmdCanvas, "F1", "F2"},
 	} {
 		e := newEnv(t)
 		if _, _, code := e.run(args...); code != 2 {
@@ -227,7 +229,7 @@ func TestCanvasHTMLStillCannotDriveTheTerminal(t *testing.T) {
 	body := "<h1>Plan" + string(rune(0x1b)) + "[31m" + string(rune(0x202e)) + "</h1>"
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, body))
 
-	stdout, _, code := e.run("canvas", "--html", "F0123ABCDEF")
+	stdout, _, code := e.run(cmdCanvas, "--html", "F0123ABCDEF")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -247,7 +249,7 @@ func TestHTMLAppliesToCanvasOnly(t *testing.T) {
 	for _, args := range [][]string{
 		{"--html", "read", "#eng"},
 		{"--html", "whoami"},
-		{"--html", "files", "#eng", "1785708834.862009"},
+		{"--html", cmdFiles, "#eng", fixtureTS},
 	} {
 		e := newEnv(t)
 		_, stderr, code := e.run(args...)
@@ -267,7 +269,7 @@ func TestACanvasTooDeepToParseIsRefused(t *testing.T) {
 	body := strings.Repeat("<div>", 600) + "x" + string(rune(0x1b)) + "[31m"
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, body))
 
-	stdout, _, code := e.run("canvas", "F0123ABCDEF")
+	stdout, _, code := e.run(cmdCanvas, "F0123ABCDEF")
 	if code == 0 {
 		t.Fatalf("exit = 0, want the parse failure reported (stdout %d bytes)", len(stdout))
 	}
@@ -297,7 +299,7 @@ func TestACanvasIsFoundThroughItsChannel(t *testing.T) {
 		"https://acme.slack.com/archives/C0123ENG01",
 	} {
 		t.Run(target, func(t *testing.T) {
-			stdout, stderr, code := e.run("canvas", target)
+			stdout, stderr, code := e.run(cmdCanvas, target)
 			if code != 0 {
 				t.Fatalf("exit = %d (stderr: %s)", code, stderr)
 			}
@@ -316,7 +318,7 @@ func TestTheDocumentedCanvasPropertyIsRead(t *testing.T) {
 	e.channelInfo(`{"canvas":{"file_id":"F0123ABCDEF"}}`)
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, "<h1>Plan</h1>"))
 
-	stdout, stderr, code := e.run("canvas", "#eng")
+	stdout, stderr, code := e.run(cmdCanvas, "#eng")
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
 	}
@@ -335,7 +337,7 @@ func TestOneDocumentListedTwiceIsNotAmbiguous(t *testing.T) {
 		`"tabs":[{"type":"canvas","data":{"file_id":"F0123ABCDEF"}}]}`)
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, "<h1>Plan</h1>"))
 
-	if _, stderr, code := e.run("canvas", "#eng"); code != 0 {
+	if _, stderr, code := e.run(cmdCanvas, "#eng"); code != 0 {
 		t.Fatalf("exit = %d (stderr: %s), want the one document", code, stderr)
 	}
 }
@@ -348,7 +350,7 @@ func TestSeveralCanvasesAreNamedRatherThanGuessedAt(t *testing.T) {
 	e.channelInfo(`{"canvas":{"file_id":"F0000000AAA"},` +
 		`"meeting_notes":{"file_id":"F0000000BBB"}}`)
 
-	_, stderr, code := e.run("canvas", "#eng")
+	_, stderr, code := e.run(cmdCanvas, "#eng")
 	if code == 0 {
 		t.Fatal("exit = 0, want the ambiguity reported")
 	}
@@ -366,7 +368,7 @@ func TestANonCanvasTabIsIgnored(t *testing.T) {
 	e.channelInfo(`{"tabs":[{"type":"files","data":{"file_id":"F0000000AAA"}},` +
 		`{"type":"bookmarks","data":{"file_id":"F0000000BBB"}}]}`)
 
-	_, stderr, code := e.run("canvas", "#eng")
+	_, stderr, code := e.run(cmdCanvas, "#eng")
 	if code == 0 {
 		t.Fatal("exit = 0, want no canvas reported")
 	}
@@ -380,7 +382,7 @@ func TestAChannelWithNoCanvasSaysSo(t *testing.T) {
 	e.warm()
 	e.channelInfo(`{}`)
 
-	_, stderr, code := e.run("canvas", "#eng")
+	_, stderr, code := e.run(cmdCanvas, "#eng")
 	if code == 0 {
 		t.Fatal("exit = 0, want a refusal")
 	}
@@ -393,7 +395,7 @@ func TestAChannelWithNoCanvasSaysSo(t *testing.T) {
 func TestAMessageLinkIsStillRefused(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
-	_, stderr, code := e.run("canvas", "https://acme.slack.com/archives/C0123ENG01/p1785708834862009")
+	_, stderr, code := e.run(cmdCanvas, "https://acme.slack.com/archives/C0123ENG01/p1785708834862009")
 	if code == 0 {
 		t.Fatal("exit = 0, want a refusal")
 	}
@@ -412,7 +414,7 @@ func TestAChannelCanvasTabIsRead(t *testing.T) {
 	e.channelInfo(`{"tabs":[{"type":"channel_canvas","data":{"file_id":"F0123ABCDEF"}}]}`)
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, "<h1>Plan</h1>"))
 
-	stdout, stderr, code := e.run("canvas", "#eng")
+	stdout, stderr, code := e.run(cmdCanvas, "#eng")
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
 	}
@@ -429,12 +431,12 @@ func TestTheChannelCanvasLookupNamesTheResolvedChannel(t *testing.T) {
 	e.channelInfo(`{"canvas":{"file_id":"F0123ABCDEF"}}`)
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, "<h1>Plan</h1>"))
 
-	if _, stderr, code := e.run("canvas", "#eng"); code != 0 {
+	if _, stderr, code := e.run(cmdCanvas, "#eng"); code != 0 {
 		t.Fatalf("exit = %d (stderr: %s)", code, stderr)
 	}
 	for _, r := range e.srv.Requests() {
 		if r.Endpoint == "conversations.info" {
-			if got := r.Query.Get("channel"); got != "C0ENG0000" {
+			if got := r.Query.Get("channel"); got != engID {
 				t.Fatalf("conversations.info channel = %q, want the resolved id", got)
 			}
 			return
@@ -454,7 +456,7 @@ func TestAMisshapenFileIDFromSlackIsNotReported(t *testing.T) {
 		`"meeting_notes":{"file_id":"not\u001b[31man-id"}}`)
 	e.canvasFile("F0123ABCDEF", "Plan", canvasHost(t, "<h1>Plan</h1>"))
 
-	stdout, stderr, code := e.run("canvas", "#eng")
+	stdout, stderr, code := e.run(cmdCanvas, "#eng")
 	if strings.ContainsRune(stdout+stderr, 0x1b) {
 		t.Fatal("an escape sequence from a Slack reply reached the output")
 	}
@@ -472,7 +474,7 @@ func TestAMimetypeFromSlackCannotDriveTheTerminal(t *testing.T) {
 			`"mimetype":"application/\u001b[31mpdf","mode":"hosted","size":10,`+
 			`"url_private_download":"https://files.slack.com/x"}}`)
 
-	stdout, stderr, code := e.run("canvas", "F0123ABCD")
+	stdout, stderr, code := e.run(cmdCanvas, "F0123ABCD")
 	if code == 0 {
 		t.Fatal("exit = 0, want a refusal")
 	}

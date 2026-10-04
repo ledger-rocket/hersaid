@@ -99,6 +99,8 @@ linters:
   - recvcheck
   - testableexamples
   - unqueryvet
+  - mnd
+  - goconst
   - revive
   - predeclared
   - godox
@@ -248,13 +250,11 @@ linters:
   - paralleltest # 558
   - gosec # 8
   - exhaustive # 8
-  - goconst # 20
   - dupl # 4
   - nonamedreturns # 24
   - cyclop # 22
   - gocognit # 10
   - funlen # 1
-  - mnd # 23
   - gosmopolitan # 5
 severity:
   default: error

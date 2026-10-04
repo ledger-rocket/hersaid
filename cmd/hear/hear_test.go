@@ -19,6 +19,9 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
+// engID is #eng's conversation id in the fake workspace.
+const engID = "C0ENG0000"
+
 // env is one isolated invocation: a HOME nothing escapes, a fake Slack, and a
 // credential that is real enough to authorise a request and useless anywhere
 // else.
@@ -73,7 +76,7 @@ func (e *env) query(i int) url.Values {
 }
 
 var testConvs = []cache.Conversation{
-	{ID: "C0ENG0000", Name: "eng"},
+	{ID: engID, Name: "eng"},
 	{ID: "C0ALERTS0", Name: "alerts-dev"},
 	{ID: "C0RANDOM0", Name: "Random"},
 	{ID: "D0STEPAN0", IsIM: true, User: "U0STEPAN0"},
@@ -191,7 +194,7 @@ func TestAFilterMatchingNothingIsAnEmptyResultNotAnError(t *testing.T) {
 // machine whose keychain is locked, or in a container that has no keyring at
 // all.
 func TestAWarmCacheResolvesNoCredential(t *testing.T) {
-	for _, args := range [][]string{{"channels"}, {"dms"}, {"channels", "eng"}, {"refresh"}} {
+	for _, args := range [][]string{{"channels"}, {"dms"}, {"channels", "eng"}, {cmdRefresh}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			e := newEnv(t)
 			e.warm()
@@ -207,7 +210,7 @@ func TestAWarmCacheResolvesNoCredential(t *testing.T) {
 			if got := e.srv.Hits(); got != 0 {
 				t.Errorf("Slack received %d requests, want 0", got)
 			}
-			if args[0] != "refresh" && stdout == "" {
+			if args[0] != cmdRefresh && stdout == "" {
 				t.Error("no output")
 			}
 		})
@@ -231,7 +234,7 @@ func TestAColdCacheIsFilledFromSlack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the fetched list was not cached: %v", err)
 	}
-	if len(c.Channels) != 1 || c.Channels[0].ID != "C0ENG0000" {
+	if len(c.Channels) != 1 || c.Channels[0].ID != engID {
 		t.Fatalf("cached %+v", c.Channels)
 	}
 }
@@ -270,7 +273,7 @@ func TestReadPrintsOldestFirst(t *testing.T) {
 	if oldest > newest {
 		t.Fatalf("stdout = %q, want the oldest message first", stdout)
 	}
-	if got := e.query(0).Get("channel"); got != "C0ENG0000" {
+	if got := e.query(0).Get("channel"); got != engID {
 		t.Fatalf("channel = %q, want the resolved id", got)
 	}
 }
@@ -377,7 +380,7 @@ func TestThreadIsNotReversed(t *testing.T) {
 		t.Fatalf("stdout = %q, want the parent first", stdout)
 	}
 	q := e.query(0)
-	if q.Get("channel") != "C0ENG0000" || q.Get("ts") != "1785708834.000000" {
+	if q.Get("channel") != engID || q.Get("ts") != "1785708834.000000" {
 		t.Fatalf("query = %v", q)
 	}
 }
@@ -553,10 +556,10 @@ func TestAPermalinkResolvesToItsChannelAndTimestamp(t *testing.T) {
 		t.Fatalf("stdout = %q", stdout)
 	}
 	q := e.query(0)
-	if got := q.Get("channel"); got != "C0ENG0000" {
+	if got := q.Get("channel"); got != engID {
 		t.Fatalf("channel = %q", got)
 	}
-	if got := q.Get("ts"); got != "1785708834.862009" {
+	if got := q.Get("ts"); got != fixtureTS {
 		t.Fatalf("ts = %q, want the point put back in", got)
 	}
 }
@@ -607,7 +610,7 @@ func TestReadAndThreadAgreeOnAPermalink(t *testing.T) {
 			if _, stderr, code := e.run(verb, link); code != 0 {
 				t.Fatalf("exit = %d (stderr %q)", code, stderr)
 			}
-			if got := e.query(0).Get("ts"); got != "1785708834.862009" {
+			if got := e.query(0).Get("ts"); got != fixtureTS {
 				t.Fatalf("ts = %q", got)
 			}
 		})
@@ -648,7 +651,7 @@ func TestAPermalinkTakesNoCountOrWindow(t *testing.T) {
 	for _, args := range [][]string{
 		{"read", link, "20"},
 		{"read", link, "--since", "2h"},
-		{"thread", link, "1785708834.862009"},
+		{"thread", link, fixtureTS},
 	} {
 		t.Run(strings.Join(args[2:], " "), func(t *testing.T) {
 			e := newEnv(t)
@@ -767,7 +770,7 @@ func TestRefreshClearsTheCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, code := e.run("refresh")
+	stdout, stderr, code := e.run(cmdRefresh)
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
@@ -820,7 +823,7 @@ func TestARawIDNeedsNoCache(t *testing.T) {
 	e.srv.Reply("conversations.history", twoMessages)
 	e.srv.Reply("users.list", `{"ok":true,"members":[]}`)
 
-	if _, stderr, code := e.run("read", "C0ENG0000"); code != 0 {
+	if _, stderr, code := e.run("read", engID); code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
 	for _, r := range e.srv.Requests() {
@@ -828,7 +831,7 @@ func TestARawIDNeedsNoCache(t *testing.T) {
 			t.Fatal("the conversation list was fetched to resolve an id that needed no resolving")
 		}
 	}
-	if got := e.query(0).Get("channel"); got != "C0ENG0000" {
+	if got := e.query(0).Get("channel"); got != engID {
 		t.Fatalf("channel = %q", got)
 	}
 }
@@ -978,7 +981,7 @@ func TestJSONOutputShapes(t *testing.T) {
 		}
 		// The id is the reason to ask for JSON: the next command can address
 		// what this one found without resolving the name again.
-		if got.Channels[0].ID != "C0ENG0000" || got.Channels[0].Name != "eng" {
+		if got.Channels[0].ID != engID || got.Channels[0].Name != "eng" {
 			t.Fatalf("channel = %+v", got.Channels[0])
 		}
 	})
@@ -1013,7 +1016,7 @@ func TestJSONOutputShapes(t *testing.T) {
 		}
 		var got render.Transcript
 		decode(t, stdout, &got)
-		if got.Kind != "transcript" || got.Channel.ID != "C0ENG0000" || got.Channel.Input != "#eng" {
+		if got.Kind != "transcript" || got.Channel.ID != engID || got.Channel.Input != "#eng" {
 			t.Fatalf("transcript = %+v", got)
 		}
 		if !got.Complete {
@@ -1064,22 +1067,22 @@ func TestJSONOutputShapes(t *testing.T) {
 			t.Fatalf("search = %+v", got)
 		}
 		hit := got.Matches[0]
-		if hit.Channel.ID != "C0ENG0000" || hit.Author != "ann" || hit.TextRendered != "hi @stepan" {
+		if hit.Channel.ID != engID || hit.Author != "ann" || hit.TextRendered != "hi @stepan" {
 			t.Fatalf("hit = %+v", hit)
 		}
 	})
 
-	t.Run("refresh", func(t *testing.T) {
+	t.Run(cmdRefresh, func(t *testing.T) {
 		e := newEnv(t)
 		e.warm()
 
-		stdout, _, code := e.run("--json", "refresh")
+		stdout, _, code := e.run("--json", cmdRefresh)
 		if code != 0 {
 			t.Fatalf("exit = %d", code)
 		}
 		var got render.Refresh
 		decode(t, stdout, &got)
-		if got.Kind != "refresh" || !got.Cleared {
+		if got.Kind != render.KindRefresh || !got.Cleared {
 			t.Fatalf("refresh = %+v", got)
 		}
 	})
@@ -1170,7 +1173,7 @@ func TestHelpDocumentsEveryVerbAndOption(t *testing.T) {
 		t.Fatalf("exit = %d", code)
 	}
 	for _, want := range []string{
-		"whoami", "channels", "dms", "read", "thread", "search", "refresh",
+		"whoami", "channels", "dms", "read", "thread", "search", cmdRefresh,
 		"--ts", "--json", "--since", "permalink",
 	} {
 		if !strings.Contains(help.String(), want) {
@@ -1182,7 +1185,7 @@ func TestHelpDocumentsEveryVerbAndOption(t *testing.T) {
 func TestVerbsRefuseArgumentsTheyCannotUse(t *testing.T) {
 	for _, args := range [][]string{
 		{"whoami", "extra"},
-		{"refresh", "extra"},
+		{cmdRefresh, "extra"},
 		{"channels", "a", "b"},
 		{"dms", "a", "b"},
 		{"read"},

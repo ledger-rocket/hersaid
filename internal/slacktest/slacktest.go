@@ -148,12 +148,15 @@ func (s *Server) Last() Request {
 	return reqs[len(reqs)-1]
 }
 
+// maxRequestBody bounds what the fake records of one request: 8 MiB.
+const maxRequestBody = 8 << 20
+
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	endpoint := strings.TrimPrefix(r.URL.Path, "/")
 
 	// Parsed before the handler runs, so a request is recorded even when the
 	// handler drops the connection.
-	body, _ := io.ReadAll(io.LimitReader(r.Body, 8<<20))
+	body, _ := io.ReadAll(io.LimitReader(r.Body, maxRequestBody))
 	form, _ := url.ParseQuery(string(body))
 
 	s.mu.Lock()

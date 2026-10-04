@@ -8,6 +8,12 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/cache"
 )
 
+// stepID is a user id in the fake catalogue.
+const stepID = "U0000STEP"
+
+// engID is #eng's id in the fake catalogue.
+const engID = "C0000ENG1"
+
 // catalog is a fixed pair of lists. cold makes both lists report ErrCold, which
 // is what a write command sees before anyone has run `hear channels`.
 type catalog struct {
@@ -33,16 +39,16 @@ func (c catalog) Users(context.Context) ([]cache.User, error) {
 func fixture() catalog {
 	return catalog{
 		convs: []cache.Conversation{
-			{ID: "C0000ENG1", Name: "eng"},
+			{ID: engID, Name: "eng"},
 			{ID: "C0000ENG2", Name: "eng"}, // duplicate name; the first must win
 			{ID: "C0000ENGX", Name: "eng-standup"},
 			{ID: "C0000UPPER", Name: "ENG"},
-			{ID: "D0000STEP", IsIM: true, User: "U0000STEP"},
+			{ID: "D0000STEP", IsIM: true, User: stepID},
 			{ID: "D0000DELE", IsIM: true, User: "U0000DELE"},
 		},
 		users: []cache.User{
 			{
-				ID: "U0000STEP", Name: "stepan", RealName: "Stepan Marks",
+				ID: stepID, Name: "stepan", RealName: "Stepan Marks",
 				Profile: cache.Profile{DisplayName: "step"},
 			},
 			{ID: "U0000STEV", Name: "steve", RealName: "Steve Smith"},
@@ -63,7 +69,7 @@ func mustResolve(t *testing.T, cat Catalog, can Capability, target string) Targe
 
 func TestChannelNameResolvesFromTheCache(t *testing.T) {
 	got := mustResolve(t, fixture(), ForRead, "#eng")
-	if got.ID != "C0000ENG1" {
+	if got.ID != engID {
 		t.Fatalf("ID = %q, want the first duplicate C0000ENG1", got.ID)
 	}
 	if got.Name != "eng" || !got.Resolved || got.Input != "#eng" {
@@ -73,7 +79,7 @@ func TestChannelNameResolvesFromTheCache(t *testing.T) {
 
 // A leading '#' is optional, so both spellings resolve.
 func TestBareNameResolvesLikeAHashName(t *testing.T) {
-	if got := mustResolve(t, fixture(), ForRead, "eng"); got.ID != "C0000ENG1" {
+	if got := mustResolve(t, fixture(), ForRead, "eng"); got.ID != engID {
 		t.Fatalf("ID = %q, want C0000ENG1", got.ID)
 	}
 }
@@ -121,7 +127,7 @@ func TestUserIDIsOnlyATargetForAnEndpointThatOpensDMs(t *testing.T) {
 
 func TestPersonResolvesToTheOpenDM(t *testing.T) {
 	got := mustResolve(t, fixture(), ForReact, "@stepan")
-	if got.ID != "D0000STEP" || got.UserID != "U0000STEP" {
+	if got.ID != "D0000STEP" || got.UserID != stepID {
 		t.Fatalf("target = %+v", got)
 	}
 }
@@ -129,7 +135,7 @@ func TestPersonResolvesToTheOpenDM(t *testing.T) {
 // Handle, display name and real name are all matched, case-insensitively.
 func TestPersonMatchesEveryNameField(t *testing.T) {
 	for _, q := range []string{"@stepan", "@STEPAN", "@step", "@Stepan Marks"} {
-		if got := mustResolve(t, fixture(), ForReact, q); got.UserID != "U0000STEP" {
+		if got := mustResolve(t, fixture(), ForReact, q); got.UserID != stepID {
 			t.Fatalf("Resolve(%q) = %q, want U0000STEP", q, got.UserID)
 		}
 	}
@@ -142,7 +148,7 @@ func TestExactHandleBeatsPrefix(t *testing.T) {
 	cat.users = append(cat.users, cache.User{ID: "U0000STEPX", Name: "stepanx"})
 	cat.convs = append(cat.convs, cache.Conversation{ID: "D0000STEX", IsIM: true, User: "U0000STEPX"})
 
-	if got := mustResolve(t, cat, ForReact, "@stepan"); got.UserID != "U0000STEP" {
+	if got := mustResolve(t, cat, ForReact, "@stepan"); got.UserID != stepID {
 		t.Fatalf("UserID = %q, want the exact handle U0000STEP", got.UserID)
 	}
 }
@@ -282,7 +288,7 @@ func TestForUploadNeverPassesANameThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve(#eng) error = %v", err)
 	}
-	if !got.Resolved || got.ID != "C0000ENG1" {
+	if !got.Resolved || got.ID != engID {
 		t.Fatalf("Resolve(#eng) = %+v, want the resolved id", got)
 	}
 }
@@ -300,7 +306,7 @@ func TestABareUserIDResolvesThroughTheOpenDM(t *testing.T) {
 		{"ForReact", ForReact},
 		{"ForEdit", ForEdit},
 	} {
-		got, err := Resolve(context.Background(), fixture(), can.cap, "U0000STEP")
+		got, err := Resolve(context.Background(), fixture(), can.cap, stepID)
 		if err != nil {
 			t.Fatalf("%s: Resolve(U0000STEP) error = %v", can.name, err)
 		}
@@ -310,7 +316,7 @@ func TestABareUserIDResolvesThroughTheOpenDM(t *testing.T) {
 		if !got.Resolved {
 			t.Errorf("%s: Resolved = false, want true", can.name)
 		}
-		if got.UserID != "U0000STEP" {
+		if got.UserID != stepID {
 			t.Errorf("%s: UserID = %q, want the person it went through", can.name, got.UserID)
 		}
 	}
@@ -338,9 +344,9 @@ func TestAChannelNamedLikeAUserIDStillResolves(t *testing.T) {
 	cat := catalog{
 		convs: []cache.Conversation{
 			{ID: "C0000UPD1", Name: "UPDATES"},
-			{ID: "D0000STEP", IsIM: true, User: "U0000STEP"},
+			{ID: "D0000STEP", IsIM: true, User: stepID},
 		},
-		users: []cache.User{{ID: "U0000STEP", Name: "stepan"}},
+		users: []cache.User{{ID: stepID, Name: "stepan"}},
 	}
 	for _, can := range []struct {
 		name string

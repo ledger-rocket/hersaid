@@ -22,6 +22,13 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
 
+const cmdRefresh = "refresh"
+
+const cmdFiles = "files"
+
+// cmdCanvas, cmdFiles and cmdRefresh are hear subcommands.
+const cmdCanvas = "canvas"
+
 var errOneFilterMost = errors.New("one filter at most")
 
 const name = "hear"
@@ -169,12 +176,12 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 	if f.since != 0 && verb != "read" {
 		return cli.Usage(stderr, name, usage, "--since applies to read")
 	}
-	if (f.out != "" || f.maxSize != 0) && verb != "files" {
+	if (f.out != "" || f.maxSize != 0) && verb != cmdFiles {
 		return cli.Usage(stderr, name, usage, "--out and --max-size apply to files")
 	}
 	// Gated like every other verb-specific flag: a flag accepted and silently
 	// dropped teaches that it did something.
-	if f.canvasHTML && verb != "canvas" {
+	if f.canvasHTML && verb != cmdCanvas {
 		return cli.Usage(stderr, name, usage, "--html applies to canvas")
 	}
 
@@ -216,16 +223,16 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 		return h.read(rest)
 	case "thread":
 		return h.thread(rest)
-	case "files":
+	case cmdFiles:
 		return h.files(rest)
-	case "canvas":
+	case cmdCanvas:
 		return h.canvas(rest)
 	case "search":
 		if len(rest) == 0 {
 			return cli.Usage(stderr, name, usage, "search needs a query")
 		}
 		return h.search(strings.Join(rest, " "))
-	case "refresh":
+	case cmdRefresh:
 		if len(rest) > 0 {
 			return cli.Usage(stderr, name, usage, "refresh takes no arguments")
 		}
