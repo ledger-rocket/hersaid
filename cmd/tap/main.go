@@ -122,7 +122,7 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
-	defer log.Close()
+	defer func() { _ = log.Close() }()
 	// The same file sez writes, so a mode it cannot enforce must be as visible
 	// here as it is there: whichever command happened to open it is not
 	// something the person reading the warning chose.

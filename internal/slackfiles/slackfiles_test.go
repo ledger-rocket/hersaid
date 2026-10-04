@@ -47,7 +47,7 @@ func fileHost(t *testing.T, body []byte, contentType string) (*httptest.Server, 
 		if contentType != "" {
 			w.Header().Set("Content-Type", contentType)
 		}
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &auths
@@ -412,7 +412,7 @@ func TestTheBearerSurvivesARedirectOnTheSameHost(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/pdf")
-		w.Write([]byte("the file"))
+		_, _ = w.Write([]byte("the file"))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -565,7 +565,7 @@ func TestATruncatedBodyLeavesNothingBehind(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/pdf")
 		w.Header().Set("Content-Length", "5000")
-		w.Write(make([]byte, 100))
+		_, _ = w.Write(make([]byte, 100))
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
@@ -573,7 +573,7 @@ func TestATruncatedBodyLeavesNothingBehind(t *testing.T) {
 		if hj, ok := w.(http.Hijacker); ok {
 			conn, _, err := hj.Hijack()
 			if err == nil {
-				conn.Close()
+				_ = conn.Close()
 			}
 		}
 	}))
@@ -600,7 +600,7 @@ func TestATruncatedBodyLeavesNothingBehind(t *testing.T) {
 func TestANonOKStatusFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		io.WriteString(w, "nope")
+		_, _ = io.WriteString(w, "nope")
 	}))
 	t.Cleanup(srv.Close)
 

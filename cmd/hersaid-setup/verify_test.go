@@ -119,7 +119,7 @@ func TestScopeHeaderNameIsMatchedHoweverSlackSpellsIt(t *testing.T) {
 	s := slacktest.New(t)
 	s.ReplyFunc("auth.test", func(w http.ResponseWriter, r *http.Request) {
 		w.Header()["x-oauth-scopes"] = []string{"channels:read,chat:write"}
-		io.WriteString(w, okBody)
+		_, _ = io.WriteString(w, okBody)
 	})
 
 	_, err := verify(context.Background(), slackhttp.New(slackhttp.DefaultTimeout), s.URL, writeToken, writeRole)

@@ -76,7 +76,7 @@ func TestMissingErrorFieldStillFails(t *testing.T) {
 func TestMalformedResponseIsAnError(t *testing.T) {
 	s := slacktest.New(t)
 	s.ReplyFunc("auth.test", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("<html>proxy interstitial</html>"))
+		_, _ = w.Write([]byte("<html>proxy interstitial</html>"))
 	})
 
 	_, err := client(t, s).AuthTest(context.Background())

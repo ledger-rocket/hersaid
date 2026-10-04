@@ -115,7 +115,7 @@ func slack(t *testing.T, scopes, body string) *slacktest.Server {
 			w.Header().Set("X-Oauth-Scopes", scopes)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, body)
+		_, _ = io.WriteString(w, body)
 	})
 	return s
 }
@@ -184,7 +184,7 @@ func TestStoredWriteCredentialIsResolvableByCred(t *testing.T) {
 		}
 		w.Header().Set("X-Oauth-Scopes", scopes)
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, okBody)
+		_, _ = io.WriteString(w, okBody)
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -943,7 +943,7 @@ func TestTheWriteRoleDoesNotOverwriteTheIdentity(t *testing.T) {
 		}
 		w.Header().Set("X-Oauth-Scopes", scopes)
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, body)
+		_, _ = io.WriteString(w, body)
 	})
 
 	var stdout, stderr bytes.Buffer

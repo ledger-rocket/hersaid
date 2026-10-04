@@ -96,7 +96,7 @@ func writeTokenFile(path, token string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name()) // a no-op once the rename has succeeded
+	defer func() { _ = os.Remove(tmp.Name()) }() // a no-op once the rename has succeeded
 	err = tmp.Chmod(privateFilePerm)
 	if err != nil {
 		tmp.Close()

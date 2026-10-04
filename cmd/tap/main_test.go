@@ -121,7 +121,7 @@ func TestIntentIsRecordedBeforeTheRequestBegins(t *testing.T) {
 	var atRequest []record
 	s.ReplyFunc("reactions.add", func(w http.ResponseWriter, r *http.Request) {
 		atRequest = readLog(t, log)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 
 	if code, _, stderr := tap(t, s, "#eng", "1785712596.256909", "thumbsup"); code != 0 {
@@ -221,7 +221,7 @@ func TestALostOutcomeRecordIsFatalAndStillReportsTheReaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer log.Close()
+	defer func() { _ = log.Close() }()
 
 	s := slacktest.New(t)
 	s.ReplyFunc("reactions.add", func(w http.ResponseWriter, r *http.Request) {
@@ -229,7 +229,7 @@ func TestALostOutcomeRecordIsFatalAndStillReportsTheReaction(t *testing.T) {
 		if err != nil {
 			t.Errorf("closing the log: %v", err)
 		}
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -441,7 +441,7 @@ func TestAnUnenforceableLogModeIsReported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	probe.Close()
+	_ = probe.Close()
 	if len(probe.Warnings()) == 0 {
 		t.Skipf("this environment can chmod %s, so the warning cannot be provoked", os.DevNull)
 	}

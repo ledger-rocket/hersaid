@@ -321,7 +321,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
-	defer log.Close()
+	defer func() { _ = log.Close() }()
 	for _, w := range log.Warnings() {
 		fmt.Fprintf(stderr, "sez: warning — %s\n", w)
 	}

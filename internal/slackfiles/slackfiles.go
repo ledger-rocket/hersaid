@@ -450,7 +450,7 @@ func (d *dest) ready() error {
 	}
 	err = root.Mkdir(d.msgDir, privateDirPerm)
 	if err != nil && !errors.Is(err, os.ErrExist) {
-		root.Close()
+		_ = root.Close()
 		return err
 	}
 	d.root = root
@@ -459,7 +459,7 @@ func (d *dest) ready() error {
 
 func (d *dest) close() {
 	if d.root != nil {
-		d.root.Close()
+		_ = d.root.Close()
 	}
 }
 
@@ -507,7 +507,7 @@ func writeFile(body io.Reader, d *dest, name string, maxBytes, declared int64) (
 	if err != nil {
 		return 0, err
 	}
-	defer d.root.Remove(d.rel(tmpName))
+	defer func() { _ = d.root.Remove(d.rel(tmpName)) }()
 	defer tmp.Close()
 
 	// maxBytes+1 so that a file of exactly maxBytes bytes is written and one byte more is
@@ -580,34 +580,34 @@ func (d *dest) copyExclusive(tmpName, name string) error {
 
 	src, err := d.root.Open(d.rel(tmpName))
 	if err != nil {
-		d.root.Remove(d.rel(name))
+		_ = d.root.Remove(d.rel(name))
 		return err
 	}
 	defer src.Close()
 
 	copyName, dst, err := d.createTemp()
 	if err != nil {
-		d.root.Remove(d.rel(name))
+		_ = d.root.Remove(d.rel(name))
 		return err
 	}
-	defer d.root.Remove(d.rel(copyName))
+	defer func() { _ = d.root.Remove(d.rel(copyName)) }()
 
 	_, err = io.Copy(dst, src)
 	if err != nil {
 		dst.Close()
-		d.root.Remove(d.rel(name))
+		_ = d.root.Remove(d.rel(name))
 		return err
 	}
 	// The close is where a full disk is reported on several filesystems, so it
 	// fails the same way a short write does: with nothing left at name.
 	err = dst.Close()
 	if err != nil {
-		d.root.Remove(d.rel(name))
+		_ = d.root.Remove(d.rel(name))
 		return err
 	}
 	err = d.root.Rename(d.rel(copyName), d.rel(name))
 	if err != nil {
-		d.root.Remove(d.rel(name))
+		_ = d.root.Remove(d.rel(name))
 		return err
 	}
 	return nil

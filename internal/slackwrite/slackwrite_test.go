@@ -204,14 +204,14 @@ func TestWriteIsAttemptedAtMostOnce(t *testing.T) {
 		{"server error", func(s *slacktest.Server) {
 			s.ReplyFunc("chat.postMessage", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(`{"ok":false,"error":"internal_error"}`))
+				_, _ = w.Write([]byte(`{"ok":false,"error":"internal_error"}`))
 			})
 		}},
 		{"rate limited", func(s *slacktest.Server) {
 			s.ReplyFunc("chat.postMessage", func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Retry-After", "1")
 				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"ok":false,"error":"ratelimited"}`))
+				_, _ = w.Write([]byte(`{"ok":false,"error":"ratelimited"}`))
 			})
 		}},
 	} {
@@ -298,7 +298,7 @@ func TestIdempotentCodesAreScopedToTheirEndpoint(t *testing.T) {
 func TestMalformedReplyIsAmbiguous(t *testing.T) {
 	s := slacktest.New(t)
 	s.ReplyFunc("chat.postMessage", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("<html>gateway timeout</html>"))
+		_, _ = w.Write([]byte("<html>gateway timeout</html>"))
 	})
 
 	_, err := client(t, s).PostMessage(context.Background(), "C1", "hi", "")

@@ -191,7 +191,7 @@ func TestNoFailureModeReportsTheUploadURL(t *testing.T) {
 func TestAFileThatChangesWhileSendingIsRefused(t *testing.T) {
 	f := local(t, 512)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
+		_, _ = io.Copy(io.Discard, r.Body)
 		// Grown underneath the descriptor, at the same inode.
 		err := os.WriteFile(f.Path, []byte(strings.Repeat("y", 4096)), 0o600)
 		if err != nil {
@@ -306,7 +306,7 @@ func TestARedirectedTransferReachesNoSecondHost(t *testing.T) {
 func TestTheTransferBoundIsTheSizeAwareOneNotTheRequestTimeout(t *testing.T) {
 	const base = 100 * time.Millisecond
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		io.Copy(io.Discard, r.Body)
+		_, _ = io.Copy(io.Discard, r.Body)
 		time.Sleep(4 * base)
 		w.WriteHeader(http.StatusOK)
 	}))

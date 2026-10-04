@@ -166,7 +166,7 @@ func Write(name string, v any) error {
 	if err != nil {
 		return fmt.Errorf("cache %s: %w", name, err)
 	}
-	defer os.Remove(tmp.Name()) // no-op once the rename has succeeded
+	defer func() { _ = os.Remove(tmp.Name()) }() // no-op once the rename has succeeded
 	err = tmp.Chmod(privateFilePerm)
 	if err != nil {
 		tmp.Close()

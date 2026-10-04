@@ -997,7 +997,7 @@ func waitOrKill(t *testing.T, cmd *exec.Cmd) {
 	select {
 	case <-done:
 	case <-time.After(20 * time.Second):
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		<-done
 		t.Fatal("the process did not exit within 20s of SIGTERM")
 	}
@@ -1047,7 +1047,7 @@ func TestNoWriterReturnsBeforeTheOutcomeIsDurable(t *testing.T) {
 		}
 		close(start)
 		wg.Wait()
-		log.Close()
+		_ = log.Close()
 
 		if n := early.Load(); n != 0 {
 			t.Fatalf("round %d: %d writers returned before the record was durable", round, n)

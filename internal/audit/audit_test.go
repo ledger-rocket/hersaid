@@ -203,7 +203,7 @@ func openTemp(t *testing.T) (*Log, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { l.Close() })
+	t.Cleanup(func() { _ = l.Close() })
 	return l, path
 }
 
@@ -243,7 +243,7 @@ func TestOpenTightensAnExistingLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 	fi, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)

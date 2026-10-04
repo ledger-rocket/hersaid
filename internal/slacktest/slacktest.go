@@ -75,7 +75,7 @@ func New(t *testing.T) *Server {
 func (s *Server) Reply(endpoint, body string) {
 	s.ReplyFunc(endpoint, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, body)
+		_, _ = io.WriteString(w, body)
 	})
 }
 
@@ -101,7 +101,7 @@ func (s *Server) Pages(endpoint string, bodies ...string) {
 		n++
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, bodies[i])
+		_, _ = io.WriteString(w, bodies[i])
 	})
 }
 
@@ -120,7 +120,7 @@ func (s *Server) Drop(endpoint string) {
 			s.t.Errorf("hijack: %v", err)
 			return
 		}
-		conn.Close()
+		_ = conn.Close()
 	})
 }
 
@@ -173,7 +173,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	if !stubbed {
 		s.t.Errorf("slacktest: unstubbed endpoint %q was called", endpoint)
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"ok":false,"error":"unstubbed_endpoint"}`)
+		_, _ = io.WriteString(w, `{"ok":false,"error":"unstubbed_endpoint"}`)
 		return
 	}
 	h(w, r)
