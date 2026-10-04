@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -21,6 +22,17 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/termsafe"
 )
 
+var (
+	errRefusing              = errors.New("refusing")
+	errAreSameFile           = errors.New("are the same file")
+	errNoSuchFile            = errors.New("no such file")
+	errCannotRead            = errors.New("cannot be read")
+	errDirectoryNotFile      = errors.New("is a directory, not a file")
+	errNotRegularFile        = errors.New("is not a regular file")
+	errEmptySlackRefusesZero = errors.New("is empty; Slack refuses a zero-length upload")
+	errBytesSlackAccepts     = errors.New("bytes Slack accepts")
+)
+
 // uploadHosts is where a file's bytes may be sent. It is a variable so a test
 // can point a transfer at a local address, exactly as resolveWrite and
 // readMessage are variables; the shipped command never reassigns it.
@@ -35,8 +47,8 @@ var uploadHosts = slackupload.SlackHosts
 // is not the file that is sent. The caller closes them.
 func openFiles(paths []string) ([]slackupload.Local, error) {
 	if len(paths) > slackupload.MaxFiles {
-		return nil, fmt.Errorf("refusing %d files; at most %d go on one message",
-			len(paths), slackupload.MaxFiles)
+		return nil, fmt.Errorf("%w %d files; at most %d go on one message",
+			errRefusing, len(paths), slackupload.MaxFiles)
 	}
 	out := make([]slackupload.Local, 0, len(paths))
 	for _, p := range paths {
@@ -50,8 +62,8 @@ func openFiles(paths []string) ([]slackupload.Local, error) {
 			if serr == nil && same {
 				l.File.Close()
 				closeFiles(out)
-				return nil, fmt.Errorf("%s and %s are the same file",
-					termsafe.Text(seen.Path), termsafe.Text(l.Path))
+				return nil, fmt.Errorf("%s and %s %w",
+					termsafe.Text(seen.Path), termsafe.Text(l.Path), errAreSameFile)
 			}
 		}
 		out = append(out, l)
@@ -63,37 +75,37 @@ func openFile(p string) (slackupload.Local, error) {
 	shown := termsafe.Text(p)
 	abs, err := filepath.Abs(p)
 	if err != nil {
-		return slackupload.Local{}, fmt.Errorf("%s: %v", shown, err)
+		return slackupload.Local{}, localPathError{shown: shown, err: err}
 	}
 	f, err := os.Open(abs)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return slackupload.Local{}, fmt.Errorf("%s: no such file", shown)
+			return slackupload.Local{}, fmt.Errorf("%s: %w", shown, errNoSuchFile)
 		}
-		return slackupload.Local{}, fmt.Errorf("%s: cannot be read", shown)
+		return slackupload.Local{}, fmt.Errorf("%s: %w", shown, errCannotRead)
 	}
 	info, err := f.Stat()
 	if err != nil {
 		f.Close()
-		return slackupload.Local{}, fmt.Errorf("%s: cannot be read", shown)
+		return slackupload.Local{}, fmt.Errorf("%s: %w", shown, errCannotRead)
 	}
 	switch {
 	case info.IsDir():
 		f.Close()
-		return slackupload.Local{}, fmt.Errorf("%s is a directory, not a file", shown)
+		return slackupload.Local{}, fmt.Errorf("%s %w", shown, errDirectoryNotFile)
 	case !info.Mode().IsRegular():
 		f.Close()
-		return slackupload.Local{}, fmt.Errorf("%s is not a regular file", shown)
+		return slackupload.Local{}, fmt.Errorf("%s %w", shown, errNotRegularFile)
 	case info.Size() == 0:
 		f.Close()
-		return slackupload.Local{}, fmt.Errorf("%s is empty; Slack refuses a zero-length upload", shown)
+		return slackupload.Local{}, fmt.Errorf("%s %w", shown, errEmptySlackRefusesZero)
 	case info.Size() > slackupload.MaxSize:
 		f.Close()
 		// The cap is decimal and humansize is binary, so rendering it would
 		// print "953.7 MB" for a limit documented and reasoned about as
 		// 1,000,000,000 bytes.
-		return slackupload.Local{}, fmt.Errorf("%s is too large: %s exceeds the %d bytes Slack accepts",
-			shown, humansize.Bytes(info.Size()), slackupload.MaxSize)
+		return slackupload.Local{}, fmt.Errorf("%s is too large: %s exceeds the %d %w",
+			shown, humansize.Bytes(info.Size()), slackupload.MaxSize, errBytesSlackAccepts)
 	}
 	return slackupload.Local{
 		Path:     abs,
@@ -486,3 +498,12 @@ func (p *progress) recordForLocked(base audit.Post, sig os.Signal) audit.Post {
 	defer p.mu.Unlock()
 	return p.recordFor(base, sig)
 }
+
+// localPathError is a path that could not be made absolute, as the user wrote
+// it. It does not wrap err: the message carries err's text only.
+type localPathError struct {
+	shown string
+	err   error
+}
+
+func (e localPathError) Error() string { return e.shown + ": " + e.err.Error() }

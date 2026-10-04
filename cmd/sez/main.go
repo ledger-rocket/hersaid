@@ -32,6 +32,15 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/termsafe"
 )
 
+var (
+	errHear               = errors.New("hear")
+	errHearNoAnswerWithin = errors.New("hear: no answer within")
+	errThisHearTooOld     = errors.New("this hear is too old to say what the message")
+	errHearReportsMessage = errors.New("hear reports the message")
+	errMessage            = errors.New("the message")
+	errHearNoMessageTs    = errors.New("hear: no message with ts")
+)
+
 const name = "sez"
 
 const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|@person|ID> [text]
@@ -689,10 +698,10 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 		// carries it because Output captures stderr.
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && len(bytes.TrimSpace(ee.Stderr)) > 0 {
-			return current{}, fmt.Errorf("hear: %s", bytes.TrimSpace(ee.Stderr))
+			return current{}, fmt.Errorf("%w: %s", errHear, bytes.TrimSpace(ee.Stderr))
 		}
 		if ctx.Err() != nil {
-			return current{}, fmt.Errorf("hear: no answer within %s", bound)
+			return current{}, fmt.Errorf("%w %s", errHearNoAnswerWithin, bound)
 		}
 		return current{}, fmt.Errorf("hear: %w", err)
 	}
@@ -734,7 +743,7 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 		// reading the reply, so the field's absence is the refusal.
 		if m.Blocks == nil {
 			return current{}, fmt.Errorf(
-				"this hear is too old to say what the message at %s carries; update hear, or change the message in Slack", ts)
+				"%w at %s carries; update hear, or change the message in Slack", errThisHearTooOld, ts)
 		}
 		// The other direction of the same problem. A later hear could set partial
 		// for a kind of content this sez has never heard of, with no blocks and
@@ -742,11 +751,11 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 		// gate exists to refuse, arriving from the future rather than the past.
 		if m.Partial && !*m.Blocks && len(m.Files) == 0 {
 			return current{}, fmt.Errorf(
-				"hear reports the message at %s as carrying something this sez does not know about; update sez, or change the message in Slack", ts)
+				"%w at %s as carrying something this sez does not know about; update sez, or change the message in Slack", errHearReportsMessage, ts)
 		}
 		if *m.Blocks {
 			return current{}, fmt.Errorf(
-				"the message at %s carries blocks that cannot be shown here; change it in Slack", ts)
+				"%w at %s carries blocks that cannot be shown here; change it in Slack", errMessage, ts)
 		}
 		names := make([]audit.File, 0, len(m.Files))
 		for _, f := range m.Files {
@@ -754,7 +763,7 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 			// delete must not offer a blank line as its account of what goes.
 			if strings.TrimSpace(termsafe.Text(f.Name)) == "" && f.ID == "" {
 				return current{}, fmt.Errorf(
-					"the message at %s carries a file that cannot be identified", ts)
+					"%w at %s carries a file that cannot be identified", errMessage, ts)
 			}
 			names = append(names, audit.File{Name: f.Name, ID: f.ID})
 		}
@@ -765,11 +774,11 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 		// detached them would be the very thing this gate exists to prevent.
 		if len(names) > 0 && v == verbEdit {
 			return current{}, fmt.Errorf(
-				"the message at %s carries files; sez cannot edit a message with files, only delete it", ts)
+				"%w at %s carries files; sez cannot edit a message with files, only delete it", errMessage, ts)
 		}
 		return current{Text: m.Text, Files: names}, nil
 	}
-	return current{}, fmt.Errorf("hear: no message with ts %s", ts)
+	return current{}, fmt.Errorf("%w %s", errHearNoMessageTs, ts)
 }
 
 // findHear names the hear binary to run, preferring the one installed beside

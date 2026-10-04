@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/render"
 	"github.com/ledger-rocket/hersaid/internal/slackfiles"
 )
+
+var errMessage = errors.New("message")
 
 // defaultMaxSize bounds one file. It is large enough for the documents and
 // screenshots a message usually carries and small enough that a video posted to
@@ -60,7 +63,7 @@ func (h *hear) fetchFiles(ch render.ChannelRef, ts string) int {
 		return h.fail(err)
 	}
 	if len(msg.Files) == 0 {
-		return h.fail(fmt.Errorf("message %s carries no files", ts))
+		return h.fail(fmt.Errorf("%w %s carries no files", errMessage, ts))
 	}
 
 	fc, err := h.src.downloader()

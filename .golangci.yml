@@ -99,6 +99,7 @@ linters:
   - recvcheck
   - testableexamples
   - unqueryvet
+  - err113
   - maintidx
   - nestif
   - whitespace
@@ -254,7 +255,6 @@ linters:
   - gocognit # 10
   - funlen # 1
   - mnd # 23
-  - err113 # 78
   - gosmopolitan # 5
 severity:
   default: error

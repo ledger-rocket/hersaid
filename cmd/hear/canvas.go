@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -12,6 +13,14 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slackfiles"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 	"github.com/ledger-rocket/hersaid/internal/termsafe"
+)
+
+var (
+	errNotCanvasLink        = errors.New("not a canvas link")
+	errNotSlackLink         = errors.New("not a Slack link")
+	errHasNoCanvas          = errors.New("has no canvas")
+	errCanvasesNameOneYou   = errors.New("canvases; name the one you want")
+	errNotCanvasChannelLink = errors.New("not a canvas or channel link")
 )
 
 // maxCanvasSize bounds what is read into memory. A canvas is a document someone
@@ -44,7 +53,7 @@ func canvasTarget(arg string) (string, error) {
 	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
 		u, err := url.Parse(arg)
 		if err != nil {
-			return "", fmt.Errorf("not a canvas link: %s", termsafe.Text(arg))
+			return "", fmt.Errorf("%w: %s", errNotCanvasLink, termsafe.Text(arg))
 		}
 		// The host is checked as well as the path. Nothing downstream trusts it
 		// — the id is looked up on Slack's own API and the bytes come from a
@@ -52,7 +61,7 @@ func canvasTarget(arg string) (string, error) {
 		// not a canvas link, and accepting one invites a reader to believe a
 		// pasted URL was validated when only its shape was.
 		if !isSlackHost(u.Hostname()) {
-			return "", fmt.Errorf("not a Slack link: %s", termsafe.Text(arg))
+			return "", fmt.Errorf("%w: %s", errNotSlackLink, termsafe.Text(arg))
 		}
 		if m := canvasLink.FindStringSubmatch(u.Path); m != nil {
 			return m[1], nil
@@ -108,7 +117,7 @@ func (h *hear) canvas(args []string) int {
 		return h.fail(err)
 	}
 	if reason := notACanvas(info); reason != "" {
-		return h.fail(fmt.Errorf("%s: %s", canvasTitle(info), reason))
+		return h.fail(notCanvasError{title: canvasTitle(info), reason: reason})
 	}
 
 	fc, err := h.src.downloader()
@@ -154,6 +163,11 @@ func (h *hear) canvasBody(body []byte) (string, error) {
 	return md, nil
 }
 
+// notCanvasError says why a file is not a canvas, after the file's title.
+type notCanvasError struct{ title, reason string }
+
+func (e notCanvasError) Error() string { return e.title + ": " + e.reason }
+
 // canvasTitle is what to call a canvas. Slack names every one of them "canvas"
 // and puts the document's real name in the title, so FileLabel's name-first
 // order — right for an attachment, whose name is its filename — is backwards
@@ -198,12 +212,12 @@ func (h *hear) channelCanvas(ctx context.Context, c *slackread.Client, target st
 	}
 	switch len(ids) {
 	case 0:
-		return "", fmt.Errorf("%s has no canvas", termsafe.Text(target))
+		return "", fmt.Errorf("%s %w", termsafe.Text(target), errHasNoCanvas)
 	case 1:
 		return ids[0], nil
 	}
-	return "", fmt.Errorf("%s has %d canvases; name the one you want: %s",
-		termsafe.Text(target), len(ids), strings.Join(ids, " "))
+	return "", fmt.Errorf("%s has %d %w: %s",
+		termsafe.Text(target), len(ids), errCanvasesNameOneYou, strings.Join(ids, " "))
 }
 
 // channelOf turns what was given into a conversation id.
@@ -215,12 +229,12 @@ func channelOf(ctx context.Context, h *hear, target string) (string, error) {
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
 		u, err := url.Parse(target)
 		if err != nil || !isSlackHost(u.Hostname()) {
-			return "", fmt.Errorf("not a Slack link: %s", termsafe.Text(target))
+			return "", fmt.Errorf("%w: %s", errNotSlackLink, termsafe.Text(target))
 		}
 		if m := channelLink.FindStringSubmatch(u.Path); m != nil {
 			return m[1], nil
 		}
-		return "", fmt.Errorf("not a canvas or channel link: %s", termsafe.Text(target))
+		return "", fmt.Errorf("%w: %s", errNotCanvasChannelLink, termsafe.Text(target))
 	}
 	t, err := h.address(ctx, target)
 	if err != nil {

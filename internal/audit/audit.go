@@ -21,6 +21,11 @@ import (
 	"time"
 )
 
+var (
+	errAuditNoLogPath  = errors.New("audit: no log path")
+	errAuditShortWrite = errors.New("audit: short write")
+)
+
 // Phase distinguishes the lines of one attempt. A consumer reading outcomes
 // must require phase == "outcome": an intent line's ok is null because the
 // outcome is not yet known.
@@ -344,7 +349,7 @@ type Log struct {
 // Open prepares the log at path, creating the directory 0700 and the file 0600.
 func Open(path string) (*Log, error) {
 	if path == "" {
-		return nil, errors.New("audit: no log path")
+		return nil, errAuditNoLogPath
 	}
 	err := os.MkdirAll(filepath.Dir(path), 0o700)
 	if err != nil {
@@ -404,7 +409,7 @@ func (l *Log) append(rec any) error {
 		return fmt.Errorf("audit: %w", err)
 	}
 	if n != len(body) {
-		return fmt.Errorf("audit: short write, %d of %d bytes", n, len(body))
+		return fmt.Errorf("%w, %d of %d bytes", errAuditShortWrite, n, len(body))
 	}
 	// One fsync per record, and a command writes at most three. It is not
 	// needed for another process to see the line, only for power loss, but at

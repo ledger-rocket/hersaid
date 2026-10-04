@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -8,6 +9,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	errNotSlackMessageLink     = errors.New("not a Slack message link")
+	errNotSlackThreadTimestamp = errors.New("not a Slack thread timestamp: thread_ts")
+	errMaxSize                 = errors.New("max-size")
+	errSince                   = errors.New("since")
 )
 
 // A Slack message link is https://<workspace>/archives/<conversation>/p<the
@@ -61,7 +69,7 @@ func parsePermalink(target string) (permalink, bool, error) {
 		return permalink{}, false, nil
 	}
 	malformed := func() (permalink, bool, error) {
-		return permalink{}, true, fmt.Errorf("not a Slack message link: %s", target)
+		return permalink{}, true, fmt.Errorf("%w: %s", errNotSlackMessageLink, target)
 	}
 	u, err := url.Parse(target)
 	if err != nil {
@@ -83,7 +91,7 @@ func parsePermalink(target string) (permalink, bool, error) {
 	}
 	if t := u.Query().Get("thread_ts"); t != "" {
 		if !messageTS.MatchString(t) {
-			return permalink{}, true, fmt.Errorf("not a Slack thread timestamp: thread_ts=%s", t)
+			return permalink{}, true, fmt.Errorf("%w=%s", errNotSlackThreadTimestamp, t)
 		}
 		link.threadTS = t
 	}
@@ -120,7 +128,7 @@ var sizeUnits = map[string]int64{
 func parseSize(v string) (int64, error) {
 	m := sizeUnit.FindStringSubmatch(v)
 	if m == nil {
-		return 0, fmt.Errorf("--max-size %s: not a size — try 512K, 100M or 2G", v)
+		return 0, fmt.Errorf("--%w %s: not a size — try 512K, 100M or 2G", errMaxSize, v)
 	}
 	n, err := strconv.ParseInt(m[1], 10, 64)
 	unit := sizeUnits[strings.ToLower(m[2])]
@@ -128,10 +136,10 @@ func parseSize(v string) (int64, error) {
 	// bounds itself by reading one byte past it to tell a file of exactly the
 	// limit from one that overruns.
 	if err != nil || n >= math.MaxInt64/unit {
-		return 0, fmt.Errorf("--max-size %s: that is larger than any file Slack stores", v)
+		return 0, fmt.Errorf("--%w %s: that is larger than any file Slack stores", errMaxSize, v)
 	}
 	if n == 0 {
-		return 0, fmt.Errorf("--max-size %s: a limit must be larger than nothing", v)
+		return 0, fmt.Errorf("--%w %s: a limit must be larger than nothing", errMaxSize, v)
 	}
 	return n * unit, nil
 }
@@ -143,20 +151,20 @@ func parseSince(v string) (time.Duration, error) {
 		n, err := strconv.ParseInt(m[1], 10, 64)
 		unit := sinceUnits[m[2]]
 		if err != nil || n > math.MaxInt64/int64(unit) {
-			return 0, fmt.Errorf("--since %s: that is longer than any Slack workspace has existed", v)
+			return 0, fmt.Errorf("--%w %s: that is longer than any Slack workspace has existed", errSince, v)
 		}
 		if n == 0 {
-			return 0, fmt.Errorf("--since %s: a window must be longer than nothing", v)
+			return 0, fmt.Errorf("--%w %s: a window must be longer than nothing", errSince, v)
 		}
 		return time.Duration(n) * unit, nil
 	}
 	// Whatever Go itself accepts, so "1h30m" works without a second syntax.
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		return 0, fmt.Errorf("--since %s: not a duration — try 30m, 2h, 7d or 1w", v)
+		return 0, fmt.Errorf("--%w %s: not a duration — try 30m, 2h, 7d or 1w", errSince, v)
 	}
 	if d <= 0 {
-		return 0, fmt.Errorf("--since %s: a window must be longer than nothing", v)
+		return 0, fmt.Errorf("--%w %s: a window must be longer than nothing", errSince, v)
 	}
 	return d, nil
 }

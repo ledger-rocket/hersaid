@@ -35,6 +35,16 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
 
+var (
+	errLongerThan           = errors.New("longer than")
+	errRefusingDownloadOver = errors.New("refusing to download over")
+	errRefusingDownload     = errors.New("refusing to download")
+	errHTTP                 = errors.New("HTTP")
+	errNoFreeTemporaryName  = errors.New("no free temporary name in the message directory")
+	errReceived             = errors.New("received")
+	errExists               = errors.New("exists")
+)
+
 // maxHops bounds redirect following. Slack answers a file with the bytes or
 // with one redirect to storage; three is slack enough for a chain that is
 // genuinely Slack's and short enough that a loop cannot be spun here.
@@ -191,7 +201,7 @@ func (c *Client) Read(ctx context.Context, f slackread.File, max int64) ([]byte,
 		return nil, err
 	}
 	if int64(len(buf)) > max {
-		return nil, fmt.Errorf("longer than the %d byte limit", max)
+		return nil, fmt.Errorf("%w the %d byte limit", errLongerThan, max)
 	}
 	return buf, nil
 }
@@ -209,10 +219,10 @@ func (c *Client) permits(rawURL string) error {
 	}
 	host := u.Hostname()
 	if u.Scheme != "https" && !isLoopback(host) {
-		return fmt.Errorf("refusing to download over %s: a bearer may not travel in clear", u.Scheme)
+		return fmt.Errorf("%w %s: a bearer may not travel in clear", errRefusingDownloadOver, u.Scheme)
 	}
 	if !c.hosts.PermitsBearer(host) {
-		return fmt.Errorf("refusing to download from %s: not a host Slack serves files from", host)
+		return fmt.Errorf("%w from %s: not a host Slack serves files from", errRefusingDownload, host)
 	}
 	return nil
 }
@@ -299,7 +309,7 @@ func (c *Client) open(ctx context.Context, f slackread.File) (*http.Response, *b
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, nil, nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return nil, nil, nil, fmt.Errorf("%w %d", errHTTP, resp.StatusCode)
 	}
 	buffered := bufio.NewReader(resp.Body)
 	err = checkBodyIsTheFile(resp, f, buffered)
@@ -462,7 +472,7 @@ func (d *dest) temp() (string, *os.File, error) {
 			return "", nil, err
 		}
 	}
-	return "", nil, errors.New("no free temporary name in the message directory")
+	return "", nil, errNoFreeTemporaryName
 }
 
 // writeFile streams body into the message directory as name.
@@ -502,10 +512,10 @@ func writeFile(body io.Reader, d *dest, name string, max, declared int64) (int64
 		return 0, err
 	}
 	if n > max {
-		return 0, fmt.Errorf("longer than the %d byte limit", max)
+		return 0, fmt.Errorf("%w the %d byte limit", errLongerThan, max)
 	}
 	if declared > 0 && n < declared {
-		return 0, fmt.Errorf("received %d bytes, fewer than the %d Slack declared", n, declared)
+		return 0, fmt.Errorf("%w %d bytes, fewer than the %d Slack declared", errReceived, n, declared)
 	}
 	err = tmp.Close()
 	if err != nil {
@@ -531,7 +541,7 @@ func (d *dest) place(tmpName, name string) error {
 		return nil
 	}
 	if errors.Is(err, os.ErrExist) {
-		return fmt.Errorf("%s exists", d.path(name))
+		return fmt.Errorf("%s %w", d.path(name), errExists)
 	}
 	return d.copyExclusive(tmpName, name)
 }
@@ -552,7 +562,7 @@ func (d *dest) copyExclusive(tmpName, name string) error {
 	claim, err := d.root.OpenFile(d.rel(name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%s exists", d.path(name))
+			return fmt.Errorf("%s %w", d.path(name), errExists)
 		}
 		return err
 	}

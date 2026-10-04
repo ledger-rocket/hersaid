@@ -14,6 +14,12 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
+var (
+	errBadURL = errors.New("bad url")
+	errEof    = errors.New("EOF")
+	errBoom   = errors.New("boom")
+)
+
 // writeCred mints a cred.Write for tests. The token field is unexported, so a
 // test in this package is the only place that can — which is the point: no
 // other package can turn a string it chose into a write credential.
@@ -327,9 +333,9 @@ func TestClassify(t *testing.T) {
 		{"slack internal error", &APIError{Method: "chat.postMessage", Code: "internal_error"}, Ambiguous},
 		{"slack fatal error", &APIError{Method: "chat.postMessage", Code: "fatal_error"}, Ambiguous},
 		{"malformed reply", &APIError{Method: "chat.postMessage", Code: CodeMalformed}, Ambiguous},
-		{"nothing left the process", &PreflightError{Method: "chat.postMessage", Err: errors.New("bad url")}, Rejected},
-		{"transport failure", &TransportError{Method: "chat.postMessage", Err: errors.New("EOF")}, Ambiguous},
-		{"an error nobody typed", errors.New("boom"), Ambiguous},
+		{"nothing left the process", &PreflightError{Method: "chat.postMessage", Err: errBadURL}, Rejected},
+		{"transport failure", &TransportError{Method: "chat.postMessage", Err: errEof}, Ambiguous},
+		{"an error nobody typed", errBoom, Ambiguous},
 	} {
 		if got := Classify(tc.err); got != tc.want {
 			t.Errorf("%s: Classify = %v, want %v", tc.name, got, tc.want)

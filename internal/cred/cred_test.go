@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+var errExecDbusLaunchExecutable = errors.New("exec: \"dbus-launch\": executable file not found in $PATH")
+
 // noKeyring stands in for a machine with no keyring at all. go-keyring returns
 // the raw D-Bus/exec error there, unwrapped, so a caller cannot tell it apart
 // from a genuine miss with errors.Is — resolution must fall through on any
@@ -15,7 +17,7 @@ import (
 func noKeyring(t *testing.T) {
 	t.Helper()
 	swap(t, func(service, account string) (string, error) {
-		return "", errors.New(`exec: "dbus-launch": executable file not found in $PATH`)
+		return "", errExecDbusLaunchExecutable
 	})
 }
 
@@ -27,7 +29,7 @@ func keyringWith(t *testing.T, items map[string]string) {
 		if v, ok := items[service]; ok {
 			return v, nil
 		}
-		return "", errors.New(`exec: "dbus-launch": executable file not found in $PATH`)
+		return "", errExecDbusLaunchExecutable
 	})
 }
 

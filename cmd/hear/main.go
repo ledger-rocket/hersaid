@@ -22,6 +22,8 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slackread"
 )
 
+var errOneFilterMost = errors.New("one filter at most")
+
 const name = "hear"
 
 const usage = `usage: hear <command> [options]
@@ -251,7 +253,7 @@ func optionalFilter(rest []string) (string, error) {
 	case 1:
 		return rest[0], nil
 	default:
-		return "", fmt.Errorf("one filter at most, got %d", len(rest))
+		return "", fmt.Errorf("%w, got %d", errOneFilterMost, len(rest))
 	}
 }
 

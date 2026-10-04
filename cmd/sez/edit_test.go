@@ -13,6 +13,8 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
+var errHearNotFound = errors.New("hear: not found")
+
 // stubRead replaces the read that pairs sez with hear. sez holds the write
 // credential and the write app has no history scopes, so it cannot read a
 // message itself — it asks the hear binary, which holds its own.
@@ -85,7 +87,7 @@ func TestASendIsRefusedWhenTheMessageCannotBeRead(t *testing.T) {
 		t.Run(verb, func(t *testing.T) {
 			isolate(t)
 			seedCache(t)
-			stubRead(t, "", errors.New("hear: not found"))
+			stubRead(t, "", errHearNotFound)
 			t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 			s := slacktest.New(t)
 			s.Reply("chat.update", `{"ok":true,"ts":"1.1","message":{"text":"x"}}`)

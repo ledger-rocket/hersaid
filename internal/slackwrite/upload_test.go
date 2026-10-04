@@ -15,6 +15,8 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
+var errNotSlackError = errors.New("not a Slack error")
+
 // Leg 1 declares two things and must put exactly those on the wire. The
 // assertion is on the field-name set, not on a value: a filename that split
 // into a second field is invisible to a value check, and `channel_id` smuggled
@@ -442,7 +444,7 @@ func TestScopeNamesWhatTheFailingEndpointNeeds(t *testing.T) {
 	if got := Scope(nil); got != "" {
 		t.Errorf("Scope(nil) = %q, want empty", got)
 	}
-	if got := Scope(errors.New("not a Slack error")); got != "" {
+	if got := Scope(errNotSlackError); got != "" {
 		t.Errorf("Scope(non-API error) = %q, want empty", got)
 	}
 }

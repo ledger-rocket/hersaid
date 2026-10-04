@@ -10,6 +10,8 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
+var errKeychainDeniedWrite = errors.New("keychain denied the write")
+
 func TestStorePrefersTheKeyring(t *testing.T) {
 	isolate(t)
 
@@ -208,7 +210,7 @@ func TestStoreRefusesTheFileFallbackWhileTheKeyringStillHoldsACredential(t *test
 			}
 			// Reads keep working; only the write fails.
 			prev := keyringSet
-			keyringSet = func(string, string, string) error { return errors.New("keychain denied the write") }
+			keyringSet = func(string, string, string) error { return errKeychainDeniedWrite }
 			t.Cleanup(func() { keyringSet = prev })
 
 			_, _, err = store(readRole, readToken)

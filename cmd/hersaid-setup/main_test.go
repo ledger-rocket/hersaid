@@ -19,6 +19,8 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
 )
 
+var errExecDbusLaunchExecutable = errors.New("exec: \"dbus-launch\": executable file not found in $PATH")
+
 // The tokens the tests paste. They are distinctive so that any output
 // containing one is unmistakable, and long enough to exercise the full
 // fingerprint rather than its short-secret branch.
@@ -83,7 +85,7 @@ func unsetEnv(t *testing.T, key string) {
 // path rather than a degraded one.
 func noKeyring(t *testing.T) {
 	t.Helper()
-	keyring.MockInitWithError(errors.New(`exec: "dbus-launch": executable file not found in $PATH`))
+	keyring.MockInitWithError(errExecDbusLaunchExecutable)
 	t.Cleanup(keyring.MockInit)
 }
 

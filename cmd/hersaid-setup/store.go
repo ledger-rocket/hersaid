@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/zalando/go-keyring"
 )
+
+var errKeychainWouldNotTake = errors.New("the keychain would not take the token, and it already holds")
 
 // configDir is the directory under XDG_CONFIG_HOME that holds the file
 // credential.
@@ -49,8 +52,8 @@ func store(r role, token string) (where string, shadowed []string, err error) {
 	_, err = keyringGet(r.service, acct)
 	if err == nil {
 		return "", nil, fmt.Errorf(
-			"the keychain would not take the token, and it already holds a %s credential under service %s that would be read in preference to a file; remove that item and try again",
-			r.name, r.service)
+			"%w a %s credential under service %s that would be read in preference to a file; remove that item and try again",
+			errKeychainWouldNotTake, r.name, r.service)
 	}
 
 	path, err := tokenPath(configDir, r)

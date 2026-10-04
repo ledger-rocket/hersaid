@@ -11,6 +11,13 @@ import (
 	"strings"
 )
 
+var (
+	errCouldNotReachSlack = errors.New("  could not reach Slack")
+	errCouldNotReadSlack  = errors.New("  could not read Slack's reply")
+	errSlackSentReplyThis = errors.New("  Slack sent a reply this cannot read (HTTP")
+	errSlackRejectedIt    = errors.New("  Slack rejected it")
+)
+
 // writeScope is the scope the whole role split turns on: the write app carries
 // it, and the read app must not.
 const writeScope = "chat:write"
@@ -64,25 +71,25 @@ func verify(ctx context.Context, hc *http.Client, baseURL, token string, r role)
 	if err != nil {
 		// The error is not printed: a transport error can quote the request,
 		// and the request carries the token in a header.
-		return account{}, errors.New("  could not reach Slack")
+		return account{}, errCouldNotReachSlack
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
-		return account{}, errors.New("  could not read Slack's reply")
+		return account{}, errCouldNotReadSlack
 	}
 	var out authTest
 	err = json.Unmarshal(body, &out)
 	if err != nil {
-		return account{}, fmt.Errorf("  Slack sent a reply this cannot read (HTTP %d)", resp.StatusCode)
+		return account{}, fmt.Errorf("%w %d)", errSlackSentReplyThis, resp.StatusCode)
 	}
 	if !out.OK {
 		e := out.Error
 		if e == "" {
 			e = "unknown"
 		}
-		return account{}, fmt.Errorf("  Slack rejected it: %s", e)
+		return account{}, fmt.Errorf("%w: %s", errSlackRejectedIt, e)
 	}
 	acct := account{user: out.User, team: out.Team, userID: out.UserID}
 
@@ -91,7 +98,7 @@ func verify(ctx context.Context, hc *http.Client, baseURL, token string, r role)
 	// rather than warned about, because the difference is invisible from here
 	// — it only shows up when somebody sees the message in Slack.
 	if out.BotID != nil {
-		return acct, fmt.Errorf(botRefusal, out.User)
+		return acct, botTokenError{user: out.User}
 	}
 
 	err = checkScopes(resp.Header, r)
@@ -111,13 +118,13 @@ func verify(ctx context.Context, hc *http.Client, baseURL, token string, r role)
 func checkScopes(h http.Header, r role) error {
 	scopes := parseScopes(h)
 	if len(scopes) == 0 {
-		return errors.New(unknownScopesRefusal)
+		return errUnknownScopes
 	}
 	switch granted := contains(scopes, writeScope); {
 	case granted && !r.needsWriteScope:
-		return errors.New(readTokenCanPostRefusal)
+		return errReadTokenCanPost
 	case !granted && r.needsWriteScope:
-		return errors.New(writeTokenCannotPostRefusal)
+		return errWriteTokenCannotPost
 	}
 	return nil
 }
@@ -141,6 +148,18 @@ func parseScopes(h http.Header) []string {
 func contains(list []string, want string) bool {
 	return slices.Contains(list, want)
 }
+
+// The three scope refusals, as sentinels so a caller can tell them apart.
+var (
+	errUnknownScopes        = errors.New(unknownScopesRefusal)
+	errReadTokenCanPost     = errors.New(readTokenCanPostRefusal)
+	errWriteTokenCannotPost = errors.New(writeTokenCannotPostRefusal)
+)
+
+// botTokenError refuses a bot token; its text is botRefusal with the app's name.
+type botTokenError struct{ user string }
+
+func (e botTokenError) Error() string { return fmt.Sprintf(botRefusal, e.user) }
 
 const botRefusal = `  REFUSED: that is a BOT token. Messages would post as an app named
   %q, not as you.

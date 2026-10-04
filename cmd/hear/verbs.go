@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -14,6 +15,11 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/render"
 	"github.com/ledger-rocket/hersaid/internal/resolve"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
+)
+
+var (
+	errConversationsHistoryStillPaginating = errors.New("conversations.history: still paginating")
+	errConversationsRepliesStillPaginating = errors.New("conversations.replies: still paginating")
 )
 
 func (h *hear) whoami() int {
@@ -386,7 +392,7 @@ func latest(ctx context.Context, c *slackread.Client, channelID string, n int) (
 			return out, complete, nil
 		}
 	}
-	return nil, false, fmt.Errorf("conversations.history: still paginating after %d pages", maxPages)
+	return nil, false, fmt.Errorf("%w after %d pages", errConversationsHistoryStillPaginating, maxPages)
 }
 
 // window collects everything posted since oldest, newest first.
@@ -415,7 +421,7 @@ func window(ctx context.Context, c *slackread.Client, channelID string, oldest t
 			return out, true, nil
 		}
 	}
-	return nil, false, fmt.Errorf("conversations.history: still paginating after %d pages", maxPages)
+	return nil, false, fmt.Errorf("%w after %d pages", errConversationsHistoryStillPaginating, maxPages)
 }
 
 // replies collects a whole thread, oldest first. A thread has no count to
@@ -433,7 +439,7 @@ func replies(ctx context.Context, c *slackread.Client, channelID, ts string) ([]
 			return out, true, nil
 		}
 	}
-	return nil, false, fmt.Errorf("conversations.replies: still paginating after %d pages", maxPages)
+	return nil, false, fmt.Errorf("%w after %d pages", errConversationsRepliesStillPaginating, maxPages)
 }
 
 // slackTime formats an instant as the `oldest` bound. Slack's timestamps carry

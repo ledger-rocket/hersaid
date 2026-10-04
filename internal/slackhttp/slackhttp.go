@@ -8,12 +8,20 @@ package slackhttp
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
+)
+
+var (
+	errSlackhttpRefusingRedirect = errors.New("slackhttp: refusing redirect")
+	errNotWholeNumberSeconds     = errors.New("not a whole number of seconds")
+	errRequestTimeoutPositive    = errors.New("a request timeout must be positive")
+	errSeconds                   = errors.New("seconds")
 )
 
 // DefaultTimeout bounds every request.
@@ -33,7 +41,7 @@ func New(timeout time.Duration) *http.Client {
 		Timeout:   timeout,
 		Transport: newTransport(),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return fmt.Errorf("slackhttp: refusing redirect to %s", req.URL.Redacted())
+			return fmt.Errorf("%w to %s", errSlackhttpRefusingRedirect, req.URL.Redacted())
 		},
 	}
 }
@@ -63,14 +71,14 @@ func TimeoutFromEnv() (time.Duration, error) {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
-		return 0, fmt.Errorf("%s=%q: not a whole number of seconds", TimeoutEnvVar, v)
+		return 0, fmt.Errorf("%s=%q: %w", TimeoutEnvVar, v, errNotWholeNumberSeconds)
 	}
 	if n <= 0 {
-		return 0, fmt.Errorf("%s=%d: a request timeout must be positive", TimeoutEnvVar, n)
+		return 0, fmt.Errorf("%s=%d: %w", TimeoutEnvVar, n, errRequestTimeoutPositive)
 	}
 	if n > maxTimeoutSeconds {
-		return 0, fmt.Errorf("%s=%d: a request timeout is capped at %d seconds",
-			TimeoutEnvVar, n, maxTimeoutSeconds)
+		return 0, fmt.Errorf("%s=%d: a request timeout is capped at %d %w",
+			TimeoutEnvVar, n, maxTimeoutSeconds, errSeconds)
 	}
 	return time.Duration(n) * time.Second, nil
 }

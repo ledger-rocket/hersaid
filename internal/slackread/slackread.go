@@ -25,6 +25,14 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/slackhttp"
 )
 
+var (
+	errConversationsListStillPaginating = errors.New("conversations.list: still paginating")
+	errUsersListStillPaginating         = errors.New("users.list: still paginating")
+	errNoMessageTs                      = errors.New("no message at ts")
+	errNoFile                           = errors.New("no file")
+	errMalformedResponseHTTP            = errors.New("malformed response (HTTP")
+)
+
 // SlackAPI is the production base URL. It is a parameter of New rather than a
 // default so that no code path can retarget a request carrying the token
 // without saying so at the call site.
@@ -215,7 +223,7 @@ func (c *Client) ConversationsList(ctx context.Context) ([]cache.Conversation, e
 			return all, nil
 		}
 	}
-	return nil, fmt.Errorf("conversations.list: still paginating after %d pages", maxPages)
+	return nil, fmt.Errorf("%w after %d pages", errConversationsListStillPaginating, maxPages)
 }
 
 // UsersList returns every member, following cursor pagination to the end.
@@ -242,7 +250,7 @@ func (c *Client) UsersList(ctx context.Context) ([]cache.User, error) {
 			return all, nil
 		}
 	}
-	return nil, fmt.Errorf("users.list: still paginating after %d pages", maxPages)
+	return nil, fmt.Errorf("%w after %d pages", errUsersListStillPaginating, maxPages)
 }
 
 // HistoryOptions bounds a transcript request. conversations.history and
@@ -328,7 +336,7 @@ func (c *Client) Message(ctx context.Context, channelID, ts string) (Message, er
 	if m, ok := findTS(page.Messages, ts); ok {
 		return m, nil
 	}
-	return Message{}, fmt.Errorf("no message at ts %s", ts)
+	return Message{}, fmt.Errorf("%w %s", errNoMessageTs, ts)
 }
 
 func findTS(msgs []Message, ts string) (Message, bool) {
@@ -387,6 +395,11 @@ type envelope struct {
 	} `json:"response_metadata"`
 }
 
+// apiError is Slack's ok:false answer to method, with the error code it gave.
+type apiError struct{ method, code string }
+
+func (e apiError) Error() string { return e.method + ": " + e.code }
+
 // enveloped is what get needs of its destination. Every response struct embeds
 // envelope, so each satisfies it without saying so.
 type enveloped interface{ status() (bool, string) }
@@ -423,7 +436,7 @@ func (c *Client) FileInfo(ctx context.Context, fileID string) (File, error) {
 		return File{}, fmt.Errorf("looking up file %s: %w", fileID, err)
 	}
 	if out.File.ID == "" {
-		return File{}, fmt.Errorf("no file %s", fileID)
+		return File{}, fmt.Errorf("%w %s", errNoFile, fileID)
 	}
 	return out.File, nil
 }
@@ -566,13 +579,13 @@ func (c *Client) get(ctx context.Context, method string, params url.Values, out 
 	}
 	err = json.Unmarshal(body, out)
 	if err != nil {
-		return fmt.Errorf("%s: malformed response (HTTP %d)", method, resp.StatusCode)
+		return fmt.Errorf("%s: %w %d)", method, errMalformedResponseHTTP, resp.StatusCode)
 	}
 	if ok, apiErr := out.status(); !ok {
 		if apiErr == "" {
 			apiErr = "unknown error"
 		}
-		return fmt.Errorf("%s: %s", method, apiErr)
+		return apiError{method: method, code: apiErr}
 	}
 	return nil
 }
