@@ -18,6 +18,7 @@ import (
 // from the user list already loaded for author and mention resolution, so this
 // costs no lookup of its own.
 func TestReactionsAreNamedAndAttributed(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
@@ -43,6 +44,7 @@ func TestReactionsAreNamedAndAttributed(t *testing.T) {
 // absence, and a transcript that reserved a row for them would double in height
 // for nothing.
 func TestNoReactionLineWithoutReactions(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.862009", Username: "bot", Text: "topic"}}
 
@@ -59,6 +61,7 @@ func TestNoReactionLineWithoutReactions(t *testing.T) {
 // belong to the message that was reacted to, where the reply hint points away
 // from it.
 func TestReactionsPrecedeTheReplyHint(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic", ReplyCount: 3,
@@ -84,6 +87,7 @@ func TestReactionsPrecedeTheReplyHint(t *testing.T) {
 // A long reactor list is truncated rather than allowed to run off the line, so
 // that names shown plus overflow always reconcile with the count beside them.
 func TestALongReactorListIsTruncated(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
@@ -107,6 +111,7 @@ func TestALongReactorListIsTruncated(t *testing.T) {
 // mention does. Dropping it would misreport who reacted; the count would still
 // say two while only one name was shown.
 func TestAnUnknownReactorKeepsItsID(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
@@ -129,6 +134,7 @@ func TestAnUnknownReactorKeepsItsID(t *testing.T) {
 // and a consumer that has ids can resolve them while one given only names
 // cannot go back.
 func TestStructuredReactionsCarryUserIDs(t *testing.T) {
+	t.Parallel()
 	msgs := Messages([]slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
 		Reactions: []slackread.Reaction{
@@ -152,6 +158,7 @@ func TestStructuredReactionsCarryUserIDs(t *testing.T) {
 // not have: a field present as [] on every message is one every consumer has to
 // test for emptiness.
 func TestAMessageWithNoReactionsOmitsTheField(t *testing.T) {
+	t.Parallel()
 	msgs := Messages([]slackread.Message{
 		{TS: "1785708834.862009", Username: "bot", Text: "topic"},
 	}, Names{})
@@ -170,6 +177,7 @@ func TestAMessageWithNoReactionsOmitsTheField(t *testing.T) {
 // from the count, not from the ids that came back, or the line contradicts
 // itself — three names and a +2 under a total of 50.
 func TestTheOverflowCountsFromTheTotalNotTheReturnedIDs(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
@@ -192,6 +200,7 @@ func TestTheOverflowCountsFromTheTotalNotTheReturnedIDs(t *testing.T) {
 // Slack can report a count with no ids at all. Rendering the parentheses
 // regardless leaves a dangling "()" that says nothing.
 func TestAReactionWithNoNamedReactorsHasNoParentheses(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
@@ -215,6 +224,7 @@ func TestAReactionWithNoNamedReactorsHasNoParentheses(t *testing.T) {
 // omits the users array on some reactions, so this is the shape a consumer
 // actually meets rather than a hypothetical one.
 func TestAReactionWithNoReactorsCarriesAnEmptyUserList(t *testing.T) {
+	t.Parallel()
 	msgs := Messages([]slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
 		Reactions: []slackread.Reaction{{Name: "tada", Count: 4}},
@@ -232,6 +242,7 @@ func TestAReactionWithNoReactorsCarriesAnEmptyUserList(t *testing.T) {
 // The render struct must not alias the slackread slice it was built from: a
 // consumer mutating one would otherwise reach through into the other.
 func TestStructuredReactionsDoNotAliasTheSource(t *testing.T) {
+	t.Parallel()
 	src := []slackread.Message{{
 		TS: "1785708834.862009", Username: "bot", Text: "topic",
 		Reactions: []slackread.Reaction{{Name: "eyes", Count: 1, Users: []string{"U1"}}},

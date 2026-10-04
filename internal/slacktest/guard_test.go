@@ -15,6 +15,7 @@ import (
 // a future test passing the production one — so no test file may name the real
 // API at all. Only the endpoint packages, which define the constant, may.
 func TestNoTestNamesTheRealSlackAPI(t *testing.T) {
+	t.Parallel()
 	root := moduleRoot(t)
 	allowed := map[string]bool{
 		filepath.Join("internal", "slackread", "slackread.go"):   true,
@@ -82,6 +83,7 @@ func moduleRoot(t *testing.T) string {
 
 // The guard walks the filesystem, so it has to know what is not this module.
 func TestTheGuardSkipsWhatIsNotThisModulesSource(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{".git", ".claude", ".rb", ".github", "_ignored", "bin"} {
 		if !skipDir(name) {
 			t.Errorf("skipDir(%q) = false, want it skipped", name)

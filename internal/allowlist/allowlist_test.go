@@ -43,6 +43,7 @@ func TestUnsetPermitsEverything(t *testing.T) {
 // An empty or whitespace-only value is the same as unset — it is what an
 // `export HERSAID_WRITE_CHANNELS=` leaves behind.
 func TestEmptyValueIsInactive(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{"", "  ", ",", " , ,"} {
 		if l := Parse(v); l.Active() {
 			t.Errorf("Parse(%q) is active", v)
@@ -51,6 +52,7 @@ func TestEmptyValueIsInactive(t *testing.T) {
 }
 
 func TestPermitsByID(t *testing.T) {
+	t.Parallel()
 	l := Parse("C0123ABCD,D0456EFGH")
 	if !l.Active() {
 		t.Fatal("list is not active")
@@ -66,6 +68,7 @@ func TestPermitsByID(t *testing.T) {
 // Both spellings of a name are accepted in the variable, because both are what
 // a user types on the command line.
 func TestPermitsByName(t *testing.T) {
+	t.Parallel()
 	for _, spec := range []string{"#eng-standup", "eng-standup"} {
 		l := Parse(spec)
 		if !l.Permits(resolved("C0123ABCD", "eng-standup")) {
@@ -78,6 +81,7 @@ func TestPermitsByName(t *testing.T) {
 // id: they are the same conversation, which is why the check runs after
 // resolution rather than on the raw argument.
 func TestNameEntryPermitsAResolvedID(t *testing.T) {
+	t.Parallel()
 	l := Parse("#eng")
 	if !l.Permits(resolved("C0123ABCD", "eng")) {
 		t.Fatal("a name entry did not permit the id it resolves to")
@@ -86,6 +90,7 @@ func TestNameEntryPermitsAResolvedID(t *testing.T) {
 
 // sez may pass a #name through unresolved; the allowlist must still bind.
 func TestNameEntryPermitsAPassThroughTarget(t *testing.T) {
+	t.Parallel()
 	l := Parse("#eng")
 	passthrough := resolve.Target{Input: "#eng", ID: "#eng", Name: "eng", Resolved: false}
 	if !l.Permits(passthrough) {
@@ -95,6 +100,7 @@ func TestNameEntryPermitsAPassThroughTarget(t *testing.T) {
 
 // Exact match only. #eng must not open #eng-standup, #engineering or #eng2.
 func TestNameMatchingIsExact(t *testing.T) {
+	t.Parallel()
 	l := Parse("#eng")
 	for _, name := range []string{"eng-standup", "engineering", "eng2", "en", "ENG"} {
 		if l.Permits(resolved("C0123ABCD", name)) {
@@ -106,6 +112,7 @@ func TestNameMatchingIsExact(t *testing.T) {
 // Fail closed: naming a channel in the list and then passing its raw id is
 // refused, because this package cannot know the two are the same conversation.
 func TestRawIDIsNotPermittedByANameEntry(t *testing.T) {
+	t.Parallel()
 	l := Parse("#eng")
 	rawID := resolve.Target{Input: "C0123ABCD", ID: "C0123ABCD", Resolved: true}
 	if l.Permits(rawID) {
@@ -116,6 +123,7 @@ func TestRawIDIsNotPermittedByANameEntry(t *testing.T) {
 // A person allowlisted by user id stays allowed once a DM exists and resolution
 // starts yielding the D… id instead.
 func TestUserIDEntryPermitsTheResolvedDM(t *testing.T) {
+	t.Parallel()
 	l := Parse("U0000STEP")
 	dm := resolve.Target{Input: "@stepan", ID: "D0000STEP", UserID: "U0000STEP", Resolved: true}
 	if !l.Permits(dm) {
@@ -124,6 +132,7 @@ func TestUserIDEntryPermitsTheResolvedDM(t *testing.T) {
 }
 
 func TestMixedEntriesAndWhitespace(t *testing.T) {
+	t.Parallel()
 	l := Parse(" D0123ABCD , #eng-standup ,, plain ")
 	for _, tc := range []struct {
 		target resolve.Target
@@ -141,6 +150,7 @@ func TestMixedEntriesAndWhitespace(t *testing.T) {
 }
 
 func TestCheckWrapsErrRefused(t *testing.T) {
+	t.Parallel()
 	l := Parse("#eng")
 	err := l.Check(resolved("C1", "eng"))
 	if err != nil {

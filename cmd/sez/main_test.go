@@ -1381,6 +1381,7 @@ func (r refusingReader) Read([]byte) (int, error) {
 // The mirror of cmd/hear's import-graph assertion. Without this, that test could
 // pass because nothing anywhere imports slackwrite.
 func TestSezDependsOnSlackwrite(t *testing.T) {
+	t.Parallel()
 	out, err := exec.CommandContext(t.Context(), "go", "list", "-deps", ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)

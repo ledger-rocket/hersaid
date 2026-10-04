@@ -14,6 +14,7 @@ import (
 // Reacting is the whole of its job; posting, editing and deleting are not, and
 // the credential would carry them just as happily.
 func TestBuiltBinaryReachesNoMessageEndpoints(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("builds a binary")
 	}

@@ -62,6 +62,7 @@ func TestAMessageWithNoReactionsDecodesCleanly(t *testing.T) {
 // blocks" would refuse nearly every real message and make the change verbs
 // unusable. The question is whether the text is the content or a fallback.
 func TestOnlyContentTextCannotStandForCounts(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name string
 		msg  Message
@@ -78,6 +79,7 @@ func TestOnlyContentTextCannotStandForCounts(t *testing.T) {
 		{"undecodable", Message{Blocks: []byte(`{"unexpected":1}`)}, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			if got := c.msg.HasUnrenderedContent(); got != c.want {
 				t.Fatalf("HasUnrenderedContent = %v, want %v", got, c.want)
 			}

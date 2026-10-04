@@ -241,6 +241,7 @@ func TestRolesDoNotShareSources(t *testing.T) {
 // a secret of some other kind — the wrong password, an unrelated API key —
 // pasted by mistake, and its first characters are as sensitive as the rest.
 func TestFingerprintDiscloseNothingButTheSlackTokenType(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ token, want string }{
 		{"xoxp-1234567890-secret-material", "xoxp-… (31 chars)"},
 		{"xoxb-1234567890-secret-material", "xoxb-… (31 chars)"},

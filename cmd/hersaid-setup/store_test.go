@@ -265,6 +265,7 @@ func TestLookupFindsWhatStoreWrote(t *testing.T) {
 }
 
 func TestDescribeDoesNotDiscloseTheToken(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		token string
 		want  string

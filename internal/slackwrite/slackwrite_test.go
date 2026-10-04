@@ -77,6 +77,7 @@ func TestPostMessageSendsExactlyTheDeclaredFields(t *testing.T) {
 // for Slack to reject is not the guarantee, and it puts the target channel and
 // the message text on someone else's wire.
 func TestZeroCredentialIssuesNoRequest(t *testing.T) {
+	t.Parallel()
 	s := slacktest.New(t)
 	s.Reply("chat.postMessage", `{"ok":true,"ts":"1.1"}`)
 	s.Reply("reactions.add", `{"ok":true}`)
@@ -264,6 +265,7 @@ func TestAPIErrorCarriesTheCode(t *testing.T) {
 // Outcome without first inspecting Code must reach that answer. A fourth
 // Outcome is what makes forgetting impossible.
 func TestIdempotentCodesAreNotRefusals(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ method, code string }{
 		{methodAddReaction, CodeAlreadyReacted},
 		{methodRemoveReaction, CodeNoReaction},
@@ -281,6 +283,7 @@ func TestIdempotentCodesAreNotRefusals(t *testing.T) {
 // message as sent that Slack refused — and leave the caller with no response to
 // read a timestamp from.
 func TestIdempotentCodesAreScopedToTheirEndpoint(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ method, code string }{
 		{methodPostMessage, CodeAlreadyReacted},
 		{methodPostMessage, CodeNoReaction},
@@ -315,6 +318,7 @@ func TestMalformedReplyIsAmbiguous(t *testing.T) {
 // recorded as a definite failure, because that is what invites the retry that
 // duplicates the message.
 func TestClassify(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		err  error

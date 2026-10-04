@@ -146,6 +146,7 @@ func TestUsersListFollowsTheCursor(t *testing.T) {
 // The zero credential must issue no request either. A read token is a bearer
 // credential like any other, and cred.Read{} is constructible in any package.
 func TestZeroCredentialIssuesNoRequest(t *testing.T) {
+	t.Parallel()
 	s := slacktest.New(t)
 	s.Reply("auth.test", `{"ok":true}`)
 	s.Reply("conversations.list", `{"ok":true,"channels":[]}`)

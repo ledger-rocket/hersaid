@@ -16,6 +16,7 @@ const (
 )
 
 func TestTextRemovesWhatWouldDriveATerminal(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, in, want string
 	}{
@@ -34,6 +35,7 @@ func TestTextRemovesWhatWouldDriveATerminal(t *testing.T) {
 		{"emoji kept", "chart-" + string(barChart) + ".png", "chart-" + string(barChart) + ".png"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			if got := Text(c.in); got != c.want {
 				t.Errorf("Text(%q) = %q, want %q", c.in, got, c.want)
 			}
@@ -45,6 +47,7 @@ func TestTextRemovesWhatWouldDriveATerminal(t *testing.T) {
 // vanished but that the name now reads as what it is. Rendered raw, the input
 // below shows as "annexrcs.pdf" in a terminal that honours the override.
 func TestABidiOverrideCannotSpoofAnExtension(t *testing.T) {
+	t.Parallel()
 	spoofed := "annex" + string(rlo) + "fdp.scr"
 	if got := Text(spoofed); got != "annexfdp.scr" {
 		t.Fatalf("Text(%q) = %q, want the name to read as the .scr it is", spoofed, got)
@@ -54,6 +57,7 @@ func TestABidiOverrideCannotSpoofAnExtension(t *testing.T) {
 // The predicate and the renderer must agree, or the filesystem rule and the
 // display rule disagree about the same name.
 func TestIsHostileAgreesWithText(t *testing.T) {
+	t.Parallel()
 	for _, r := range []rune{0x00, 0x09, 0x0a, 0x0d, esc, 0x7f, csi, rlo, isolate, ltrMark} {
 		if !IsHostile(r) {
 			t.Errorf("IsHostile(%U) = false, want true", r)

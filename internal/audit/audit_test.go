@@ -38,6 +38,7 @@ func ts(s string) time.Time {
 }
 
 func TestPostRecordFieldSetAndOrder(t *testing.T) {
+	t.Parallel()
 	got, err := json.Marshal(Post{
 		At: ts("2026-08-03T09:15:00Z"), By: "stepan", Phase: Intent,
 		Channel: "#eng", ChannelID: "C0123ABCD", OK: Unknown, Text: "hello",
@@ -65,6 +66,7 @@ func TestPostRecordFieldSetAndOrder(t *testing.T) {
 }
 
 func TestReactionRecordFieldSetAndOrder(t *testing.T) {
+	t.Parallel()
 	got, err := json.Marshal(Reaction{
 		At: ts("2026-08-03T09:15:02Z"), By: "stepan", Action: Add,
 		Channel: "#eng", ChannelID: "C0123ABCD", TS: "1785712596.256909",
@@ -83,6 +85,7 @@ func TestReactionRecordFieldSetAndOrder(t *testing.T) {
 // slack_text. Asserting the difference is what stops a future refactor folding
 // them together behind omitempty.
 func TestRecordClassesHaveDifferentFieldSets(t *testing.T) {
+	t.Parallel()
 	// Both carry an action, so the fixtures set one: a post record's is nullable,
 	// and asserting against an unset one would pin the fixture rather than the
 	// type.
@@ -131,6 +134,7 @@ func fields(t *testing.T, rec any) map[string]bool {
 // An intent line has no outcome yet, so ok is tri-state on both record types.
 // Pin every spelling.
 func TestTristateMarshalling(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		state Tristate
 		want  string
@@ -151,6 +155,7 @@ func TestTristateMarshalling(t *testing.T) {
 // the ones that have broken a shell pipeline before: sed metacharacters, Go
 // replacement metacharacters, control bytes and a mention that looks like markup.
 func TestUntrustedTextRoundTripsUnchanged(t *testing.T) {
+	t.Parallel()
 	const nasty = "<@U0123ABCD> said \"a & b\" — \n\ttab\x1f and 日本語 ${x} $1 %s %!v(MISSING) s/x/y/"
 
 	b, err := json.Marshal(Post{Channel: "#eng", Text: nasty, SlackText: nasty})
@@ -173,6 +178,7 @@ func TestUntrustedTextRoundTripsUnchanged(t *testing.T) {
 // A record must serialise the same way for the log as for any other caller,
 // so a Phase 2 test can assert against json.Marshal and mean the file.
 func TestLoggedBytesEqualMarshalledBytes(t *testing.T) {
+	t.Parallel()
 	l, path := openTemp(t)
 	rec := Post{
 		At: ts("2026-08-03T09:15:00Z"), By: "stepan", Phase: Outcome,
@@ -210,6 +216,7 @@ func openTemp(t *testing.T) (*Log, string) {
 // The log holds credentials-adjacent history of everything the user said, so
 // its mode is not advisory.
 func TestLogFileIsPrivate(t *testing.T) {
+	t.Parallel()
 	l, path := openTemp(t)
 	err := l.Post(Post{Channel: "#eng", Phase: DryRun, OK: Succeeded})
 	if err != nil {
@@ -233,6 +240,7 @@ func TestLogFileIsPrivate(t *testing.T) {
 
 // Open must tighten a log left permissive by an earlier version or another tool.
 func TestOpenTightensAnExistingLog(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "posts.jsonl")
 	err := os.WriteFile(path, nil, 0o644)
@@ -256,6 +264,7 @@ func TestOpenTightensAnExistingLog(t *testing.T) {
 // The log under concurrency: parallel writers interleave whole lines, never
 // fragments. Each record is composed in full and then written once.
 func TestConcurrentWritersInterleaveWholeLines(t *testing.T) {
+	t.Parallel()
 	l, path := openTemp(t)
 
 	const writers, each = 8, 40
@@ -308,6 +317,7 @@ func TestConcurrentWritersInterleaveWholeLines(t *testing.T) {
 // A record that could not be written must be reported, never swallowed: a write
 // that happened without its record is the thing the log exists to prevent.
 func TestWriteFailureIsReported(t *testing.T) {
+	t.Parallel()
 	l, _ := openTemp(t)
 	err := l.Close()
 	if err != nil {
@@ -326,6 +336,7 @@ func TestWriteFailureIsReported(t *testing.T) {
 // discard: the bytes are on disk before Post returns, readable by another
 // process without this one closing the file.
 func TestRecordIsDurableBeforePostReturns(t *testing.T) {
+	t.Parallel()
 	l, path := openTemp(t)
 	err := l.Post(Post{Channel: "#eng", Phase: Intent, OK: Unknown})
 	if err != nil {
@@ -364,6 +375,7 @@ func TestDefaultPathFollowsXDG(t *testing.T) {
 // The action and previous_text keys must sit where the wire struct puts them,
 // which no other golden shows: every one of them leaves both at their zero.
 func TestAnEditRecordPinsItsShape(t *testing.T) {
+	t.Parallel()
 	got, err := json.Marshal(Post{
 		At: ts("2026-08-03T09:15:03Z"), By: "stepan",
 		Phase: Outcome, Action: Update,

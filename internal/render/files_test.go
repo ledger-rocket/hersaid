@@ -12,6 +12,7 @@ import (
 // A message whose content is a file has text that is often empty, so the
 // transcript has to name the file or the message reads as nothing at all.
 func TestTranscriptNamesTheFilesOnAMessage(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{
 		TS: "1785708834.862009", User: "U1", Text: "here's the trace",
@@ -33,6 +34,7 @@ func TestTranscriptNamesTheFilesOnAMessage(t *testing.T) {
 }
 
 func TestOneFileIsSingular(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{
 		TS: "1785708834.862009", User: "U1",
@@ -51,6 +53,7 @@ func TestOneFileIsSingular(t *testing.T) {
 // break the transcript into lines that look like separate messages, and one
 // carrying an escape sequence would drive the terminal it is printed to.
 func TestAFileNameCannotBreakTheTranscript(t *testing.T) {
+	t.Parallel()
 	got := FileLabel(slackread.File{ID: "F1", Name: "in\nnocent\x1b[31m.pdf\r"})
 	if strings.ContainsAny(got, "\n\r\x1b") {
 		t.Fatalf("FileLabel = %q, want the control characters gone", got)
@@ -66,6 +69,7 @@ func TestAFileNameCannotBreakTheTranscript(t *testing.T) {
 // control-sequence introducer, which terminals that honour it act on exactly as
 // they do on ESC-[.
 func TestAFileNameCannotSpoofItsExtensionOrDriveTheTerminal(t *testing.T) {
+	t.Parallel()
 	got := FileLabel(slackread.File{ID: "F1", Name: "annex\u202Efdp.scr"})
 	if strings.ContainsRune(got, 0x202e) {
 		t.Fatalf("FileLabel = %q, want the bidi override gone", got)
@@ -79,6 +83,7 @@ func TestAFileNameCannotSpoofItsExtensionOrDriveTheTerminal(t *testing.T) {
 }
 
 func TestFileLabelFallsBackFromNameToTitleToID(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		file slackread.File
 		want string
@@ -97,6 +102,7 @@ func TestFileLabelFallsBackFromNameToTitleToID(t *testing.T) {
 // does not say a message has attachments — blocks set it too, and they cannot
 // be downloaded.
 func TestStructuredTranscriptCarriesTheFiles(t *testing.T) {
+	t.Parallel()
 	msgs := Messages([]slackread.Message{{
 		TS: "1785708834.862009", User: "U1", Text: "here",
 		Files: []slackread.File{{
@@ -127,6 +133,7 @@ func TestStructuredTranscriptCarriesTheFiles(t *testing.T) {
 // A message with no attachments carries no files key at all, so a consumer can
 // test for the field rather than for an empty array.
 func TestAMessageWithoutFilesHasNoFilesKey(t *testing.T) {
+	t.Parallel()
 	msgs := Messages([]slackread.Message{{TS: "1785708834.862009", Text: "just words"}}, Names{})
 	blob, err := json.Marshal(msgs[0])
 	if err != nil {
@@ -140,6 +147,7 @@ func TestAMessageWithoutFilesHasNoFilesKey(t *testing.T) {
 // A file with no name of its own is still addressable, and the structured form
 // resolves it the same way the transcript does.
 func TestAFileRefFallsBackToTheTitleAndTheID(t *testing.T) {
+	t.Parallel()
 	msgs := Messages([]slackread.Message{{
 		TS: "1.1",
 		Files: []slackread.File{
@@ -158,6 +166,7 @@ func TestAFileRefFallsBackToTheTitleAndTheID(t *testing.T) {
 // A skipped file gets a line of its own: no line would be indistinguishable
 // from a message that never carried the file.
 func TestWriteFilesReportsEveryOutcome(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	err := WriteFiles(&b, []FileResult{
 		{ID: "F1", Name: "trace.pdf", Status: "written", Path: "eng-1.1/trace.pdf", Bytes: 1258291},
@@ -190,6 +199,7 @@ func TestWriteFilesReportsEveryOutcome(t *testing.T) {
 // The two travel together through the real transform, so a consumer can tell a
 // message it may act on from one it may not.
 func TestTheStructuredTranscriptDistinguishesBlocksFromFiles(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name            string
 		msg             slackread.Message
@@ -212,6 +222,7 @@ func TestTheStructuredTranscriptDistinguishesBlocksFromFiles(t *testing.T) {
 		}, true, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			got := Messages([]slackread.Message{c.msg}, nil)
 			if len(got) != 1 {
 				t.Fatalf("messages = %d, want 1", len(got))
@@ -234,6 +245,7 @@ func TestTheStructuredTranscriptDistinguishesBlocksFromFiles(t *testing.T) {
 // blocks is emitted even when false, so a consumer can tell "no blocks" from
 // "this hear is too old to say".
 func TestTheBlocksKeyIsAlwaysPresent(t *testing.T) {
+	t.Parallel()
 	got := Messages([]slackread.Message{{TS: "1.1", Text: "hello"}}, nil)
 	b, err := json.Marshal(got[0])
 	if err != nil {

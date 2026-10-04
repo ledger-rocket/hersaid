@@ -68,6 +68,7 @@ func mustResolve(t *testing.T, cat Catalog, can Capability, target string) Targe
 }
 
 func TestChannelNameResolvesFromTheCache(t *testing.T) {
+	t.Parallel()
 	got := mustResolve(t, fixture(), ForRead, "#eng")
 	if got.ID != engID {
 		t.Fatalf("ID = %q, want the first duplicate C0000ENG1", got.ID)
@@ -79,6 +80,7 @@ func TestChannelNameResolvesFromTheCache(t *testing.T) {
 
 // A leading '#' is optional, so both spellings resolve.
 func TestBareNameResolvesLikeAHashName(t *testing.T) {
+	t.Parallel()
 	if got := mustResolve(t, fixture(), ForRead, "eng"); got.ID != engID {
 		t.Fatalf("ID = %q, want C0000ENG1", got.ID)
 	}
@@ -86,6 +88,7 @@ func TestBareNameResolvesLikeAHashName(t *testing.T) {
 
 // Case-sensitive: folding case would only widen what a typo can hit.
 func TestChannelNameMatchingIsCaseSensitive(t *testing.T) {
+	t.Parallel()
 	if got := mustResolve(t, fixture(), ForRead, "#ENG"); got.ID != "C0000UPPER" {
 		t.Fatalf("#ENG resolved to %q, want the literally-named C0000UPPER", got.ID)
 	}
@@ -93,6 +96,7 @@ func TestChannelNameMatchingIsCaseSensitive(t *testing.T) {
 
 // A prefix of a real channel is not a channel.
 func TestChannelNameIsNotPrefixMatched(t *testing.T) {
+	t.Parallel()
 	_, err := Resolve(context.Background(), fixture(), ForRead, "#eng-stand")
 	if !errors.Is(err, ErrNoSuchChannel) {
 		t.Fatalf("error = %v, want ErrNoSuchChannel", err)
@@ -102,6 +106,7 @@ func TestChannelNameIsNotPrefixMatched(t *testing.T) {
 // A raw id resolves without consulting the catalog at all, so it works with a
 // cold cache.
 func TestRawConversationIDBypassesTheCatalog(t *testing.T) {
+	t.Parallel()
 	for _, id := range []string{"C0123ABCD", "D0123ABCD", "G0123ABCD"} {
 		got := mustResolve(t, catalog{cold: true}, ForReact, id)
 		if got.ID != id || !got.Resolved {
@@ -113,6 +118,7 @@ func TestRawConversationIDBypassesTheCatalog(t *testing.T) {
 // The capability difference, declared rather than incidental: chat.postMessage
 // opens a DM when handed a user id, reactions.add cannot.
 func TestUserIDIsOnlyATargetForAnEndpointThatOpensDMs(t *testing.T) {
+	t.Parallel()
 	got := mustResolve(t, catalog{cold: true}, ForPost, "U0123ABCD")
 	if got.ID != "U0123ABCD" || got.UserID != "U0123ABCD" {
 		t.Fatalf("sez: %+v, want the user id accepted as a target", got)
@@ -126,6 +132,7 @@ func TestUserIDIsOnlyATargetForAnEndpointThatOpensDMs(t *testing.T) {
 }
 
 func TestPersonResolvesToTheOpenDM(t *testing.T) {
+	t.Parallel()
 	got := mustResolve(t, fixture(), ForReact, "@stepan")
 	if got.ID != "D0000STEP" || got.UserID != stepID {
 		t.Fatalf("target = %+v", got)
@@ -134,6 +141,7 @@ func TestPersonResolvesToTheOpenDM(t *testing.T) {
 
 // Handle, display name and real name are all matched, case-insensitively.
 func TestPersonMatchesEveryNameField(t *testing.T) {
+	t.Parallel()
 	for _, q := range []string{"@stepan", "@STEPAN", "@step", "@Stepan Marks"} {
 		if got := mustResolve(t, fixture(), ForReact, q); got.UserID != stepID {
 			t.Fatalf("Resolve(%q) = %q, want U0000STEP", q, got.UserID)
@@ -144,6 +152,7 @@ func TestPersonMatchesEveryNameField(t *testing.T) {
 // An exact handle wins over any number of prefix matches, so a person whose
 // handle is a prefix of someone else's is still addressable.
 func TestExactHandleBeatsPrefix(t *testing.T) {
+	t.Parallel()
 	cat := fixture()
 	cat.users = append(cat.users, cache.User{ID: "U0000STEPX", Name: "stepanx"})
 	cat.convs = append(cat.convs, cache.Conversation{ID: "D0000STEX", IsIM: true, User: "U0000STEPX"})
@@ -156,6 +165,7 @@ func TestExactHandleBeatsPrefix(t *testing.T) {
 // Ambiguity is an error, never a guess: picking one would message the wrong
 // person, and the mistake is only visible in Slack afterwards.
 func TestAmbiguousPrefixIsAnError(t *testing.T) {
+	t.Parallel()
 	_, err := Resolve(context.Background(), fixture(), ForReact, "@ste")
 	if !errors.Is(err, ErrAmbiguousUser) {
 		t.Fatalf("error = %v, want ErrAmbiguousUser", err)
@@ -165,6 +175,7 @@ func TestAmbiguousPrefixIsAnError(t *testing.T) {
 // A deactivated account keeps its name and its DM channel. Matching it would
 // address a conversation nobody reads.
 func TestDeletedUsersAreExcluded(t *testing.T) {
+	t.Parallel()
 	_, err := Resolve(context.Background(), fixture(), ForReact, "@gone")
 	if !errors.Is(err, ErrNoSuchUser) {
 		t.Fatalf("error = %v, want ErrNoSuchUser", err)
@@ -172,6 +183,7 @@ func TestDeletedUsersAreExcluded(t *testing.T) {
 }
 
 func TestUnknownPersonIsAnError(t *testing.T) {
+	t.Parallel()
 	_, err := Resolve(context.Background(), fixture(), ForPost, "@nobody")
 	if !errors.Is(err, ErrNoSuchUser) {
 		t.Fatalf("error = %v, want ErrNoSuchUser", err)
@@ -181,6 +193,7 @@ func TestUnknownPersonIsAnError(t *testing.T) {
 // With no conversation open, sez may address the person by user id and let
 // chat.postMessage create it; tap cannot.
 func TestPersonWithNoOpenDM(t *testing.T) {
+	t.Parallel()
 	got := mustResolve(t, fixture(), ForPost, "@nodm")
 	if got.ID != "U0000NODM" {
 		t.Fatalf("sez: ID = %q, want the user id", got.ID)
@@ -195,6 +208,7 @@ func TestPersonWithNoOpenDM(t *testing.T) {
 // sez has no read scope of its own, so a cold cache must not stop it posting to
 // a channel it can name — chat.postMessage resolves a #name server-side.
 func TestColdCachePassesAHashNameThrough(t *testing.T) {
+	t.Parallel()
 	got := mustResolve(t, catalog{cold: true}, ForPost, "#eng")
 	if got.ID != "#eng" || got.Resolved {
 		t.Fatalf("target = %+v, want the #name passed through unresolved", got)
@@ -207,6 +221,7 @@ func TestColdCachePassesAHashNameThrough(t *testing.T) {
 // A #name the warm cache does not know is passed through too: the cache can be
 // stale, and only Slack is authoritative.
 func TestUnknownHashNamePassesThroughOnAWarmCache(t *testing.T) {
+	t.Parallel()
 	got := mustResolve(t, fixture(), ForPost, "#brand-new")
 	if got.ID != "#brand-new" || got.Resolved {
 		t.Fatalf("target = %+v", got)
@@ -216,6 +231,7 @@ func TestUnknownHashNamePassesThroughOnAWarmCache(t *testing.T) {
 // A bare word that matched nothing is far more likely to be a typo than a
 // channel, so only an explicit #name may be passed through.
 func TestBareNameIsNotPassedThrough(t *testing.T) {
+	t.Parallel()
 	_, err := Resolve(context.Background(), catalog{cold: true}, ForPost, "eng")
 	if !errors.Is(err, ErrUnknownChannel) {
 		t.Fatalf("error = %v, want ErrUnknownChannel", err)
@@ -225,6 +241,7 @@ func TestBareNameIsNotPassedThrough(t *testing.T) {
 // tap needs a resolved id, so a cold cache is fatal and the command turns this
 // into "run hear channels first".
 func TestColdCacheIsFatalForReactions(t *testing.T) {
+	t.Parallel()
 	_, err := Resolve(context.Background(), catalog{cold: true}, ForReact, "#eng")
 	if !errors.Is(err, cache.ErrCold) {
 		t.Fatalf("error = %v, want cache.ErrCold", err)
@@ -233,6 +250,7 @@ func TestColdCacheIsFatalForReactions(t *testing.T) {
 
 // A person cannot be resolved without the user list, whatever the capability.
 func TestColdCacheIsFatalForAPerson(t *testing.T) {
+	t.Parallel()
 	_, err := Resolve(context.Background(), catalog{cold: true}, ForPost, "@stepan")
 	if !errors.Is(err, cache.ErrCold) {
 		t.Fatalf("error = %v, want cache.ErrCold", err)
@@ -243,6 +261,7 @@ func TestColdCacheIsFatalForAPerson(t *testing.T) {
 // their own — so a name that looks like a pattern or a format verb must be
 // matched as literal data.
 func TestHostileDisplayNamesAreMatchedAsData(t *testing.T) {
+	t.Parallel()
 	cat := catalog{
 		users: []cache.User{
 			{ID: "U0000EVIL", Name: "evil", Profile: cache.Profile{DisplayName: `s/x/y/ ${x} $1 %s .*`}},
@@ -265,6 +284,7 @@ func TestHostileDisplayNamesAreMatchedAsData(t *testing.T) {
 // would open is any use. It is a name of its own rather than a reuse of
 // ForReact because it is a different endpoint's reason for the same strictness.
 func TestForUploadResolvesNothingItCannotName(t *testing.T) {
+	t.Parallel()
 	cat := fixture()
 	for _, c := range []struct {
 		target string
@@ -284,6 +304,7 @@ func TestForUploadResolvesNothingItCannotName(t *testing.T) {
 // A #name must never be passed through unresolved: completion would receive a
 // channel name where an id belongs, after every byte had already been staged.
 func TestForUploadNeverPassesANameThrough(t *testing.T) {
+	t.Parallel()
 	got, err := Resolve(context.Background(), fixture(), ForUpload, "#eng")
 	if err != nil {
 		t.Fatalf("Resolve(#eng) error = %v", err)
@@ -298,6 +319,7 @@ func TestForUploadNeverPassesANameThrough(t *testing.T) {
 // matching and report "no such channel", even with that person's DM in the
 // cache. It resolves through the IM instead.
 func TestABareUserIDResolvesThroughTheOpenDM(t *testing.T) {
+	t.Parallel()
 	for _, can := range []struct {
 		name string
 		cap  Capability
@@ -326,6 +348,7 @@ func TestABareUserIDResolvesThroughTheOpenDM(t *testing.T) {
 // opens the conversation itself. Resolving it to a D… here would be harmless but
 // it is not this change's business, and chat.postMessage has always taken U….
 func TestForPostStillPassesABareUserIDStraightThrough(t *testing.T) {
+	t.Parallel()
 	got, err := Resolve(context.Background(), fixture(), ForPost, "U0000NODM")
 	if err != nil {
 		t.Fatalf("Resolve(U0000NODM) error = %v", err)
@@ -341,6 +364,7 @@ func TestForPostStillPassesABareUserIDStraightThrough(t *testing.T) {
 // resolves perfectly well. Uppercase channel names exist — the shared fixture
 // carries one — so this is not hypothetical.
 func TestAChannelNamedLikeAUserIDStillResolves(t *testing.T) {
+	t.Parallel()
 	cat := catalog{
 		convs: []cache.Conversation{
 			{ID: "C0000UPD1", Name: "UPDATES"},

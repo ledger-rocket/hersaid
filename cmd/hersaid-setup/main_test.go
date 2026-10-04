@@ -513,6 +513,7 @@ func TestFingerprintIsPrinted(t *testing.T) {
 }
 
 func TestFingerprint(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		token string
 		want  string
@@ -862,6 +863,7 @@ func TestACRLFPasteDoesNotAnswerTheNextPrompt(t *testing.T) {
 // a binary that could do both would make "posting stays impossible until someone
 // asks for it" a claim about argument parsing rather than about what is linked.
 func TestImportGraphExcludesWriteCode(t *testing.T) {
+	t.Parallel()
 	out, err := exec.CommandContext(t.Context(), "go", "list", "-deps", ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)

@@ -33,6 +33,7 @@ func (e *env) canvasFile(id, title, url string) {
 }
 
 func TestCanvasTargetTakesALinkOrAnID(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		in, want string
 	}{
@@ -52,6 +53,7 @@ func TestCanvasTargetTakesALinkOrAnID(t *testing.T) {
 // which the caller resolves instead. Only a link that cannot be Slack's at all
 // is an error here.
 func TestCanvasTargetLeavesOtherAddressesToTheCaller(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{
 		"https://acme.slack.com/archives/C0123ABCD/p1785708834862009",
 		"https://acme.slack.com/archives/C0123ABCD",
@@ -73,6 +75,7 @@ func TestCanvasTargetLeavesOtherAddressesToTheCaller(t *testing.T) {
 // host, but accepting one invites a reader to believe a pasted URL was checked
 // when only its shape was.
 func TestCanvasTargetRefusesAForeignHost(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{
 		"https://evil.example/docs/T0123ABCDE/F0123ABCDEF",
 		"https://acme.slack.com.evil.example/docs/T0123ABCDE/F0123ABCDEF",

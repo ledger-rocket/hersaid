@@ -6,6 +6,7 @@ import "testing"
 // who can register "notslack.com" or "slack.com.evil.test" must not thereby be
 // somewhere the bearer may be sent.
 func TestPermitsMatchesOnLabelBoundaries(t *testing.T) {
+	t.Parallel()
 	h := Allow("slack.com")
 	for _, c := range []struct {
 		host string
@@ -29,6 +30,7 @@ func TestPermitsMatchesOnLabelBoundaries(t *testing.T) {
 // is never a host the bearer may be sent to, which is the property the whole
 // split exists to provide.
 func TestTheRedirectTierNeverWidensWhereTheBearerMayGo(t *testing.T) {
+	t.Parallel()
 	h := Allow("slack.com").AndViaRedirect("storage.test")
 	if h.PermitsBearer("storage.test") {
 		t.Error("PermitsBearer(storage.test) = true; a redirect-only host may not hold the bearer")
@@ -47,6 +49,7 @@ func TestTheRedirectTierNeverWidensWhereTheBearerMayGo(t *testing.T) {
 // AndViaRedirect returns a value rather than mutating the receiver: a Hosts
 // handed to two clients must not gain a host because one of them extended it.
 func TestAndViaRedirectDoesNotMutateTheReceiver(t *testing.T) {
+	t.Parallel()
 	base := Allow("slack.com")
 	_ = base.AndViaRedirect("storage.test")
 	if base.PermitsRedirect("storage.test") {
@@ -57,6 +60,7 @@ func TestAndViaRedirectDoesNotMutateTheReceiver(t *testing.T) {
 // The zero value permits nothing. A Hosts is constructible in any package, so a
 // client built from one nobody filled in must refuse rather than allow.
 func TestTheZeroValuePermitsNothing(t *testing.T) {
+	t.Parallel()
 	var h Hosts
 	if h.PermitsBearer("slack.com") || h.PermitsRedirect("slack.com") {
 		t.Error("the zero Hosts permitted a host; it must permit none")

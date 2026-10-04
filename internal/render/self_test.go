@@ -25,6 +25,7 @@ var five = Names{"U1": "A", "U2": "B", "U3": "C", "U4": "D", selfID: "Stepan"}
 // the overflow — and the reactor names exist precisely to answer "is this mine
 // to remove". A fixed position is also easier to scan for than a name.
 func TestTheReaderIsNamedYouAndComesFirst(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	o := opts()
 	o.SelfID = selfID
@@ -41,6 +42,7 @@ func TestTheReaderIsNamedYouAndComesFirst(t *testing.T) {
 // Promotion must not cost a slot: three names are still three names, and the
 // overflow still reconciles with the count.
 func TestPromotingTheReaderKeepsTheOverflowHonest(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	o := opts()
 	o.SelfID = selfID
@@ -56,6 +58,7 @@ func TestPromotingTheReaderKeepsTheOverflowHonest(t *testing.T) {
 
 // Already first, and it stays one entry rather than being listed twice.
 func TestTheReaderIsNotDuplicatedWhenAlreadyListed(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	o := opts()
 	o.SelfID = selfID
@@ -74,6 +77,7 @@ func TestTheReaderIsNotDuplicatedWhenAlreadyListed(t *testing.T) {
 
 // A reaction the reader has not given reads exactly as it did before.
 func TestAReactionTheReaderHasNotGivenIsUnchanged(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	o := opts()
 	o.SelfID = selfID
@@ -91,6 +95,7 @@ func TestAReactionTheReaderHasNotGivenIsUnchanged(t *testing.T) {
 // store all leave it empty, and the transcript must render exactly as it does
 // today rather than degrading or failing.
 func TestWithoutAnIdentityTheLineIsUnchanged(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 
 	err := WriteTranscript(&b, reacted(5, "U1", "U2", "U3", "U4", selfID), five, opts())

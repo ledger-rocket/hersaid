@@ -13,6 +13,7 @@ import (
 // Everything else in a hit describes the message; the permalink is the one
 // field a caller can hand straight back to `hear read`.
 func TestASearchHitCarriesItsPermalink(t *testing.T) {
+	t.Parallel()
 	const link = "https://example.slack.test/archives/C1/p1782660796826639"
 	var m slackread.SearchMatch
 	m.TS = "1782660796.826639"
@@ -42,6 +43,7 @@ func TestASearchHitCarriesItsPermalink(t *testing.T) {
 // Absent rather than empty: a hit Slack gave no permalink for should not carry
 // a field a consumer would then have to test for emptiness.
 func TestAHitWithNoPermalinkOmitsTheField(t *testing.T) {
+	t.Parallel()
 	var m slackread.SearchMatch
 	m.TS = "1.1"
 	m.Text = "found"

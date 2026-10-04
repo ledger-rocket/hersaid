@@ -10,6 +10,7 @@ import (
 // user tokens share a prefix and a length, so the fingerprint cannot tell them
 // apart, and a cached identity bound to it would follow the wrong account.
 func TestKeySeparatesTokensThatTheFingerprintCannot(t *testing.T) {
+	t.Parallel()
 	a := Read{token: "xoxp-1111111111-1111111111-1111111111-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
 	b := Read{token: "xoxp-2222222222-2222222222-2222222222-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
 
@@ -23,6 +24,7 @@ func TestKeySeparatesTokensThatTheFingerprintCannot(t *testing.T) {
 
 // A key is written to disk, so it must not carry the secret it identifies.
 func TestKeyDoesNotContainTheToken(t *testing.T) {
+	t.Parallel()
 	const token = "xoxp-secret-material-9876543210"
 	k := Read{token: token}.Key()
 

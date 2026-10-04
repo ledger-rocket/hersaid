@@ -26,6 +26,7 @@ func read(t *testing.T, input string) (string, string, error) {
 }
 
 func TestMaskedInputEchoesOneAsteriskPerCharacter(t *testing.T) {
+	t.Parallel()
 	got, echoed, err := read(t, "xoxp-abc123\n")
 	if err != nil {
 		t.Fatal(err)
@@ -41,6 +42,7 @@ func TestMaskedInputEchoesOneAsteriskPerCharacter(t *testing.T) {
 // One per *character*, not per byte: a paste that is not ASCII is the wrong
 // token, but the prompt still has to count it the way a person does.
 func TestMaskedInputCountsCharactersNotBytes(t *testing.T) {
+	t.Parallel()
 	got, echoed, err := read(t, "héllo\n")
 	if err != nil {
 		t.Fatal(err)
@@ -56,11 +58,13 @@ func TestMaskedInputCountsCharactersNotBytes(t *testing.T) {
 // Backspace has to work, or a mistyped character can only be fixed by starting
 // again — and with nothing on screen but asterisks, by starting again blind.
 func TestBackspaceRemovesACharacterAndItsAsterisk(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, key string }{
 		{name: "delete", key: string(del)},
 		{name: "backspace", key: string(backspace)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, echoed, err := read(t, "abX"+tc.key+"c\n")
 			if err != nil {
 				t.Fatal(err)
@@ -79,6 +83,7 @@ func TestBackspaceRemovesACharacterAndItsAsterisk(t *testing.T) {
 // Backspace on an empty prompt does nothing at all — no underflow, and nothing
 // that would rub out the prompt text sitting to the left of the cursor.
 func TestBackspaceOnEmptyInputDoesNothing(t *testing.T) {
+	t.Parallel()
 	got, echoed, err := read(t, string(del)+string(del)+"a\n")
 	if err != nil {
 		t.Fatal(err)
@@ -95,11 +100,13 @@ func TestBackspaceOnEmptyInputDoesNothing(t *testing.T) {
 // to stop generating signals, so this loop is the only thing that can answer
 // them; without it Ctrl-C would be stored as part of the token.
 func TestControlCharactersCancel(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, key string }{
 		{name: "ctrl-c", key: string(ctrlC)},
 		{name: "ctrl-d", key: string(ctrlD)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, _, err := read(t, "xoxp-abc"+tc.key)
 			if !errors.Is(err, errCancelled) {
 				t.Fatalf("err = %v, want errCancelled", err)
@@ -112,11 +119,13 @@ func TestControlCharactersCancel(t *testing.T) {
 }
 
 func TestEnterEndsInput(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ name, key string }{
 		{name: "newline", key: "\n"},
 		{name: "carriage return", key: "\r"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got, _, err := read(t, typed+tc.key+"ignored")
 			if err != nil {
 				t.Fatal(err)
@@ -131,6 +140,7 @@ func TestEnterEndsInput(t *testing.T) {
 // Input that ends without a newline yields what was typed. A truncated token
 // fails verification, which says more than an unexplained empty prompt would.
 func TestEndOfInputYieldsWhatWasTyped(t *testing.T) {
+	t.Parallel()
 	got, _, err := read(t, typed)
 	if err != nil {
 		t.Fatal(err)
@@ -142,6 +152,7 @@ func TestEndOfInputYieldsWhatWasTyped(t *testing.T) {
 
 // The one thing the prompt must never do.
 func TestMaskedInputNeverEchoesWhatWasTyped(t *testing.T) {
+	t.Parallel()
 	const secret = "xoxp-9876543210-secret-material"
 	_, echoed, err := read(t, secret+"\n")
 	if err != nil {
@@ -156,6 +167,7 @@ func TestMaskedInputNeverEchoesWhatWasTyped(t *testing.T) {
 // prompt took the keystroke — so Line leaves the echoing to the terminal and
 // adds none of its own.
 func TestLineReadsAnEchoedAnswerWithoutEchoingIt(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	c := &console{in: bufio.NewReader(strings.NewReader("yes\nnext\n")), out: &out}
 
@@ -172,6 +184,7 @@ func TestLineReadsAnEchoedAnswerWithoutEchoingIt(t *testing.T) {
 }
 
 func TestLineCancelsWhenThereIsNoAnswer(t *testing.T) {
+	t.Parallel()
 	c := &console{in: bufio.NewReader(strings.NewReader("")), out: io.Discard}
 	_, err := c.Line("? ")
 	if !errors.Is(err, errCancelled) {
@@ -180,6 +193,7 @@ func TestLineCancelsWhenThereIsNoAnswer(t *testing.T) {
 }
 
 func TestAffirmative(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		answer string
 		want   bool
@@ -207,6 +221,7 @@ func TestAffirmative(t *testing.T) {
 // mode-bit check gets wrong: it is a character device, and prompting into it
 // would mask nothing because there is nobody there.
 func TestOpenTerminalRefusesAnythingThatIsNotATerminal(t *testing.T) {
+	t.Parallel()
 	devNull, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatal(err)
@@ -246,6 +261,7 @@ func TestOpenTerminalRefusesAnythingThatIsNotATerminal(t *testing.T) {
 // A CRLF paste ends the masked line with a byte to spare. Left in the buffer,
 // the next prompt reads it as an answer nobody gave.
 func TestACRLFPasteDoesNotSupplyTheNextAnswer(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	c := &console{in: bufio.NewReader(strings.NewReader("xoxp-abc\r\ny\r\n")), out: &out}
 
@@ -268,6 +284,7 @@ func TestACRLFPasteDoesNotSupplyTheNextAnswer(t *testing.T) {
 // Only what has already arrived is taken. A prompt must never consume a
 // keystroke that has not been typed yet.
 func TestSecretDoesNotWaitForOrEatALaterKeystroke(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	c := &console{in: bufio.NewReader(strings.NewReader("xoxp-abc\n\n")), out: &out}
 

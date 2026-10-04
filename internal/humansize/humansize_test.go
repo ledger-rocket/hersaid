@@ -3,6 +3,7 @@ package humansize
 import "testing"
 
 func TestBytes(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		in   int64
 		want string
@@ -24,6 +25,7 @@ func TestBytes(t *testing.T) {
 // A negative count cannot arise from a file, but a formatter that renders one
 // as a unit-less number would be a worse answer than the plain byte form.
 func TestBytesRendersANegativeCountAsBytes(t *testing.T) {
+	t.Parallel()
 	if got := Bytes(-1); got != "-1 B" {
 		t.Errorf("Bytes(-1) = %q, want %q", got, "-1 B")
 	}

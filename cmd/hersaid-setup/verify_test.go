@@ -21,6 +21,7 @@ func header(values ...string) http.Header {
 
 // The scope check on its own, in every shape Slack's header arrives in.
 func TestCheckScopes(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		header http.Header
@@ -96,6 +97,7 @@ func TestCheckScopes(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := checkScopes(tc.header, tc.role)
 			switch {
 			case tc.want == "" && err != nil:
@@ -116,6 +118,7 @@ func TestCheckScopes(t *testing.T) {
 // and a test that used it would be asserting nothing: assigning the map entry
 // directly is what puts a genuinely lower-cased name on the wire.
 func TestScopeHeaderNameIsMatchedHoweverSlackSpellsIt(t *testing.T) {
+	t.Parallel()
 	s := slacktest.New(t)
 	s.ReplyFunc("auth.test", func(w http.ResponseWriter, r *http.Request) {
 		w.Header()["x-oauth-scopes"] = []string{"channels:read,chat:write"}
@@ -129,6 +132,7 @@ func TestScopeHeaderNameIsMatchedHoweverSlackSpellsIt(t *testing.T) {
 }
 
 func TestVerifyReportsTheAccount(t *testing.T) {
+	t.Parallel()
 	s := slack(t, readScopes, okBody)
 
 	acct, err := verify(context.Background(), slackhttp.New(slackhttp.DefaultTimeout), s.URL, readToken, readRole)
@@ -149,6 +153,7 @@ func TestVerifyReportsTheAccount(t *testing.T) {
 // The account is reported alongside a refusal, not instead of it: "it was
 // refused, and it belongs to this account" is usually the whole explanation.
 func TestVerifyReportsTheAccountEvenWhenItRefuses(t *testing.T) {
+	t.Parallel()
 	s := slack(t, writeScopes, okBody)
 
 	acct, err := verify(context.Background(), slackhttp.New(slackhttp.DefaultTimeout), s.URL, readToken, readRole)
@@ -164,6 +169,7 @@ func TestVerifyReportsTheAccountEvenWhenItRefuses(t *testing.T) {
 // a header. What is reported is that Slack could not be reached, and nothing
 // else.
 func TestVerifyDoesNotLeakTheTokenIntoATransportError(t *testing.T) {
+	t.Parallel()
 	s := slacktest.New(t)
 	s.Drop("auth.test")
 
@@ -177,6 +183,7 @@ func TestVerifyDoesNotLeakTheTokenIntoATransportError(t *testing.T) {
 }
 
 func TestVerifyRejectsAMalformedReply(t *testing.T) {
+	t.Parallel()
 	s := slacktest.New(t)
 	s.Reply("auth.test", `<html>not json</html>`)
 
@@ -189,6 +196,7 @@ func TestVerifyRejectsAMalformedReply(t *testing.T) {
 // bot_id present, whatever its value — a null answers the question too, so an
 // app that reports itself oddly is still an app.
 func TestBotIDIsDetectedByPresence(t *testing.T) {
+	t.Parallel()
 	for _, body := range []string{
 		`{"ok":true,"user":"app","team":"T","bot_id":"B1"}`,
 		`{"ok":true,"user":"app","team":"T","bot_id":""}`,

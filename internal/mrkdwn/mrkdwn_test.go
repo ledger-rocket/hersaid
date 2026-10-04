@@ -89,8 +89,10 @@ var oracle = []struct{ name, in, want string }{
 }
 
 func TestConvertMatchesTheOracle(t *testing.T) {
+	t.Parallel()
 	for _, tc := range oracle {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := Convert(tc.in); got != tc.want {
 				t.Errorf("Convert(%q)\n got %q\nwant %q", tc.in, got, tc.want)
 			}
@@ -106,6 +108,7 @@ func TestConvertMatchesTheOracle(t *testing.T) {
 // the scheme wants that — the input is stripped of sentinels precisely so none
 // can reach the output — so it is fixed rather than ported.
 func TestNestedProtectionResolves(t *testing.T) {
+	t.Parallel()
 	const in = "[`code`](https://e.test)\n"
 	const want = "<https://e.test|`code`>\n"
 	if got := Convert(in); got != want {
@@ -117,6 +120,7 @@ func TestNestedProtectionResolves(t *testing.T) {
 // sentinel this package introduced, and none the message brought with it, may
 // reach Slack.
 func TestNoSentinelSurvives(t *testing.T) {
+	t.Parallel()
 	for _, tc := range oracle {
 		if strings.Contains(Convert(tc.in), sentinel) {
 			t.Errorf("Convert(%q) leaked a sentinel: %q", tc.in, Convert(tc.in))
@@ -139,6 +143,7 @@ func TestNoSentinelSurvives(t *testing.T) {
 // is usable for pasting logs at all. Every fence and span in the input has to
 // come out the far side byte for byte.
 func TestCodeIsPassedThroughUntouched(t *testing.T) {
+	t.Parallel()
 	for _, code := range []string{
 		"```\n- **a** [b](https://c.test) # d __e__\n```",
 		"`**a**`",
@@ -163,6 +168,7 @@ func TestCodeIsPassedThroughUntouched(t *testing.T) {
 // capture group must arrive as those characters and not as whatever the group
 // happened to hold.
 func TestReplacementMetacharactersAreNotInterpreted(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ in, want string }{
 		{"**$1**", "*$1*"},
 		{"**${1}**", "*${1}*"},
@@ -183,6 +189,7 @@ func TestReplacementMetacharactersAreNotInterpreted(t *testing.T) {
 // every pasted Python traceback. Reintroducing it is the regression this holds
 // the line against.
 func TestUnderscoreBoldIsNeverConverted(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{
 		"__init__", "__main__", "def __repr__(self):", "__bold__",
 		"a __b__ c", "MAX__VALUE", "__all__ = [\"x\"]",
@@ -197,6 +204,7 @@ func TestUnderscoreBoldIsNeverConverted(t *testing.T) {
 // points anywhere, which is why links are converted before the emphasis rules
 // and protected from them until the end.
 func TestLinkDestinationIsNotRewritten(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ in, want string }{
 		{"[x](https://e.test/**seg**)", "<https://e.test/**seg**|x>"},
 		{"[x](https://e.test/__seg__)", "<https://e.test/__seg__|x>"},
@@ -213,6 +221,7 @@ func TestLinkDestinationIsNotRewritten(t *testing.T) {
 // Convert is a pure function of its argument: nothing carries between calls,
 // so a fragment protected by one message can never surface in the next.
 func TestConvertKeepsNoStateBetweenCalls(t *testing.T) {
+	t.Parallel()
 	first := Convert("`secret` [a](https://a.test)")
 	for range 3 {
 		Convert("`other` [b](https://b.test)")

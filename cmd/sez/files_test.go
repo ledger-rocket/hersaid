@@ -1015,6 +1015,7 @@ func waitOrKill(t *testing.T, cmd *exec.Cmd) {
 // So every goroutine that returns from writeOutcome must already be able to see
 // the record on disk. A loser that returned first would be free to exit.
 func TestNoWriterReturnsBeforeTheOutcomeIsDurable(t *testing.T) {
+	t.Parallel()
 	for round := range 40 {
 		path := filepath.Join(t.TempDir(), "posts.jsonl")
 		log, err := audit.Open(path)
@@ -1063,6 +1064,7 @@ func TestNoWriterReturnsBeforeTheOutcomeIsDurable(t *testing.T) {
 // the mutex this is a data race, which is a bug the race detector reports and
 // nothing else would.
 func TestTheProgressValueIsSafeToReadWhileItGrows(t *testing.T) {
+	t.Parallel()
 	p := &progress{}
 	base := audit.Post{Channel: "#eng", Files: []audit.File{{Name: "a"}, {Name: "b"}}}
 	var wg sync.WaitGroup

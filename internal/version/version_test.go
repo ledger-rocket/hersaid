@@ -9,6 +9,7 @@ import (
 // The string is what a bug report quotes, so a part nobody recorded is left out
 // rather than printed as "unknown" — which reads like a value someone set.
 func TestStringOmitsWhatNobodyRecorded(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		info Info
@@ -115,6 +116,7 @@ func TestUnstampedBuildStillNamesItself(t *testing.T) {
 // Where each field comes from when the linker set some of them and the
 // toolchain stamped others.
 func TestProvenance(t *testing.T) {
+	t.Parallel()
 	const sha = "0123456789abcdef0123456789abcdef01234567"
 	stamped := func(settings ...[2]string) *debug.BuildInfo {
 		b := &debug.BuildInfo{}
@@ -201,6 +203,7 @@ func TestProvenance(t *testing.T) {
 // The toolchain's pseudo-version spells out the same commit and date that are
 // reported next to it, so it is not repeated as a version.
 func TestPseudoVersionIsNotAVersion(t *testing.T) {
+	t.Parallel()
 	for _, v := range []string{
 		"v0.0.0-20260803093803-b6010131d76c",
 		"v0.0.0-20260803093803-b6010131d76c+dirty",

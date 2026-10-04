@@ -340,6 +340,7 @@ func TestFillingStoreSkipsTheFetchWhenWarm(t *testing.T) {
 }
 
 func TestUserLabelPrefersDisplayName(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		user User
 		want string

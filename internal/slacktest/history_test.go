@@ -17,6 +17,7 @@ var nonLetters = regexp.MustCompile(`[^a-z]`)
 //
 // The constraint a comment names is welcome. Its provenance is not.
 func TestNoCommentCitesAnEarlierImplementation(t *testing.T) {
+	t.Parallel()
 	banned := []string{
 		"zshversion", "zshone", "zshtools", "zshinstaller", "zshera",
 		"shellversion", "shellinstaller", "shellformat", "shellshape",

@@ -620,6 +620,7 @@ func TestANonOKStatusFails(t *testing.T) {
 // The zero credential cannot reach the wire, whatever the caller did with
 // ResolveRead's error.
 func TestAZeroCredentialIssuesNoRequest(t *testing.T) {
+	t.Parallel()
 	srv, auths := fileHost(t, []byte("the file"), "application/pdf")
 	dir := filepath.Join(t.TempDir(), "eng-123.456")
 	c := New(cred.Read{}, 5*time.Second, SlackHosts)
@@ -652,6 +653,7 @@ func TestTheRequestCarriesTheBearer(t *testing.T) {
 // allowlist that admits it says so, rather than leaving it to the redirect
 // policy to be the only thing standing between the two.
 func TestStorageIsReachableByRedirectAndNeverWithTheBearer(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		host           string
 		bearer, viaRed bool
@@ -728,6 +730,7 @@ func TestADownloadIsHandedOffToStorageThatMayNotHoldTheBearer(t *testing.T) {
 // was chosen for. It cannot be reached through Fetch on any filesystem the
 // tests run on, so it is exercised directly.
 func TestTheNoHardLinkFallbackStillRefusesToOverwrite(t *testing.T) {
+	t.Parallel()
 	out := t.TempDir()
 	d := &dest{out: out, msgDir: "eng-123.456"}
 	t.Cleanup(d.close)

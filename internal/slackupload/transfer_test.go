@@ -96,6 +96,7 @@ func uploadHost(t *testing.T, status int) (*httptest.Server, *sink) {
 // authorisation, so the bearer is unnecessary there — and the host is one Slack
 // chose, not one this code did.
 func TestTheTransferCarriesNoBearer(t *testing.T) {
+	t.Parallel()
 	srv, rec := uploadHost(t, http.StatusOK)
 	f := local(t, 64)
 
@@ -113,6 +114,7 @@ func TestTheTransferCarriesNoBearer(t *testing.T) {
 // LimitReader has no length of its own, and a chunked body is refused by some
 // endpoints.
 func TestTheTransferSendsExactlyTheDeclaredBytes(t *testing.T) {
+	t.Parallel()
 	srv, rec := uploadHost(t, http.StatusOK)
 	f := local(t, 2048)
 
@@ -136,6 +138,7 @@ func TestTheTransferSendsExactlyTheDeclaredBytes(t *testing.T) {
 // authorised it — not in the error, and so not in the audit record or on the
 // terminal, both of which are built from err.Error().
 func TestNoFailureModeReportsTheUploadURL(t *testing.T) {
+	t.Parallel()
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 	}))
@@ -168,6 +171,7 @@ func TestNoFailureModeReportsTheUploadURL(t *testing.T) {
 		{"refused redirect", redirector.URL + "/u?" + canary, 5 * time.Second},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			f := local(t, 64)
 			err := client(t, c.timeout).transfer(context.Background(), c.url, f)
 			if err == nil {
@@ -189,6 +193,7 @@ func TestNoFailureModeReportsTheUploadURL(t *testing.T) {
 // what the render described. Nothing is shared yet, so this still fails before
 // anything is posted.
 func TestAFileThatChangesWhileSendingIsRefused(t *testing.T) {
+	t.Parallel()
 	f := local(t, 512)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
@@ -213,6 +218,7 @@ func TestAFileThatChangesWhileSendingIsRefused(t *testing.T) {
 // The deadline scales with the body, because a flat multiple of a timeout that
 // suits a small JSON reply fails a large upload on size alone.
 func TestTheTransferDeadlineScalesWithTheBody(t *testing.T) {
+	t.Parallel()
 	const timeout = 20 * time.Second
 	small := TransferDeadline(timeout, 1024)
 	if small != 10*timeout {
@@ -232,6 +238,7 @@ func TestTheTransferDeadlineScalesWithTheBody(t *testing.T) {
 }
 
 func TestUploadHostsPermitSlackAndNothingElse(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		host string
 		want bool
@@ -256,6 +263,7 @@ func TestUploadHostsPermitSlackAndNothingElse(t *testing.T) {
 // host that answers perfectly well is the only way to tell the two apart: if
 // the check were dropped, this upload would succeed.
 func TestAnUnlistedHostReceivesNothingAtAll(t *testing.T) {
+	t.Parallel()
 	srv, rec := uploadHost(t, http.StatusOK)
 	f := local(t, 64)
 
@@ -280,6 +288,7 @@ func TestAnUnlistedHostReceivesNothingAtAll(t *testing.T) {
 // body — a 307 cannot be followed at all with a body that has no GetBody, so it
 // would pass whether or not any policy existed.
 func TestARedirectedTransferReachesNoSecondHost(t *testing.T) {
+	t.Parallel()
 	second, landed := uploadHost(t, http.StatusOK)
 	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, second.URL+"/landing?"+canary, http.StatusFound)
@@ -304,6 +313,7 @@ func TestARedirectedTransferReachesNoSecondHost(t *testing.T) {
 // the base timeout and well inside the transfer deadline, so it succeeds only
 // if the right bound is the one in force.
 func TestTheTransferBoundIsTheSizeAwareOneNotTheRequestTimeout(t *testing.T) {
+	t.Parallel()
 	const base = 100 * time.Millisecond
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
@@ -325,8 +335,10 @@ func TestTheTransferBoundIsTheSizeAwareOneNotTheRequestTimeout(t *testing.T) {
 // Slack documents 200 as the success. A 2xx that is not 200 marks the file
 // staged and lets the one irreversible leg proceed on an assumption.
 func TestOnlyHTTP200CountsAsATransfer(t *testing.T) {
+	t.Parallel()
 	for _, status := range []int{http.StatusCreated, http.StatusAccepted, http.StatusNoContent} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
+			t.Parallel()
 			srv, _ := uploadHost(t, status)
 			err := client(t, 5*time.Second).transfer(context.Background(), srv.URL+"/u?"+canary, local(t, 64))
 			if err == nil {

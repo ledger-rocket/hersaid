@@ -206,6 +206,7 @@ func TestUsageErrorsAreDiagnostics(t *testing.T) {
 // versioned still names the commit it came from rather than "unknown". That is
 // the case that matters: a colleague's checkout, not a release.
 func TestAnUnversionedBuildStillNamesItsRevision(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("builds a binary")
 	}
@@ -236,6 +237,7 @@ func TestAnUnversionedBuildStillNamesItsRevision(t *testing.T) {
 // version nobody set. Comparing the exact output against sentinels is what
 // makes the failure visible.
 func TestReleaseLinkerFlagsReachTheirVariables(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("builds a binary")
 	}
@@ -306,6 +308,7 @@ func watchCredential(t *testing.T) *bool {
 // could not achieve this — any package can construct a client from a package it
 // already imports — which is why slackread and slackwrite are separate packages.
 func TestImportGraphExcludesWriteCode(t *testing.T) {
+	t.Parallel()
 	out, err := exec.CommandContext(t.Context(), "go", "list", "-deps", ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
@@ -329,6 +332,7 @@ func TestImportGraphExcludesWriteCode(t *testing.T) {
 // nothing and would pass vacuously. The raw byte scan is the half that survives
 // stripping, because endpoint paths are string data rather than symbols.
 func TestBuiltBinaryHasNoWriteEndpoints(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("builds a binary")
 	}

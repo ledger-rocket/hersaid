@@ -22,6 +22,7 @@ const (
 // (slackread.SlackAPI), which is reviewable and greppable. A raw endpoint
 // literal is not, so that is what is refused.
 func TestNamesRealEndpointDistinguishesUseFromMention(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -54,6 +55,7 @@ func TestNamesRealEndpointDistinguishesUseFromMention(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := slacktest.NamesRealEndpoint([]byte(tc.src), false); got != tc.want {
 				t.Fatalf("slacktest.NamesRealEndpoint(%q) = %v, want %v", tc.src, got, tc.want)
 			}
@@ -66,6 +68,7 @@ func TestNamesRealEndpointDistinguishesUseFromMention(t *testing.T) {
 // but nothing under test ever should, and the constant was a hole the old
 // string check never covered either.
 func TestATestFileMayNotNameProductionEvenByConstant(t *testing.T) {
+	t.Parallel()
 	viaConstant := "c := slackread.New(cred, hc, " + constRef + ")"
 	if !slacktest.NamesRealEndpoint([]byte(viaConstant), true) {
 		t.Fatal("a test file naming SlackAPI must be refused; it points at production")
@@ -79,6 +82,7 @@ func TestATestFileMayNotNameProductionEvenByConstant(t *testing.T) {
 // with, so an endpoint inside one has to count as use — the narrowing must not
 // become an escape hatch the plain substring check would have closed.
 func TestAnEndpointInARawStringIsStillUse(t *testing.T) {
+	t.Parallel()
 	src := "c := New(cred, hc, `https://" + host + "/api`)"
 	if !slacktest.NamesRealEndpoint([]byte(src), false) {
 		t.Fatalf("raw-string endpoint not refused: %s", src)
@@ -88,6 +92,7 @@ func TestAnEndpointInARawStringIsStillUse(t *testing.T) {
 // The same string, this time genuinely prose, stays allowed: a comment cannot
 // construct anything.
 func TestAnEndpointNamedInACommentIsNotUse(t *testing.T) {
+	t.Parallel()
 	src := "// the base is https://" + host + "/api, reached via the constant"
 	if slacktest.NamesRealEndpoint([]byte(src), false) {
 		t.Fatalf("comment refused: %s", src)
@@ -98,6 +103,7 @@ func TestAnEndpointNamedInACommentIsNotUse(t *testing.T) {
 // endpoint would do harm, since the guard exists so nothing under test reaches
 // production. Prose stays prose; a string stays a string.
 func TestARawStringEndpointInATestFileIsAlsoUse(t *testing.T) {
+	t.Parallel()
 	src := "c := New(cred, hc, `https://" + host + "/api`)"
 	if !slacktest.NamesRealEndpoint([]byte(src), true) {
 		t.Fatalf("raw-string endpoint in a test file not refused: %s", src)

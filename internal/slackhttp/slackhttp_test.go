@@ -28,6 +28,7 @@ func counting(t *testing.T, status int, headers map[string]string) (*httptest.Se
 // A redirect can move an Authorization header to a host chosen by
 // whoever controls the response.
 func TestRefusesRedirects(t *testing.T) {
+	t.Parallel()
 	final, finalHits := counting(t, http.StatusOK, nil)
 	start, _ := counting(t, http.StatusFound, map[string]string{"Location": final.URL})
 
@@ -91,6 +92,7 @@ func TestProxyEnvironmentDoesNotBreakARequest(t *testing.T) {
 
 // Every request has a timeout.
 func TestRequestsTimeOut(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(500 * time.Millisecond)
 	}))
@@ -113,6 +115,7 @@ func TestRequestsTimeOut(t *testing.T) {
 // TestIgnoresProxyEnvironment above demonstrates that with its control. This is
 // the assertion that actually holds.
 func TestTransportProxyIsNil(t *testing.T) {
+	t.Parallel()
 	if p := newTransport().Proxy; p != nil {
 		t.Fatal("transport Proxy is set; it must be nil, not ProxyFromEnvironment")
 	}
@@ -121,6 +124,7 @@ func TestTransportProxyIsNil(t *testing.T) {
 // CheckRedirect belongs to the Client, not the Transport: a Transport has no
 // such field, so setting it there would compile and do nothing.
 func TestRedirectRefusalLivesOnTheClient(t *testing.T) {
+	t.Parallel()
 	if New(time.Second).CheckRedirect == nil {
 		t.Fatal("Client.CheckRedirect is nil; redirects would be followed")
 	}
@@ -172,6 +176,7 @@ func TestTimeoutFromEnv(t *testing.T) {
 // A non-positive timeout handed straight to New is clamped rather than honoured,
 // so no caller can build an unbounded client by accident.
 func TestNewClampsANonPositiveTimeout(t *testing.T) {
+	t.Parallel()
 	for _, d := range []time.Duration{0, -time.Second} {
 		if got := New(d).Timeout; got != DefaultTimeout {
 			t.Errorf("New(%v).Timeout = %v, want %v", d, got, DefaultTimeout)

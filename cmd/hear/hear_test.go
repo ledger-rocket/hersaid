@@ -461,6 +461,7 @@ func TestSinceBoundsTheRequestByTime(t *testing.T) {
 }
 
 func TestSinceAcceptsTheUnitsPeopleUse(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		in   string
 		want time.Duration
@@ -473,6 +474,7 @@ func TestSinceAcceptsTheUnitsPeopleUse(t *testing.T) {
 		{"1h30m", 90 * time.Minute},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
 			got, err := parseSince(tc.in)
 			if err != nil {
 				t.Fatalf("parseSince(%q): %v", tc.in, err)
@@ -485,8 +487,10 @@ func TestSinceAcceptsTheUnitsPeopleUse(t *testing.T) {
 }
 
 func TestSinceRefusesAWindowThatAsksForNothing(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{"0", "0h", "-2h", "soon", "2", "h", "99999999999999999999d"} {
 		t.Run(in, func(t *testing.T) {
+			t.Parallel()
 			d, err := parseSince(in)
 			if err == nil {
 				t.Fatalf("parseSince(%q) = %v, want an error", in, d)

@@ -425,6 +425,7 @@ func TestCompletionSurvivesAReplyWithNoShares(t *testing.T) {
 // `needed` field: a value out of a response must not be interpolated into
 // instructions telling somebody what to grant.
 func TestScopeNamesWhatTheFailingEndpointNeeds(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		method, want string
 	}{
@@ -452,6 +453,7 @@ func TestScopeNamesWhatTheFailingEndpointNeeds(t *testing.T) {
 // Structural, as for every other endpoint: a zero credential issues no request
 // at all, so a filename and a channel cannot reach anyone's wire.
 func TestUploadEndpointsIssueNoRequestWithoutACredential(t *testing.T) {
+	t.Parallel()
 	s := slacktest.New(t)
 	s.Reply("files.getUploadURLExternal", `{"ok":true,"file_id":"F1","upload_url":"https://x/u"}`)
 	s.Reply("files.completeUploadExternal", `{"ok":true,"files":[{"id":"F1"}]}`)

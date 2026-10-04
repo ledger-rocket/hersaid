@@ -16,6 +16,7 @@ func md(t *testing.T, in string) string {
 }
 
 func TestHeadingsCarryTheirLevel(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ in, want string }{
 		{`<h1>Plan</h1>`, "# Plan"},
 		{`<h2>Scope</h2>`, "## Scope"},
@@ -28,6 +29,7 @@ func TestHeadingsCarryTheirLevel(t *testing.T) {
 }
 
 func TestInlineMarks(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ name, in, want string }{
 		{"bold", `<p><b>Status:</b> ready</p>`, "**Status:** ready"},
 		{"italic", `<p><i>maybe</i></p>`, "_maybe_"},
@@ -38,6 +40,7 @@ func TestInlineMarks(t *testing.T) {
 		{"empty mark", `<p><b></b>text</p>`, "text"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			if got := md(t, c.in); got != c.want {
 				t.Errorf("= %q, want %q", got, c.want)
 			}
@@ -46,6 +49,7 @@ func TestInlineMarks(t *testing.T) {
 }
 
 func TestLists(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<ul><li>one</li><li>two</li></ul>`)
 	if got != "- one\n- two" {
 		t.Errorf("bulleted = %q", got)
@@ -61,12 +65,14 @@ func TestLists(t *testing.T) {
 }
 
 func TestABreakIsALineNotASpace(t *testing.T) {
+	t.Parallel()
 	if got := md(t, `<p>one<br>two</p>`); got != "one\ntwo" {
 		t.Errorf("= %q, want two lines", got)
 	}
 }
 
 func TestBlocksAreSeparatedByABlankLine(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<h1>Title</h1><p>body</p><p>more</p>`)
 	if got != "# Title\n\nbody\n\nmore" {
 		t.Errorf("= %q", got)
@@ -74,6 +80,7 @@ func TestBlocksAreSeparatedByABlankLine(t *testing.T) {
 }
 
 func TestAnEmptyElementLeavesNoGap(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<p>one</p><p></p><div></div><p>two</p>`)
 	if got != "one\n\ntwo" {
 		t.Errorf("= %q, want no stray blank block", got)
@@ -81,6 +88,7 @@ func TestAnEmptyElementLeavesNoGap(t *testing.T) {
 }
 
 func TestTablesGetAHeaderRow(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<table><tr><td>a</td><td>b</td></tr><tr><td>1</td><td>2</td></tr></table>`)
 	want := "| a | b |\n| --- | --- |\n| 1 | 2 |"
 	if got != want {
@@ -89,6 +97,7 @@ func TestTablesGetAHeaderRow(t *testing.T) {
 }
 
 func TestAPipeInACellCannotBreakTheTable(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<table><tr><td>a|b</td></tr></table>`)
 	if !strings.Contains(got, `a\|b`) {
 		t.Errorf("= %q, want the pipe escaped", got)
@@ -96,6 +105,7 @@ func TestAPipeInACellCannotBreakTheTable(t *testing.T) {
 }
 
 func TestPreformattedTextKeepsItsLinesAndItsMarkup(t *testing.T) {
+	t.Parallel()
 	got := md(t, "<pre>line one\nline *two*</pre>")
 	if got != "```\nline one\nline *two*\n```" {
 		t.Errorf("= %q", got)
@@ -106,6 +116,7 @@ func TestPreformattedTextKeepsItsLinesAndItsMarkup(t *testing.T) {
 // a Slack filename: an escape sequence in a heading reaches the terminal that
 // prints the Markdown.
 func TestUntrustedTextCannotDriveTheTerminal(t *testing.T) {
+	t.Parallel()
 	in := "<h1>Plan" + string(rune(0x1b)) + "[31m" + string(rune(0x202e)) + "</h1>"
 	got := md(t, in)
 	for _, banned := range []rune{0x1b, 0x202e} {
@@ -121,6 +132,7 @@ func TestUntrustedTextCannotDriveTheTerminal(t *testing.T) {
 // Scripts and styles are markup a reader never wants, and the one place markup
 // could carry something executable if the output were ever rendered as HTML.
 func TestScriptsAndStylesAreDropped(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<p>before</p><script>alert(1)</script><style>p{}</style><p>after</p>`)
 	if strings.Contains(got, "alert") || strings.Contains(got, "p{}") {
 		t.Errorf("= %q, want the script and style gone", got)
@@ -133,6 +145,7 @@ func TestScriptsAndStylesAreDropped(t *testing.T) {
 // x/net/html accepts anything, so bad markup degrades to the text it still
 // holds rather than to an error a reader has to act on.
 func TestMangledMarkupStillYieldsItsText(t *testing.T) {
+	t.Parallel()
 	got, err := Markdown([]byte(`<h1>Title<p>unclosed <b>everything`))
 	if err != nil {
 		t.Fatalf("error = %v, want the text that survived", err)
@@ -146,6 +159,7 @@ func TestMangledMarkupStillYieldsItsText(t *testing.T) {
 
 // The wrapper divs Slack puts around everything must not each become a block.
 func TestNestedWrappersDoNotMultiplyBlocks(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<div class="quip-canvas-content"><div><h1>Plan</h1></div><div><p>body</p></div></div>`)
 	if got != "# Plan\n\nbody" {
 		t.Errorf("= %q", got)
@@ -158,6 +172,7 @@ func TestNestedWrappersDoNotMultiplyBlocks(t *testing.T) {
 // package exists to prevent, and the fallback that did it was reachable by
 // writing enough nested tags.
 func TestMarkupTooDeepToParseIsAnErrorNotRawBytes(t *testing.T) {
+	t.Parallel()
 	hostile := strings.Repeat("<div>", 600) + "text" + string(rune(0x1b)) + "[31m"
 	got, err := Markdown([]byte(hostile))
 	if err == nil {
@@ -175,6 +190,7 @@ func TestMarkupTooDeepToParseIsAnErrorNotRawBytes(t *testing.T) {
 // A bound of our own below the parser's would silently drop content from a
 // document Slack was perfectly willing to serve.
 func TestNestingTheParserAcceptsIsRendered(t *testing.T) {
+	t.Parallel()
 	const depth = 120
 	in := strings.Repeat("<ul><li>x", depth) + strings.Repeat("</li></ul>", depth)
 	got := md(t, in)
@@ -185,6 +201,7 @@ func TestNestingTheParserAcceptsIsRendered(t *testing.T) {
 
 // One wide row among many narrow ones would be paid for by every row.
 func TestASparseTableDoesNotExpandToItsBoundingBox(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	b.WriteString("<table>")
 	b.WriteString("<tr>")
@@ -214,6 +231,7 @@ func TestASparseTableDoesNotExpandToItsBoundingBox(t *testing.T) {
 
 // A link's own text must not be able to close the link and open another.
 func TestAnchorTextCannotForgeASecondLink(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<p><a href="https://evil.example">click](https://safe.example) [APPROVED</a></p>`)
 	// An escaped bracket is text, not syntax, so only the unescaped pairs count.
 	if links := strings.Count(got, "](") - strings.Count(got, `\](`); links != 1 {
@@ -230,6 +248,7 @@ func TestAnchorTextCannotForgeASecondLink(t *testing.T) {
 // A parenthesis in the target would otherwise end the link early and spill the
 // rest into the text around it.
 func TestAParenthesisInAHrefCannotTruncateIt(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<p><a href="https://x.test/a)b">link</a></p>`)
 	if !strings.Contains(got, "%29") {
 		t.Fatalf("= %q, want the parenthesis encoded", got)
@@ -241,6 +260,7 @@ func TestAParenthesisInAHrefCannotTruncateIt(t *testing.T) {
 
 // The output may be rendered somewhere that honours a link's scheme.
 func TestOnlyOrdinarySchemesSurviveAsDestinations(t *testing.T) {
+	t.Parallel()
 	for _, href := range []string{"javascript:alert(1)", "data:text/html;base64,x", "vbscript:x"} {
 		got := md(t, `<p><a href="`+href+`">click</a></p>`)
 		if strings.Contains(got, "](") {
@@ -262,6 +282,7 @@ func TestOnlyOrdinarySchemesSurviveAsDestinations(t *testing.T) {
 // A backtick inside a code span would close it early and turn the rest into
 // prose; a fence run inside a block would do the same to the block.
 func TestCodeDelimitersOutgrowTheirContent(t *testing.T) {
+	t.Parallel()
 	got := md(t, "<p><code>a`b</code></p>")
 	if !strings.Contains(got, "``") {
 		t.Fatalf("= %q, want a longer delimiter", got)
@@ -283,6 +304,7 @@ func TestCodeDelimitersOutgrowTheirContent(t *testing.T) {
 // A substring check cannot tell those apart, since the second contains the
 // first.
 func TestABackslashCannotUnescapeALabel(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<p><a href="https://real.example">click\](https://attacker.example) [ok</a></p>`)
 	want := `[click\\\](https://attacker.example) \[ok](https://real.example)`
 	if got != want {
@@ -291,6 +313,7 @@ func TestABackslashCannotUnescapeALabel(t *testing.T) {
 }
 
 func TestABackslashCannotUnescapeATableCell(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<table><tr><td>a\|b</td><td>c</td></tr></table>`)
 	if !strings.Contains(got, `a\\`) {
 		t.Fatalf("= %q, want the backslash escaped so the pipe stays inert", got)
@@ -298,6 +321,7 @@ func TestABackslashCannotUnescapeATableCell(t *testing.T) {
 }
 
 func TestABackslashInADestinationCannotEscapeTheClosingParen(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<p><a href="https://x.test/a\">link</a> after</p>`)
 	if !strings.Contains(got, "%5C") {
 		t.Fatalf("= %q, want the backslash encoded", got)
@@ -310,6 +334,7 @@ func TestABackslashInADestinationCannotEscapeTheClosingParen(t *testing.T) {
 // Slack stores canvas text entity-encoded, and the parser hands it back
 // decoded — so what somebody typed as a tag arrives as markup.
 func TestTextThatLooksLikeMarkupStaysText(t *testing.T) {
+	t.Parallel()
 	got := md(t, `<p>&lt;img src=x onerror=alert(1)&gt;</p>`)
 	// An escaped bracket is text; only an unescaped one would be markup, so the
 	// check has to discount the escaped occurrences rather than search for the
@@ -325,6 +350,7 @@ func TestTextThatLooksLikeMarkupStaysText(t *testing.T) {
 // A newline inside a text node is how HTML separates words. Stripping it as a
 // control character fuses them.
 func TestWhitespaceInsideATextNodeSeparatesWords(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ in, want string }{
 		{"<p>one\ntwo</p>", "one two"},
 		{"<p>one\ttwo</p>", "one two"},
@@ -339,6 +365,7 @@ func TestWhitespaceInsideATextNodeSeparatesWords(t *testing.T) {
 
 // A document that is only text is a document, not an empty one.
 func TestBareTextIsContent(t *testing.T) {
+	t.Parallel()
 	if got := md(t, "hello"); got != "hello" {
 		t.Fatalf("= %q, want the text", got)
 	}
@@ -353,6 +380,7 @@ func TestBareTextIsContent(t *testing.T) {
 // A table longer than the padding bound is rendered ragged, not truncated: one
 // that simply stopped would look exactly like a complete one.
 func TestALongTableKeepsEveryRow(t *testing.T) {
+	t.Parallel()
 	const rows = 25000
 	var b strings.Builder
 	b.WriteString("<table>")

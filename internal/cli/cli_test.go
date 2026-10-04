@@ -11,6 +11,7 @@ const usage = "usage: sez [--send] <#chan> [text]\n"
 // Both flags were asked for, so they are output: stdout, ExitOK. A usage error
 // is the opposite case and is Usage's business.
 func TestHelpIsOutputNotADiagnostic(t *testing.T) {
+	t.Parallel()
 	var stdout bytes.Buffer
 	if code := Help(&stdout, usage); code != ExitOK {
 		t.Errorf("Help() = %d, want ExitOK — it was asked for, not misused", code)
@@ -21,6 +22,7 @@ func TestHelpIsOutputNotADiagnostic(t *testing.T) {
 }
 
 func TestInterceptAnswersALeadingFlag(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{{"--help"}, {"-h"}, {"--help", "whoami"}} {
 		var stdout bytes.Buffer
 		code, handled := Intercept(args, "hear", usage, &stdout)
@@ -38,6 +40,7 @@ func TestInterceptAnswersALeadingFlag(t *testing.T) {
 }
 
 func TestVersionNamesTheCommand(t *testing.T) {
+	t.Parallel()
 	var stdout bytes.Buffer
 	code, handled := Intercept([]string{"--version"}, "tap", usage, &stdout)
 	if !handled || code != ExitOK {
@@ -58,6 +61,7 @@ func TestVersionNamesTheCommand(t *testing.T) {
 // decides: it is the only thing that knows which options take a value, and that
 // "--help" after "--thread" is a timestamp rather than a request for help.
 func TestInterceptLooksAtTheFirstArgumentOnly(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{
 		{"--thread", "--help"},
 		{"--send", "--help"},
@@ -81,6 +85,7 @@ func TestInterceptLooksAtTheFirstArgumentOnly(t *testing.T) {
 // the two is what lets a caller tell "you asked me for help" from "you got it
 // wrong".
 func TestUsageIsADiagnostic(t *testing.T) {
+	t.Parallel()
 	var stderr bytes.Buffer
 	if code := Usage(&stderr, "sez", usage, "unknown flag: --sned"); code != ExitUsage {
 		t.Fatalf("Usage() = %d, want ExitUsage", code)

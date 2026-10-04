@@ -389,6 +389,7 @@ func TestFilesUsage(t *testing.T) {
 }
 
 func TestMaxSizeAccepts(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		in   string
 		want int64
@@ -418,6 +419,7 @@ func TestMaxSizeAccepts(t *testing.T) {
 // The directory name is built from a channel label and a timestamp, and neither
 // may become more than one path element.
 func TestMessageDirIsAlwaysOneElement(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, id, ts, want string
 	}{

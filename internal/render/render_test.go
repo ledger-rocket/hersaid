@@ -27,6 +27,7 @@ func opts() Options { return Options{Location: utc} }
 // The transcript format is the interface people already read, down to the two
 // spaces between its columns: date, author, text.
 func TestTranscriptLineFormatIsStable(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: "stepan"}}})
 	msgs := []slackread.Message{{TS: "1785708834.862009", User: "U1", Text: "ship it"}}
@@ -45,6 +46,7 @@ func TestTranscriptLineFormatIsStable(t *testing.T) {
 // is a constant, and a reader diffing two transcripts notices a column that
 // shifted.
 func TestShowTSPrefixesTheRawTimestamp(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.862009", Username: "bot", Text: "a\nb"}}
 	o := opts()
@@ -64,6 +66,7 @@ func TestShowTSPrefixesTheRawTimestamp(t *testing.T) {
 // cannot be mistaken for a message of its own by a reader or by a parser
 // splitting on newlines.
 func TestMultiLineTextIsIndentedToTheTextColumn(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.000000", Username: "bot", Text: "one\ntwo\nthree"}}
 
@@ -91,6 +94,7 @@ func TestMultiLineTextIsIndentedToTheTextColumn(t *testing.T) {
 // indent that varies per message — makes a transcript harder to read, not
 // easier.
 func TestTheIndentIsAConstantRatherThanAnAlignment(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{
 		{TS: "1785708834.000000", Username: "abcde", Text: "one\ntwo"},
@@ -114,6 +118,7 @@ func TestTheIndentIsAConstantRatherThanAnAlignment(t *testing.T) {
 // A message with replies says so, and says how to read them: naming the address
 // the reader used is what makes the hint a command rather than a template.
 func TestReplyHintNamesTheThreadCommand(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.862009", Username: "bot", Text: "topic", ReplyCount: 3}}
 	o := opts()
@@ -131,6 +136,7 @@ func TestReplyHintNamesTheThreadCommand(t *testing.T) {
 }
 
 func TestNoReplyHintWithoutReplies(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	msgs := []slackread.Message{{TS: "1785708834.862009", Username: "bot", Text: "topic"}}
 	o := opts()
@@ -149,6 +155,7 @@ func TestNoReplyHintWithoutReplies(t *testing.T) {
 // the one before it is genuinely absent for some class of message: apps post
 // with a username and no user, and some integrations post with neither.
 func TestAuthorFallsBackThroughEveryStep(t *testing.T) {
+	t.Parallel()
 	users := []cache.User{
 		{ID: "UDISPLAY", Name: "handle", RealName: "Real Name", Profile: cache.Profile{DisplayName: "display"}},
 		{ID: "UREAL", Name: "handle", RealName: "Real Name"},
@@ -171,6 +178,7 @@ func TestAuthorFallsBackThroughEveryStep(t *testing.T) {
 		{"and finally to a question mark", slackread.Message{}, "?"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			if got := names.Author(tc.msg); got != tc.want {
 				t.Fatalf("Author = %q, want %q", got, tc.want)
 			}
@@ -184,8 +192,10 @@ func TestAuthorFallsBackThroughEveryStep(t *testing.T) {
 // would expand "$1" and "${x}" in that replacement, so a guest could make a
 // mention render as some other message's capture group.
 func TestADisplayNameIsDataNotAReplacementTemplate(t *testing.T) {
+	t.Parallel()
 	for _, display := range []string{"$1", "${x}", "$0$1", `\1`, "$name"} {
 		t.Run(display, func(t *testing.T) {
+			t.Parallel()
 			names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: display}}})
 			got := names.Text("hello <@U1> bye")
 			if want := "hello @" + display + " bye"; got != want {
@@ -199,6 +209,7 @@ func TestADisplayNameIsDataNotAReplacementTemplate(t *testing.T) {
 // attacker-controlled too, and a message that says "<@U1>" twice must render
 // twice, not consume the name as a template.
 func TestEveryMentionInAMessageIsResolved(t *testing.T) {
+	t.Parallel()
 	names := NamesOf([]cache.User{
 		{ID: "U1", Profile: cache.Profile{DisplayName: "ann"}},
 		{ID: "U2", Profile: cache.Profile{DisplayName: "bob"}},
@@ -213,6 +224,7 @@ func TestEveryMentionInAMessageIsResolved(t *testing.T) {
 // deleted account, a cache written before they joined — keeps the id. It is
 // the only thing left that identifies who was meant.
 func TestAnUnknownMentionKeepsItsID(t *testing.T) {
+	t.Parallel()
 	if got := (Names{}).Text("ping <@U0NOBODY>"); got != "ping @U0NOBODY" {
 		t.Fatalf("Text = %q, want the id preserved", got)
 	}
@@ -221,6 +233,7 @@ func TestAnUnknownMentionKeepsItsID(t *testing.T) {
 // The <@U123|label> form is left alone: it already carries the label a reader
 // needs, and rewriting it would say something the message does not.
 func TestTheLabelledMentionFormIsLeftAlone(t *testing.T) {
+	t.Parallel()
 	names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: "ann"}}})
 	if got := names.Text("<@U1|ann>"); got != "<@U1|ann>" {
 		t.Fatalf("Text = %q, want it untouched", got)
@@ -230,6 +243,7 @@ func TestTheLabelledMentionFormIsLeftAlone(t *testing.T) {
 // The date column is local time, which is the whole point of rendering it: a
 // Slack timestamp is UTC seconds and nobody reads their day in UTC.
 func TestTheDateColumnIsRenderedInTheGivenZone(t *testing.T) {
+	t.Parallel()
 	tokyo, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
 		t.Skipf("no zoneinfo: %v", err)
@@ -247,6 +261,7 @@ func TestTheDateColumnIsRenderedInTheGivenZone(t *testing.T) {
 // might: it is returned rather than dropped, because it is the only handle the
 // reader has on that message.
 func TestAnUnparseableTimestampSurvives(t *testing.T) {
+	t.Parallel()
 	if got := Stamp("not-a-ts", utc); got != "not-a-ts" {
 		t.Fatalf("Stamp = %q, want the input back", got)
 	}
@@ -259,6 +274,7 @@ func TestAnUnparseableTimestampSurvives(t *testing.T) {
 // the username Slack attached rather than a user-list lookup — search results
 // carry no user id to look up.
 func TestSearchLineNamesTheChannel(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: "ann"}}})
 	m := slackread.SearchMatch{Message: slackread.Message{TS: "1785708834.862009", Username: "bob", Text: "hi <@U1>"}}
@@ -274,6 +290,7 @@ func TestSearchLineNamesTheChannel(t *testing.T) {
 }
 
 func TestSearchLineFallsBackToQuestionMarks(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	err := WriteSearch(&b, []slackread.SearchMatch{{}}, Names{}, opts())
 	if err != nil {
@@ -289,6 +306,7 @@ func TestSearchLineFallsBackToQuestionMarks(t *testing.T) {
 // transcript shows. Both are always present — a field that appears only when
 // it differs is a field consumers get wrong.
 func TestStructuredMessagesCarryRawAndRenderedText(t *testing.T) {
+	t.Parallel()
 	names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: "ann"}}})
 	msgs := []slackread.Message{{TS: "1785708834.862009", User: "U2", Text: "hi <@U1>", ReplyCount: 2}}
 
@@ -312,6 +330,7 @@ func TestStructuredMessagesCarryRawAndRenderedText(t *testing.T) {
 }
 
 func TestStructuredMessagesAreNeverNull(t *testing.T) {
+	t.Parallel()
 	b, err := json.Marshal(Transcript{Kind: KindTranscript, Messages: Messages(nil, Names{})})
 	if err != nil {
 		t.Fatal(err)
@@ -324,6 +343,7 @@ func TestStructuredMessagesAreNeverNull(t *testing.T) {
 // The mention syntax a consumer has to read is <@U…>; writing it as an escape
 // sequence would make every hand-inspection of the output harder for nothing.
 func TestJSONLeavesSlackMarkupReadable(t *testing.T) {
+	t.Parallel()
 	var b bytes.Buffer
 	err := JSON(&b, Message{Text: "<@U1> & <https://example.com|link>"})
 	if err != nil {
