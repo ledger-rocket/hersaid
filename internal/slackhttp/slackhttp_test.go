@@ -31,7 +31,7 @@ func TestRefusesRedirects(t *testing.T) {
 	final, finalHits := counting(t, http.StatusOK, nil)
 	start, _ := counting(t, http.StatusFound, map[string]string{"Location": final.URL})
 
-	resp, err := New(2 * time.Second).Get(start.URL)
+	resp, err := get(t, New(2*time.Second), start.URL)
 	if err == nil {
 		resp.Body.Close()
 		t.Fatal("Get() succeeded; a redirect must be refused")
@@ -61,7 +61,7 @@ func TestProxyEnvironmentDoesNotBreakARequest(t *testing.T) {
 	t.Setenv("http_proxy", proxy.URL)
 	t.Setenv("ALL_PROXY", proxy.URL)
 
-	resp, err := New(2 * time.Second).Get(target.URL)
+	resp, err := get(t, New(2*time.Second), target.URL)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
@@ -79,7 +79,7 @@ func TestProxyEnvironmentDoesNotBreakARequest(t *testing.T) {
 	proxied := &http.Client{Transport: &http.Transport{
 		Proxy: func(*http.Request) (*url.URL, error) { return url.Parse(proxy.URL) },
 	}}
-	resp, err = proxied.Get(target.URL)
+	resp, err = get(t, proxied, target.URL)
 	if err != nil {
 		t.Fatalf("control request error = %v", err)
 	}
@@ -97,7 +97,7 @@ func TestRequestsTimeOut(t *testing.T) {
 	defer srv.Close()
 
 	start := time.Now()
-	resp, err := New(50 * time.Millisecond).Get(srv.URL)
+	resp, err := get(t, New(50*time.Millisecond), srv.URL)
 	if err == nil {
 		resp.Body.Close()
 		t.Fatal("Get() succeeded; the request must time out")
@@ -220,4 +220,15 @@ func TestTimeoutFromEnvRefusesAValueThatWouldWrap(t *testing.T) {
 	if got > 0 {
 		t.Fatalf("TimeoutFromEnv() = %v alongside its error, want the zero duration", got)
 	}
+}
+
+// get is client.Get bound to the test's context, so a request cannot outlive
+// the test that made it.
+func get(t *testing.T, c *http.Client, rawURL string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rawURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c.Do(req)
 }

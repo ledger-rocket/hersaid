@@ -41,13 +41,13 @@ var (
 // explain why a command is still using a token they thought they had replaced.
 // shadowed names credential material that cred ranks below what was just
 // stored, and so will never read again.
-func store(r role, token string) (where string, shadowed []string, err error) {
+func store(r role, token string) (string, []string, error) {
 	acct := keyringAccount()
 
 	// Any keyring error means the file, not only "not found": on a headless
 	// host go-keyring returns the raw D-Bus or exec failure unwrapped, and cred
 	// falls through on the same basis when it reads the credential back.
-	err = keyringSet(r.service, acct, token)
+	err := keyringSet(r.service, acct, token)
 	if err == nil {
 		return fmt.Sprintf("keychain (service: %s)", r.service), outranked(r, true), nil
 	}

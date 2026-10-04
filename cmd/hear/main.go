@@ -394,7 +394,8 @@ type flags struct {
 // `hear search foo -bar` must reach Slack as written. Anything after "--" is
 // literal, which is how a query that really does begin with two dashes is
 // searched for.
-func parseArgs(args []string, stdout, stderr io.Writer) (f flags, done bool, code int) {
+func parseArgs(args []string, stdout, stderr io.Writer) (flags, bool, int) {
+	var f flags
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {

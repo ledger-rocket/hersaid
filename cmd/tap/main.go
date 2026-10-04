@@ -334,7 +334,8 @@ type flags struct {
 // The shared flags are answered here, mirroring sez: a parser is the only thing
 // that knows which options take a value, and this runs before anything is
 // created or resolved.
-func parseFlags(args []string, stdout, stderr io.Writer) (f flags, done bool, code int) {
+func parseFlags(args []string, stdout, stderr io.Writer) (flags, bool, int) {
+	var f flags
 	for len(args) > 0 {
 		switch args[0] {
 		case "--remove", "-r":

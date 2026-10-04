@@ -45,10 +45,10 @@ func testEndpoints(api string) endpoints {
 	return endpoints{api: api, files: slackhosts.Allow("127.0.0.1")}
 }
 
-func (e *env) run(args ...string) (stdout, stderr string, code int) {
+func (e *env) run(args ...string) (string, string, int) {
 	e.t.Helper()
 	var o, s bytes.Buffer
-	code = run(args, &o, &s, testEndpoints(e.srv.URL))
+	code := run(args, &o, &s, testEndpoints(e.srv.URL))
 	return o.String(), s.String(), code
 }
 

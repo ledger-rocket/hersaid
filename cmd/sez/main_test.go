@@ -1381,7 +1381,7 @@ func (r refusingReader) Read([]byte) (int, error) {
 // The mirror of cmd/hear's import-graph assertion. Without this, that test could
 // pass because nothing anywhere imports slackwrite.
 func TestSezDependsOnSlackwrite(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "list", "-deps", ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
@@ -1427,7 +1427,7 @@ func TestHelperProcess(t *testing.T) {
 // it without ending the test binary.
 func startHelper(t *testing.T, s *slacktest.Server, args ...string) *exec.Cmd {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=TestHelperProcess")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestHelperProcess")
 	cmd.Env = append(os.Environ(),
 		helperEnv+"=1",
 		helperURLEnv+"="+s.URL,

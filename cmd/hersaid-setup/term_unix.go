@@ -25,7 +25,7 @@ func isTerminal(f *os.File) bool {
 // is not only for a tidier cancellation message: a signal delivered here would
 // kill the process between this call and the restore below, and leave the
 // operator with a shell that has stopped echoing.
-func enterNoEcho(f *os.File) (restore func(), err error) {
+func enterNoEcho(f *os.File) (func(), error) {
 	fd := int(f.Fd())
 	prev, err := unix.IoctlGetTermios(fd, ioctlGetTermios)
 	if err != nil {

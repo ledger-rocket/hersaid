@@ -210,15 +210,15 @@ func TestAnUnversionedBuildStillNamesItsRevision(t *testing.T) {
 		t.Skip("builds a binary")
 	}
 	bin := filepath.Join(t.TempDir(), "hear")
-	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "build", "-o", bin, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
-	out, err = exec.Command(bin, "--version").CombinedOutput()
+	out, err = exec.CommandContext(t.Context(), bin, "--version").CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s --version: %v\n%s", bin, err, out)
 	}
-	rev, err := exec.Command("git", "rev-parse", "--short=7", "HEAD").Output()
+	rev, err := exec.CommandContext(t.Context(), "git", "rev-parse", "--short=7", "HEAD").Output()
 	if err != nil {
 		t.Skipf("no git revision to compare against: %v", err)
 	}
@@ -246,12 +246,12 @@ func TestReleaseLinkerFlagsReachTheirVariables(t *testing.T) {
 		"-X " + pkg + ".commit=0123456789abcdef0123456789abcdef01234567",
 		"-X " + pkg + ".date=2026-08-03T12:00:00Z",
 	}, " ")
-	out, err := exec.Command("go", "build", "-ldflags", ldflags, "-o", bin, ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "build", "-ldflags", ldflags, "-o", bin, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 
-	out, err = exec.Command(bin, "--version").Output()
+	out, err = exec.CommandContext(t.Context(), bin, "--version").Output()
 	if err != nil {
 		t.Fatalf("%s --version: %v", bin, err)
 	}
@@ -306,7 +306,7 @@ func watchCredential(t *testing.T) *bool {
 // could not achieve this — any package can construct a client from a package it
 // already imports — which is why slackread and slackwrite are separate packages.
 func TestImportGraphExcludesWriteCode(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "list", "-deps", ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
@@ -333,14 +333,14 @@ func TestBuiltBinaryHasNoWriteEndpoints(t *testing.T) {
 		t.Skip("builds a binary")
 	}
 	bin := filepath.Join(t.TempDir(), "hear")
-	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "build", "-o", bin, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 
 	forbidden := []string{"chat.postMessage", "chat.getPermalink", "reactions.add", "reactions.remove"}
 
-	nm, err := exec.Command("go", "tool", "nm", bin).CombinedOutput()
+	nm, err := exec.CommandContext(t.Context(), "go", "tool", "nm", bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("go tool nm: %v\n%s", err, nm)
 	}

@@ -125,7 +125,7 @@ var exit = os.Exit
 // onAbort runs f for the first of those signals and then exits with the
 // conventional 128+n code. The returned function stops handling and must be
 // called once the window it guards has closed.
-func onAbort(f func()) (stop func()) {
+func onAbort(f func()) func() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, abortSignals...)
 	done := make(chan struct{})

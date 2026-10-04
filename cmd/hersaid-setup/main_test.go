@@ -237,7 +237,7 @@ func TestCredentialStoredInAFileIsResolvableByCred(t *testing.T) {
 
 func authorization(t *testing.T, set func(*http.Request)) string {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, "https://example.invalid/", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.invalid/", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -862,7 +862,7 @@ func TestACRLFPasteDoesNotAnswerTheNextPrompt(t *testing.T) {
 // a binary that could do both would make "posting stays impossible until someone
 // asks for it" a claim about argument parsing rather than about what is linked.
 func TestImportGraphExcludesWriteCode(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "list", "-deps", ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}

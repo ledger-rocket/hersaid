@@ -66,7 +66,7 @@ func Usage(stderr io.Writer, name, usage, msg string) int {
 // because only the parser knows which options take a value: in
 // `sez --thread --help`, "--help" is the thread timestamp, and answering it
 // here would turn a malformed invocation into a help screen.
-func Intercept(args []string, name, usage string, stdout io.Writer) (code int, handled bool) {
+func Intercept(args []string, name, usage string, stdout io.Writer) (int, bool) {
 	if len(args) == 0 {
 		return 0, false
 	}

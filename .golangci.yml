@@ -99,6 +99,9 @@ linters:
   - recvcheck
   - testableexamples
   - unqueryvet
+  - funlen
+  - nonamedreturns
+  - noctx
   - mnd
   - goconst
   - revive
@@ -246,15 +249,12 @@ linters:
   - errcheck # 200
   - wrapcheck # 54
   - staticcheck # 10
-  - noctx # 19
   - paralleltest # 558
   - gosec # 8
   - exhaustive # 8
   - dupl # 4
-  - nonamedreturns # 24
   - cyclop # 22
   - gocognit # 10
-  - funlen # 1
   - gosmopolitan # 5
 severity:
   default: error

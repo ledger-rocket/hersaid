@@ -442,7 +442,7 @@ var exit = os.Exit
 //
 // The returned function stops handling and must be called once the write is
 // done and recorded.
-func OnAbort(f func(sig os.Signal)) (stop func()) {
+func OnAbort(f func(sig os.Signal)) func() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, abortSignals...)
 	done := make(chan struct{})

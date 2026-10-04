@@ -137,6 +137,57 @@ type current struct {
 	Files []audit.File
 }
 
+// capabilityFor is what resolving the target must allow. An edit or delete
+// addresses an existing message; an upload's completeUploadExternal takes a
+// conversation id, resolving no #name and opening no DM. Resolving as a send
+// does would stage every byte of every file and then fail on the last leg.
+func capabilityFor(v verb, uploading bool) resolve.Capability {
+	if uploading {
+		return resolve.ForUpload
+	}
+	if v != verbSend {
+		return resolve.ForEdit
+	}
+	return resolve.ForPost
+}
+
+// suspicious is the refusal for an id that does not look like one Slack issued,
+// or empty when every id given does.
+func suspicious(channelID, thread, ts string, v verb) string {
+	if !channelRe.MatchString(channelID) {
+		return "refusing suspicious channel: " + channelID
+	}
+	if thread != "" && !threadRe.MatchString(thread) {
+		return "refusing suspicious thread ts: " + thread
+	}
+	if v != verbSend && !threadRe.MatchString(ts) {
+		return "refusing suspicious message ts: " + ts
+	}
+	return ""
+}
+
+// recordRead puts what an edit or delete read into its record. For a delete the
+// record carries what was read, so the log says what was destroyed rather than
+// merely that something was, and it names every file whose share the delete
+// removes: without this they would survive in neither the message nor the log.
+// An edit's Text is the replacement, so the wording it replaced has nowhere else
+// to go, and sez has just read it.
+func recordRead(rec audit.Post, v verb, now current) audit.Post {
+	if v == verbDelete {
+		rec.Text = now.Text
+		rec.Files = append(rec.Files, now.Files...)
+	} else {
+		rec.PreviousText = now.Text
+	}
+	return rec
+}
+
+// dryRunRecorded writes the record of a dry run that has been rendered.
+func dryRunRecorded(stderr io.Writer, log *audit.Log, rec audit.Post) int {
+	rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
+	return orAuditFailure(writeRecord(stderr, log, rec), 0)
+}
+
 // chooseVerb picks what the invocation does to a message, or returns the usage
 // refusal for a combination of flags that names no one thing.
 func chooseVerb(f flags, thread string) (verb, string) {
@@ -294,16 +345,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		return orAuditFailure(writeRecord(stderr, log, rec), cli.ExitFailure)
 	}
 
-	can := resolve.ForPost
-	if verb != verbSend {
-		can = resolve.ForEdit
-	}
-	// completeUploadExternal takes a conversation id, resolving no #name and
-	// opening no DM. Resolving as a send does would stage every byte of every
-	// file and then fail on the last leg.
-	if len(f.files) > 0 {
-		can = resolve.ForUpload
-	}
+	can := capabilityFor(verb, len(f.files) > 0)
 	target, err := resolve.Resolve(context.Background(), cache.Offline(), can, channel)
 	if err != nil {
 		return abort(stderr, log, rec, coldCache(err).Error())
@@ -320,14 +362,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		return orAuditFailure(werr, fail(stderr, "%v", err))
 	}
 
-	if !channelRe.MatchString(target.ID) {
-		return abort(stderr, log, rec, "refusing suspicious channel: "+target.ID)
-	}
-	if thread != "" && !threadRe.MatchString(thread) {
-		return abort(stderr, log, rec, "refusing suspicious thread ts: "+thread)
-	}
-	if verb != verbSend && !threadRe.MatchString(ts) {
-		return abort(stderr, log, rec, "refusing suspicious message ts: "+ts)
+	refusal = suspicious(target.ID, thread, ts, verb)
+	if refusal != "" {
+		return abort(stderr, log, rec, refusal)
 	}
 
 	// Slack has no table syntax, so a pasted Markdown table arrives as the
@@ -356,23 +393,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		if readErr != nil {
 			return abort(stderr, log, rec, "cannot read the current message: "+readErr.Error())
 		}
-		// For a delete the record carries what was read, so the log says what
-		// was destroyed rather than merely that something was.
-		if verb == verbDelete {
-			rec.Text = now.Text
-			// The record names every file whose share the delete removes.
-			// Without this they would survive in neither the message nor the
-			// log, and the log is supposed to say what a delete took.
-			rec.Files = append(rec.Files, now.Files...)
-		} else {
-			// An edit's Text is the replacement, so the wording it replaced has
-			// nowhere else to go, and sez has just read it.
-			rec.PreviousText = now.Text
-		}
+		rec = recordRead(rec, verb, now)
 		if !send {
 			renderChange(p, verb, ts, now, text)
-			rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
-			return orAuditFailure(writeRecord(stderr, log, rec), 0)
+			return dryRunRecorded(stderr, log, rec)
 		}
 		return change(a, rec, verb, ts)
 	}
@@ -386,16 +410,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		rec.Files = auditFiles(files)
 		if !send {
 			renderUpload(p, thread, text, files)
-			rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
-			return orAuditFailure(writeRecord(stderr, log, rec), 0)
+			return dryRunRecorded(stderr, log, rec)
 		}
 		return upload(a, rec, thread, text, files)
 	}
 
 	if !send {
 		render(stdout, target, thread, text, credErr == nil)
-		rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
-		return orAuditFailure(writeRecord(stderr, log, rec), 0)
+		return dryRunRecorded(stderr, log, rec)
 	}
 	return post(a, rec, thread, text)
 }
@@ -933,7 +955,8 @@ type flags struct {
 // only a parser knows which options take a value: in `sez --thread --help`,
 // "--help" is the thread timestamp. This runs before anything is read, created
 // or resolved, so answering them here still costs nothing.
-func parseFlags(args []string, stdout, stderr io.Writer) (f flags, done bool, code int) {
+func parseFlags(args []string, stdout, stderr io.Writer) (flags, bool, int) {
+	var f flags
 	for len(args) > 0 {
 		switch args[0] {
 		case "--send":

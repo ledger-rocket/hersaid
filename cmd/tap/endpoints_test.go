@@ -18,14 +18,14 @@ func TestBuiltBinaryReachesNoMessageEndpoints(t *testing.T) {
 		t.Skip("builds a binary")
 	}
 	bin := filepath.Join(t.TempDir(), "tap")
-	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "build", "-o", bin, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 
 	forbidden := []string{"chat.postMessage", "chat.update", "chat.delete", "files.upload"}
 
-	nm, err := exec.Command("go", "tool", "nm", bin).CombinedOutput()
+	nm, err := exec.CommandContext(t.Context(), "go", "tool", "nm", bin).CombinedOutput()
 	if err != nil {
 		t.Fatalf("go tool nm: %v\n%s", err, nm)
 	}

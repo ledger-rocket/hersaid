@@ -73,7 +73,7 @@ func skipDir(name string) bool {
 
 func moduleRoot(t *testing.T) string {
 	t.Helper()
-	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}").Output()
+	out, err := exec.CommandContext(t.Context(), "go", "list", "-m", "-f", "{{.Dir}}").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
