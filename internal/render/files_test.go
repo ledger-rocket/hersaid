@@ -195,13 +195,19 @@ func TestTheStructuredTranscriptDistinguishesBlocksFromFiles(t *testing.T) {
 	}{
 		{"plain text", slackread.Message{TS: "1.1", Text: "hello"}, false, false},
 		{"files only", slackread.Message{TS: "1.1", Files: []slackread.File{{ID: "F1", Name: "a.pdf"}}}, true, false},
-		{"a section block", slackread.Message{TS: "1.1", Text: "fallback",
-			Blocks: []byte(`[{"type":"section"}]`)}, true, true},
-		{"rich text is the text", slackread.Message{TS: "1.1", Text: "hi",
-			Blocks: []byte(`[{"type":"rich_text"}]`)}, false, false},
-		{"both", slackread.Message{TS: "1.1", Text: "fallback",
+		{"a section block", slackread.Message{
+			TS: "1.1", Text: "fallback",
+			Blocks: []byte(`[{"type":"section"}]`),
+		}, true, true},
+		{"rich text is the text", slackread.Message{
+			TS: "1.1", Text: "hi",
+			Blocks: []byte(`[{"type":"rich_text"}]`),
+		}, false, false},
+		{"both", slackread.Message{
+			TS: "1.1", Text: "fallback",
 			Blocks: []byte(`[{"type":"image"}]`),
-			Files:  []slackread.File{{ID: "F1", Name: "a.pdf"}}}, true, true},
+			Files:  []slackread.File{{ID: "F1", Name: "a.pdf"}},
+		}, true, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			got := Messages([]slackread.Message{c.msg}, nil)

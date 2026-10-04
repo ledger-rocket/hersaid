@@ -175,8 +175,8 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 }
 
 func react(stdout, stderr io.Writer, log *audit.Log, rec audit.Reaction, baseURL string,
-	c cred.Write, remove bool, target resolve.Target, targetTS, emoji string) int {
-
+	c cred.Write, remove bool, target resolve.Target, targetTS, emoji string,
+) int {
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
 		return abort(stderr, log, rec, err.Error())

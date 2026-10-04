@@ -287,8 +287,8 @@ func withIDs(files []audit.File, ids []string) []audit.File {
 // arrives through a shell glob and may hold an ESC or a newline, and the render
 // is what a person reads in order to authorise a send.
 func renderUpload(stdout io.Writer, target resolve.Target, thread, text string,
-	files []slackupload.Local, haveCred bool) {
-
+	files []slackupload.Local, haveCred bool,
+) {
 	fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
 	if target.ID != target.Input {
 		fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
@@ -322,8 +322,8 @@ func renderUpload(stdout io.Writer, target resolve.Target, thread, text string,
 // intent record before anything leaves, one attempt, a classified outcome —
 // with the difference that most of what can fail here provably posted nothing.
 func upload(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL string,
-	c cred.Write, target resolve.Target, thread, text string, files []slackupload.Local) int {
-
+	c cred.Write, target resolve.Target, thread, text string, files []slackupload.Local,
+) int {
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
 		return abort(stderr, log, rec, err.Error())

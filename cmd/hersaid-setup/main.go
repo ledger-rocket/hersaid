@@ -13,13 +13,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/ledger-rocket/hersaid/internal/cache"
-	"github.com/ledger-rocket/hersaid/internal/cred"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"unicode"
+
+	"github.com/ledger-rocket/hersaid/internal/cache"
+	"github.com/ledger-rocket/hersaid/internal/cred"
 
 	"github.com/ledger-rocket/hersaid/internal/cli"
 	"github.com/ledger-rocket/hersaid/internal/slackhttp"

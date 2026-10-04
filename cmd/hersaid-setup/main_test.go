@@ -12,10 +12,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zalando/go-keyring"
+
 	"github.com/ledger-rocket/hersaid/internal/cache"
 	"github.com/ledger-rocket/hersaid/internal/cred"
 	"github.com/ledger-rocket/hersaid/internal/slacktest"
-	"github.com/zalando/go-keyring"
 )
 
 // The tokens the tests paste. They are distinctive so that any output

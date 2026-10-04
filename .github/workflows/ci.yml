@@ -130,17 +130,32 @@ jobs:
             "$prefix/$cmd" >/dev/null || { echo "$cmd does not run"; exit 1; }
           done
           echo "ok - an extracted archive installs itself"
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The version go-service-template pins; .golangci.yml is adopted from it
+      # (PRO-7722). Formatters (gofumpt, goimports) run as part of this step.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.3
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
     needs:
       - go
       - shell
+      - lint
     if: always()
     steps:
       - name: Check that every required job passed
         run: |
-          for r in "${{ needs.go.result }}" "${{ needs.shell.result }}"; do
+          for r in "${{ needs.go.result }}" "${{ needs.shell.result }}" "${{ needs.lint.result }}"; do
             if [ "$r" != "success" ]; then
               echo "a required job did not succeed: $r"
               exit 1

@@ -42,8 +42,10 @@ func TestOnAbortRecordsAndExits(t *testing.T) {
 
 			got := make(chan os.Signal, 1)
 			stop := OnAbort(func(sig os.Signal) {
-				if err := l.Post(Post{Channel: "#eng", Phase: Abort, OK: Unknown,
-					Error: "interrupted by " + sig.String()}); err != nil {
+				if err := l.Post(Post{
+					Channel: "#eng", Phase: Abort, OK: Unknown,
+					Error: "interrupted by " + sig.String(),
+				}); err != nil {
 					t.Error(err)
 				}
 				got <- sig

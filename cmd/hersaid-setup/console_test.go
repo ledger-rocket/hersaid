@@ -15,7 +15,7 @@ import (
 
 // read drives the production masking loop over a scripted input and returns
 // what it accepted alongside what it put on screen.
-func read(t *testing.T, input string) (got string, echoed string, err error) {
+func read(t *testing.T, input string) (got, echoed string, err error) {
 	t.Helper()
 	var out bytes.Buffer
 	got, err = readMasked(bufio.NewReader(strings.NewReader(input)), &out)

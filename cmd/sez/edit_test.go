@@ -546,7 +546,9 @@ func TestChangeRenderBlockShape(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"edit", []string{"--edit", "#eng", "1785712599.000100", "the new wording"},
+		{
+			"edit",
+			[]string{"--edit", "#eng", "1785712599.000100", "the new wording"},
 			"--- dry run: nothing sent ---\n" +
 				"channel : #eng -> C0123ENG01\n" +
 				"message : 1785712599.000100\n" +
@@ -554,17 +556,21 @@ func TestChangeRenderBlockShape(t *testing.T) {
 				"the current wording\n" +
 				"--- replacement ---\n" +
 				"the new wording\n" +
-				"----------------------------------------\n"},
+				"----------------------------------------\n",
+		},
 		// The irreversible verb, and the one the shape test exists for: no
 		// replacement section, and the address line that catches a ts copied
 		// from the wrong message.
-		{"delete", []string{"--delete", "#eng", "1785712599.000100"},
+		{
+			"delete",
+			[]string{"--delete", "#eng", "1785712599.000100"},
 			"--- dry run: nothing sent ---\n" +
 				"channel : #eng -> C0123ENG01\n" +
 				"message : 1785712599.000100\n" +
 				"--- current message ---\n" +
 				"the current wording\n" +
-				"----------------------------------------\n"},
+				"----------------------------------------\n",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, stdout, stderr := sez(t, s, tc.args...)

@@ -346,8 +346,8 @@ func (c *Client) Replies(ctx context.Context, channelID, threadTS string, opts H
 // the method name and in replies naming its parent, so sharing the construction
 // is what keeps the two option sets from drifting apart.
 func (c *Client) transcript(ctx context.Context, method string, params url.Values,
-	channelID string, opts HistoryOptions) (HistoryPage, error) {
-
+	channelID string, opts HistoryOptions,
+) (HistoryPage, error) {
 	params.Set("channel", channelID)
 	if opts.Limit > 0 {
 		params.Set("limit", strconv.Itoa(opts.Limit))

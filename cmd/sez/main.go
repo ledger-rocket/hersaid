@@ -351,8 +351,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 }
 
 func post(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL string,
-	c cred.Write, target resolve.Target, thread, text string) int {
-
+	c cred.Write, target resolve.Target, thread, text string,
+) int {
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
 		return abort(stderr, log, rec, err.Error())
@@ -510,8 +510,8 @@ func renderChange(stdout io.Writer, target resolve.Target, v verb, ts string, no
 // classified outcome — because an edit and a delete deserve the same accounting
 // as a send: the read has already happened and gated this call.
 func change(stdout, stderr io.Writer, log *audit.Log, rec audit.Post, baseURL string,
-	c cred.Write, target resolve.Target, v verb, ts string) int {
-
+	c cred.Write, target resolve.Target, v verb, ts string,
+) int {
 	timeout, err := slackhttp.TimeoutFromEnv()
 	if err != nil {
 		return abort(stderr, log, rec, err.Error())

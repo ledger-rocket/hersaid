@@ -313,8 +313,10 @@ func TestClassify(t *testing.T) {
 		{"missing scope", &APIError{Method: "reactions.add", Code: CodeMissingScope}, Rejected},
 		{"already reacted", &APIError{Method: "reactions.add", Code: CodeAlreadyReacted}, AlreadyDone},
 		{"no reaction to remove", &APIError{Method: "reactions.remove", Code: CodeNoReaction}, AlreadyDone},
-		{"an idempotent code from the wrong endpoint",
-			&APIError{Method: "chat.postMessage", Code: CodeAlreadyReacted}, Rejected},
+		{
+			"an idempotent code from the wrong endpoint",
+			&APIError{Method: "chat.postMessage", Code: CodeAlreadyReacted}, Rejected,
+		},
 		{"no credential", &PreflightError{Method: "chat.postMessage", Err: ErrNoCredential}, Rejected},
 		{"slack internal error", &APIError{Method: "chat.postMessage", Code: "internal_error"}, Ambiguous},
 		{"slack fatal error", &APIError{Method: "chat.postMessage", Code: "fatal_error"}, Ambiguous},

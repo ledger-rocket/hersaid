@@ -41,8 +41,10 @@ func fixture() catalog {
 			{ID: "D0000DELE", IsIM: true, User: "U0000DELE"},
 		},
 		users: []cache.User{
-			{ID: "U0000STEP", Name: "stepan", RealName: "Stepan Marks",
-				Profile: cache.Profile{DisplayName: "step"}},
+			{
+				ID: "U0000STEP", Name: "stepan", RealName: "Stepan Marks",
+				Profile: cache.Profile{DisplayName: "step"},
+			},
 			{ID: "U0000STEV", Name: "steve", RealName: "Steve Smith"},
 			{ID: "U0000DELE", Name: "gone", RealName: "Gone Away", Deleted: true},
 			{ID: "U0000NODM", Name: "nodm", RealName: "No Dm"},

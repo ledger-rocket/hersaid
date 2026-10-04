@@ -431,10 +431,14 @@ func TestEveryRequestCarriesADeadline(t *testing.T) {
 		hc   *http.Client
 		want time.Duration
 	}{
-		{"client with no timeout falls back to the package default",
-			&http.Client{}, slackhttp.DefaultTimeout},
-		{"client timeout is honoured",
-			&http.Client{Timeout: 3 * time.Second}, 3 * time.Second},
+		{
+			"client with no timeout falls back to the package default",
+			&http.Client{}, slackhttp.DefaultTimeout,
+		},
+		{
+			"client timeout is honoured",
+			&http.Client{Timeout: 3 * time.Second}, 3 * time.Second,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := &probe{next: http.DefaultTransport}

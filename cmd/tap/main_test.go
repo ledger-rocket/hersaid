@@ -230,8 +230,10 @@ func TestALostOutcomeRecordIsFatalAndStillReportsTheReaction(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := react(&stdout, &stderr, log,
-		audit.Reaction{Action: audit.Add, Channel: "#eng", ChannelID: "C0123ABCD",
-			TS: "1785712596.256909", Emoji: "thumbsup"},
+		audit.Reaction{
+			Action: audit.Add, Channel: "#eng", ChannelID: "C0123ABCD",
+			TS: "1785712596.256909", Emoji: "thumbsup",
+		},
 		s.URL, wcred, false,
 		resolve.Target{Input: "#eng", ID: "C0123ABCD", Name: "eng", Resolved: true},
 		"1785712596.256909", "thumbsup")
@@ -281,8 +283,10 @@ func TestAFailedIntentRecordRefusesToReact(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := react(&stdout, &stderr, log,
-		audit.Reaction{Action: audit.Add, Channel: "#eng", ChannelID: "C0123ABCD",
-			TS: "1785712596.256909", Emoji: "thumbsup"},
+		audit.Reaction{
+			Action: audit.Add, Channel: "#eng", ChannelID: "C0123ABCD",
+			TS: "1785712596.256909", Emoji: "thumbsup",
+		},
 		s.URL, wcred, false,
 		resolve.Target{Input: "#eng", ID: "C0123ABCD", Name: "eng", Resolved: true},
 		"1785712596.256909", "thumbsup")
