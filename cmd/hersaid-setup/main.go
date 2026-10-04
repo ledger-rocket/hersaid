@@ -187,25 +187,9 @@ func (s *setup) client() *http.Client {
 // keeping an existing credential is ExitOK. Nothing was enrolled in either
 // case, but only one of them means something was wrong.
 func (s *setup) enrol(r role) int {
-	fmt.Fprintln(s.stdout)
-	answer, err := s.con.Line(fmt.Sprintf("Set up the %s token now? [y/N] ", r.label))
-	if err != nil {
-		return s.declined(err)
-	}
-	if !affirmative(answer) {
-		fmt.Fprintln(s.stdout, "  skipped")
-		return cli.ExitOK
-	}
-
-	fmt.Fprintln(s.stdout, "  paste the User OAuth Token (xoxp-...), input masked:")
-	token, err := s.con.Secret("  ")
-	if err != nil {
-		return s.declined(err)
-	}
-	token = strip(token)
-	if token == "" {
-		fmt.Fprintln(s.stderr, "  nothing received, not stored")
-		return cli.ExitOK
+	token, code, done := s.askToken(r)
+	if done {
+		return code
 	}
 	fmt.Fprintf(s.stdout, "  received: %s\n", fingerprint(token))
 
@@ -234,16 +218,9 @@ func (s *setup) enrol(r role) int {
 
 	// Checked after verification, not before: nobody should be asked whether to
 	// replace a working credential with one that turns out to be invalid.
-	if prev, found := lookup(r); found {
-		fmt.Fprintf(s.stdout, "  a %s credential is already stored in %s: %s\n", r.name, prev.where, prev.described)
-		answer, err := s.con.Line("  Replace it? [y/N] ")
-		if err != nil {
-			return s.declined(err)
-		}
-		if !affirmative(answer) {
-			fmt.Fprintf(s.stdout, "  kept the existing %s credential, nothing stored\n", r.name)
-			return cli.ExitOK
-		}
+	code, done = s.keepExisting(r)
+	if done {
+		return code
 	}
 
 	where, shadowed, err := store(r, token)
@@ -253,19 +230,28 @@ func (s *setup) enrol(r role) int {
 	}
 	fmt.Fprintf(s.stdout, "  stored in %s\n", where)
 
-	// The read role only: hear reads with this credential, and the write token
-	// belongs to the other app and to a different account context. auth.test
-	// was already paid for above, so the id is free — and seeding it here is
-	// what gives a fresh install the reaction marker from its first read rather
-	// than after a whoami it may never run. Best-effort: enrolment succeeded,
-	// and an unwritable cache is not a reason to say it did not.
-	//
-	// Skipped when the role's env var is set: cred reads that in preference to
-	// anything stored, so hear will read with a credential other than the one
-	// just enrolled, and seeding would replace an identity that credential
-	// warmed with a key nothing matches — turning a working marker off. Leaving
-	// the stored credential to be warmed by a later whoami is recoverable;
-	// destroying a correct identity is not.
+	s.seedIdentity(r, acct, token)
+
+	s.reportWhatOutranksIt(r, shadowed)
+	return cli.ExitOK
+}
+
+// seedIdentity caches who the read token belongs to.
+//
+// The read role only: hear reads with this credential, and the write token
+// belongs to the other app and to a different account context. auth.test
+// was already paid for by verify, so the id is free — and seeding it here is
+// what gives a fresh install the reaction marker from its first read rather
+// than after a whoami it may never run. Best-effort: enrolment succeeded,
+// and an unwritable cache is not a reason to say it did not.
+//
+// Skipped when the role's env var is set: cred reads that in preference to
+// anything stored, so hear will read with a credential other than the one
+// just enrolled, and seeding would replace an identity that credential
+// warmed with a key nothing matches — turning a working marker off. Leaving
+// the stored credential to be warmed by a later whoami is recoverable;
+// destroying a correct identity is not.
+func (s *setup) seedIdentity(r role, acct account, token string) {
 	_, outrankedByEnv := os.LookupEnv(r.envVar)
 	if !r.needsWriteScope && acct.userID != "" && !outrankedByEnv {
 		err := cache.Write(cache.IdentityFile, cache.Identity{
@@ -276,9 +262,51 @@ func (s *setup) enrol(r role) int {
 			fmt.Fprintln(s.stdout, "  cached who it belongs to, so reads mark your own reactions")
 		}
 	}
+}
 
-	s.reportWhatOutranksIt(r, shadowed)
-	return cli.ExitOK
+// askToken asks whether to set up r and reads the pasted token. done reports
+// that enrolment of r ends here with code: declined, skipped or nothing pasted.
+func (s *setup) askToken(r role) (string, int, bool) {
+	fmt.Fprintln(s.stdout)
+	answer, err := s.con.Line(fmt.Sprintf("Set up the %s token now? [y/N] ", r.label))
+	if err != nil {
+		return "", s.declined(err), true
+	}
+	if !affirmative(answer) {
+		fmt.Fprintln(s.stdout, "  skipped")
+		return "", cli.ExitOK, true
+	}
+
+	fmt.Fprintln(s.stdout, "  paste the User OAuth Token (xoxp-...), input masked:")
+	token, err := s.con.Secret("  ")
+	if err != nil {
+		return "", s.declined(err), true
+	}
+	token = strip(token)
+	if token == "" {
+		fmt.Fprintln(s.stderr, "  nothing received, not stored")
+		return "", cli.ExitOK, true
+	}
+	return token, 0, false
+}
+
+// keepExisting asks before replacing a credential already stored for r. done
+// reports that enrolment ends here with code: the answer was no, or none came.
+func (s *setup) keepExisting(r role) (int, bool) {
+	prev, found := lookup(r)
+	if !found {
+		return 0, false
+	}
+	fmt.Fprintf(s.stdout, "  a %s credential is already stored in %s: %s\n", r.name, prev.where, prev.described)
+	answer, err := s.con.Line("  Replace it? [y/N] ")
+	if err != nil {
+		return s.declined(err), true
+	}
+	if !affirmative(answer) {
+		fmt.Fprintf(s.stdout, "  kept the existing %s credential, nothing stored\n", r.name)
+		return cli.ExitOK, true
+	}
+	return 0, false
 }
 
 // reportWhatOutranksIt names anything that will still be read in preference to

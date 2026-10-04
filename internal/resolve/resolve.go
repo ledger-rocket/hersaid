@@ -114,11 +114,7 @@ func resolveChannel(ctx context.Context, cat Catalog, can Capability, target str
 	// A raw id needs no catalog at all. U… is only an id for an endpoint that
 	// opens DMs; for the others it falls through to a name lookup and fails.
 	if conversationID.MatchString(bare) || (can.OpensDM && userID.MatchString(bare)) {
-		t.ID, t.Name, t.Resolved = bare, "", true
-		if strings.HasPrefix(bare, "U") {
-			t.UserID = bare
-		}
-		return t, nil
+		return rawID(t, bare), nil
 	}
 
 	convs, err := cat.Conversations(ctx)
@@ -127,16 +123,9 @@ func resolveChannel(ctx context.Context, cat Catalog, can Capability, target str
 		if !errors.Is(err, cache.ErrCold) || !can.PassThroughName {
 			return t, err
 		}
-	} else {
-		// Case-sensitive, first duplicate wins. Slack
-		// channel names are lowercase in practice, so folding case here would
-		// only widen what a typo can hit.
-		for _, c := range convs {
-			if c.Name == bare {
-				t.ID, t.Resolved = c.ID, true
-				return t, nil
-			}
-		}
+	} else if id, ok := channelByName(convs, bare); ok {
+		t.ID, t.Resolved = id, true
+		return t, nil
 	}
 
 	// A bare U… that matched no channel name is a person this caller cannot hand
@@ -144,21 +133,60 @@ func resolveChannel(ctx context.Context, cat Catalog, can Capability, target str
 	// must already exist. The userID form, never a prefix test, so a channel
 	// whose name merely begins with U is still a channel, resolved above.
 	if userID.MatchString(bare) && !can.OpensDM {
-		for _, c := range convs {
-			if c.IsIM && c.User == bare {
-				t.UserID, t.Name = bare, ""
-				t.ID, t.Resolved = c.ID, true
-				return t, nil
-			}
-		}
+		return existingDM(t, convs, bare, target)
+	}
+	return passThrough(t, can, target, bare)
+}
+
+// existingDM is the target for the open DM with the user uid, which must exist.
+func existingDM(t Target, convs []cache.Conversation, uid, target string) (Target, error) {
+	id, ok := openDM(convs, uid)
+	if !ok {
 		return t, fmt.Errorf("%w with %s (open one in Slack first)", ErrNoOpenDM, target)
 	}
+	t.UserID, t.Name = uid, ""
+	t.ID, t.Resolved = id, true
+	return t, nil
+}
 
+// rawID is the target for a conversation or user id given as is.
+func rawID(t Target, bare string) Target {
+	t.ID, t.Name, t.Resolved = bare, "", true
+	if strings.HasPrefix(bare, "U") {
+		t.UserID = bare
+	}
+	return t
+}
+
+// channelByName is the id of the conversation called name. Case-sensitive,
+// first duplicate wins. Slack channel names are lowercase in practice, so
+// folding case here would only widen what a typo can hit.
+func channelByName(convs []cache.Conversation, name string) (string, bool) {
+	for _, c := range convs {
+		if c.Name == name {
+			return c.ID, true
+		}
+	}
+	return "", false
+}
+
+// openDM is the id of the existing DM with the user uid.
+func openDM(convs []cache.Conversation, uid string) (string, bool) {
+	for _, c := range convs {
+		if c.IsIM && c.User == uid {
+			return c.ID, true
+		}
+	}
+	return "", false
+}
+
+// passThrough is the target for a name nothing resolved. Only an explicit
+// #name may be passed on to Slack, and only by a caller that can: a bare word
+// that matched nothing is far more likely to be a typo than a channel.
+func passThrough(t Target, can Capability, target, bare string) (Target, error) {
 	if !can.PassThroughName {
 		return t, fmt.Errorf("%w: %s", ErrNoSuchChannel, bare)
 	}
-	// Only an explicit #name may be passed through: a bare word that matched
-	// nothing is far more likely to be a typo than a channel.
 	if !strings.HasPrefix(target, "#") {
 		return t, fmt.Errorf("%w: %s", ErrUnknownChannel, target)
 	}
@@ -184,11 +212,9 @@ func resolvePerson(ctx context.Context, cat Catalog, can Capability, target stri
 	if err != nil {
 		return t, err
 	}
-	for _, c := range convs {
-		if c.IsIM && c.User == uid {
-			t.ID, t.Resolved = c.ID, true
-			return t, nil
-		}
+	if id, ok := openDM(convs, uid); ok {
+		t.ID, t.Resolved = id, true
+		return t, nil
 	}
 
 	// No conversation exists yet. chat.postMessage opens one when given the
@@ -211,18 +237,12 @@ func matchUser(users []cache.User, query string) (string, error) {
 		if u.Deleted {
 			continue
 		}
-		for _, k := range []string{u.Name, u.Profile.DisplayName, u.RealName} {
-			k = strings.ToLower(k)
-			if k == q {
-				exact = append(exact, u.ID)
-				break
-			}
+		isExact, isPrefix := nameMatch(u, q)
+		if isExact {
+			exact = append(exact, u.ID)
 		}
-		for _, k := range []string{u.Name, u.Profile.DisplayName, u.RealName} {
-			if strings.HasPrefix(strings.ToLower(k), q) {
-				prefix = append(prefix, u.ID)
-				break
-			}
+		if isPrefix {
+			prefix = append(prefix, u.ID)
 		}
 	}
 	candidates := exact
@@ -237,4 +257,16 @@ func matchUser(users []cache.User, query string) (string, error) {
 	default:
 		return "", fmt.Errorf("@%s %w — use the exact handle", query, ErrAmbiguousUser)
 	}
+}
+
+// nameMatch reports whether q, already lower-case, equals or begins any of u's
+// handle, display name and real name, case-folded.
+func nameMatch(u cache.User, q string) (bool, bool) {
+	exact, prefix := false, false
+	for _, k := range []string{u.Name, u.Profile.DisplayName, u.RealName} {
+		k = strings.ToLower(k)
+		exact = exact || k == q
+		prefix = prefix || strings.HasPrefix(k, q)
+	}
+	return exact, prefix
 }

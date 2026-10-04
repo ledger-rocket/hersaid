@@ -226,21 +226,7 @@ func reactionsLine(reactions []slackread.Reaction, names Names, selfID string) s
 // the marker is then absent rather than wrong. Establishing it in that case
 // would cost a reactions.get per reaction.
 func reactors(count int, users []string, names Names, selfID string) string {
-	if selfID != "" {
-		hasSelf := false
-		ordered := make([]string, 0, len(users)+1)
-		for _, u := range users {
-			if u == selfID {
-				hasSelf = true
-				continue
-			}
-			ordered = append(ordered, u)
-		}
-		if hasSelf {
-			ordered = append([]string{selfID}, ordered...)
-			users = ordered
-		}
-	}
+	users = selfFirst(users, selfID)
 	limit := 3
 	var b strings.Builder
 	i := 0
@@ -248,13 +234,7 @@ func reactors(count int, users []string, names Names, selfID string) string {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		if selfID != "" && users[i] == selfID {
-			b.WriteString("you")
-		} else if label := names[users[i]]; label != "" {
-			b.WriteString(label)
-		} else {
-			b.WriteString(users[i])
-		}
+		b.WriteString(reactorLabel(users[i], names, selfID))
 	}
 	if i == 0 {
 		return ""
@@ -263,6 +243,39 @@ func reactors(count int, users []string, names Names, selfID string) string {
 		fmt.Fprintf(&b, " +%d", overflow)
 	}
 	return b.String()
+}
+
+// selfFirst moves selfID to the front of users when it is among them, and
+// otherwise returns users as they are.
+func selfFirst(users []string, selfID string) []string {
+	if selfID == "" {
+		return users
+	}
+	hasSelf := false
+	ordered := make([]string, 0, len(users)+1)
+	for _, u := range users {
+		if u == selfID {
+			hasSelf = true
+			continue
+		}
+		ordered = append(ordered, u)
+	}
+	if !hasSelf {
+		return users
+	}
+	return append([]string{selfID}, ordered...)
+}
+
+// reactorLabel is how one reactor is named: "you", their display name, or
+// their id when there is no name.
+func reactorLabel(u string, names Names, selfID string) string {
+	if selfID != "" && u == selfID {
+		return "you"
+	}
+	if label := names[u]; label != "" {
+		return label
+	}
+	return u
 }
 
 // WriteSearch writes search hits. They are not transcript lines: a hit names its

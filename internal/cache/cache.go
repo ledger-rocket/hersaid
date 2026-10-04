@@ -258,44 +258,59 @@ func Filling(src Source) *Store { return &Store{src: src} }
 
 // Conversations returns the conversation list.
 func (s *Store) Conversations(ctx context.Context) ([]Conversation, error) {
-	if s.convs != nil {
-		return s.convs.Channels, nil
-	}
-	var c Conversations
-	err := Read(ConversationsFile, &c)
-	if errors.Is(err, ErrCold) && s.src != nil {
-		list, ferr := s.src.ConversationsList(ctx)
-		if ferr != nil {
-			return nil, ferr
-		}
-		c = Conversations{Channels: list}
-		werr := Write(ConversationsFile, c)
-		if werr != nil {
-			return nil, werr
-		}
-		err = nil
-	}
+	c, err := fill(ctx, s.src, &s.convs, conversationsList)
 	if err != nil {
 		return nil, err
 	}
-	s.convs = &c
 	return c.Channels, nil
 }
 
 // Users returns the member list.
 func (s *Store) Users(ctx context.Context) ([]User, error) {
-	if s.users != nil {
-		return s.users.Members, nil
+	u, err := fill(ctx, s.src, &s.users, usersList)
+	if err != nil {
+		return nil, err
 	}
-	var u Users
-	err := Read(UsersFile, &u)
-	if errors.Is(err, ErrCold) && s.src != nil {
-		list, ferr := s.src.UsersList(ctx)
+	return u.Members, nil
+}
+
+// list is one of the two cached lists: its file, how a Source fetches it and
+// how the fetched entries become the file's shape.
+type list[W, E any] struct {
+	name  string
+	fetch func(Source, context.Context) ([]E, error)
+	wrap  func([]E) W
+}
+
+var (
+	conversationsList = list[Conversations, Conversation]{
+		name:  ConversationsFile,
+		fetch: Source.ConversationsList,
+		wrap:  func(l []Conversation) Conversations { return Conversations{Channels: l} },
+	}
+	usersList = list[Users, User]{
+		name:  UsersFile,
+		fetch: Source.UsersList,
+		wrap:  func(l []User) Users { return Users{Members: l} },
+	}
+)
+
+// fill returns *slot when this Store has already read it. Otherwise it reads
+// l's file; when that is cold and src is not nil, the list comes from src and
+// is written back. What it returns is kept in *slot.
+func fill[W, E any](ctx context.Context, src Source, slot **W, l list[W, E]) (*W, error) {
+	if *slot != nil {
+		return *slot, nil
+	}
+	var w W
+	err := Read(l.name, &w)
+	if errors.Is(err, ErrCold) && src != nil {
+		entries, ferr := l.fetch(src, ctx)
 		if ferr != nil {
 			return nil, ferr
 		}
-		u = Users{Members: list}
-		werr := Write(UsersFile, u)
+		w = l.wrap(entries)
+		werr := Write(l.name, w)
 		if werr != nil {
 			return nil, werr
 		}
@@ -304,6 +319,6 @@ func (s *Store) Users(ctx context.Context) ([]User, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.users = &u
-	return u.Members, nil
+	*slot = &w
+	return *slot, nil
 }

@@ -31,34 +31,26 @@ func render(n *html.Node, lists bool, depth int) string {
 	return collapse(b.String())
 }
 
+// marks are the inline elements rendered as a Markdown mark around their text.
+var marks = map[atom.Atom]string{
+	atom.B: "**", atom.Strong: "**",
+	atom.I: "_", atom.Em: "_",
+	atom.Del: "~~", atom.S: "~~",
+}
+
 func element(c *html.Node, lists bool, depth int) string {
+	if mark, ok := marks[c.DataAtom]; ok {
+		return wrap(mark, render(c, lists, depth))
+	}
 	switch c.DataAtom {
 	case atom.Br:
 		return "\n"
-	case atom.B, atom.Strong:
-		return wrap("**", render(c, lists, depth))
-	case atom.I, atom.Em:
-		return wrap("_", render(c, lists, depth))
-	case atom.Del, atom.S:
-		return wrap("~~", render(c, lists, depth))
 	case atom.Code:
 		return wrapCode(render(c, lists, depth))
 	case atom.A:
-		text := strings.TrimSpace(render(c, lists, depth))
-		href := destination(attr(c, "href"))
-		switch {
-		case href == "":
-			return text
-		case text == "", text == href:
-			return "<" + href + ">"
-		}
-		return "[" + escapeLabel(text) + "](" + href + ")"
+		return link(c, lists, depth)
 	case atom.Img:
-		src := destination(attr(c, "src"))
-		if alt := attr(c, "alt"); alt != "" {
-			return "![" + escapeLabel(termsafe.Text(alt)) + "](" + src + ")"
-		}
-		return "![](" + src + ")"
+		return image(c)
 	case atom.Ul, atom.Ol:
 		if !lists {
 			return ""
@@ -68,6 +60,29 @@ func element(c *html.Node, lists bool, depth int) string {
 		return ""
 	}
 	return render(c, lists, depth)
+}
+
+// link renders an anchor: its text alone when it has no usable destination,
+// the bare destination when the text is empty or the same, else a link.
+func link(c *html.Node, lists bool, depth int) string {
+	text := strings.TrimSpace(render(c, lists, depth))
+	href := destination(attr(c, "href"))
+	switch {
+	case href == "":
+		return text
+	case text == "", text == href:
+		return "<" + href + ">"
+	}
+	return "[" + escapeLabel(text) + "](" + href + ")"
+}
+
+// image renders an img with its alt text, when it has one.
+func image(c *html.Node) string {
+	src := destination(attr(c, "src"))
+	if alt := attr(c, "alt"); alt != "" {
+		return "![" + escapeLabel(termsafe.Text(alt)) + "](" + src + ")"
+	}
+	return "![](" + src + ")"
 }
 
 // wrap applies a mark, and declines to apply one to nothing: "**" around an

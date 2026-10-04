@@ -168,6 +168,12 @@ func reconcile(got []slackwrite.SharedFile, want []Staged) error {
 		extra = append(extra, id)
 	}
 	sort.Strings(extra)
+	return unreconciled(missing, extra)
+}
+
+// unreconciled is the error naming the files Slack did not answer for and the
+// ones it answered for that were never staged, or nil when there are neither.
+func unreconciled(missing, extra []string) error {
 	switch {
 	case len(missing) > 0 && len(extra) > 0:
 		return fmt.Errorf("%w: no answer for %s, and %s was never staged",

@@ -44,12 +44,11 @@ func NamesRealEndpoint(src []byte, isTestFile bool) bool {
 func withoutComments(src []byte) []byte {
 	out := make([]byte, 0, len(src))
 	for i := 0; i < len(src); {
+		next, isComment := skipComment(src, i)
 		switch {
-		case src[i] == '/' && i+1 < len(src) && src[i+1] == '/':
-			i = skipTo(src, i, []byte("\n"), true)
-		case src[i] == '/' && i+1 < len(src) && src[i+1] == '*':
-			i = skipTo(src, i+2, []byte("*/"), false)
-		case src[i] == '"' || src[i] == '`' || src[i] == '\'':
+		case isComment:
+			i = next
+		case isQuote(src[i]):
 			end := literalEnd(src, i)
 			out = append(out, src[i:end]...)
 			i = end
@@ -60,6 +59,24 @@ func withoutComments(src []byte) []byte {
 	}
 	return out
 }
+
+// skipComment returns the index just past the comment that starts at i, keeping
+// a line comment's newline, and whether one starts there at all.
+func skipComment(src []byte, i int) (int, bool) {
+	if src[i] != '/' || i+1 >= len(src) {
+		return i, false
+	}
+	switch src[i+1] {
+	case '/':
+		return skipTo(src, i, []byte("\n"), true), true
+	case '*':
+		return skipTo(src, i+2, []byte("*/"), false), true
+	}
+	return i, false
+}
+
+// isQuote reports whether c opens a string, raw string or rune literal.
+func isQuote(c byte) bool { return c == '"' || c == '`' || c == '\'' }
 
 // skipTo returns the index just past the next occurrence of stop, or the end of
 // src when there is none. keepStop leaves the terminator in place, which a line

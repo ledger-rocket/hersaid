@@ -173,16 +173,9 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 	}
 
 	verb, rest := f.rest[0], f.rest[1:]
-	if f.since != 0 && verb != "read" {
-		return cli.Usage(stderr, name, usage, "--since applies to read")
-	}
-	if (f.out != "" || f.maxSize != 0) && verb != cmdFiles {
-		return cli.Usage(stderr, name, usage, "--out and --max-size apply to files")
-	}
-	// Gated like every other verb-specific flag: a flag accepted and silently
-	// dropped teaches that it did something.
-	if f.canvasHTML && verb != cmdCanvas {
-		return cli.Usage(stderr, name, usage, "--html applies to canvas")
+	refusal := misplacedFlag(f, verb)
+	if refusal != "" {
+		return cli.Usage(stderr, name, usage, refusal)
 	}
 
 	// The client is built on first use rather than up front, so the commands
@@ -197,49 +190,83 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 		stderr: stderr,
 	}
 
-	switch verb {
-	case "whoami":
-		if len(rest) > 0 {
-			// Arity-strict, and that is what keeps "asking what a tool does
-			// never prompts for a credential" true one level down from the
-			// shared flags: a verb that ignored its trailing arguments would
-			// answer `hear whoami --version` by opening the keychain.
-			return cli.Usage(stderr, name, usage, "whoami takes no arguments")
-		}
-		return h.whoami()
-	case "channels":
-		filter, err := optionalFilter(rest)
-		if err != nil {
-			return cli.Usage(stderr, name, usage, err.Error())
-		}
-		return h.channels(filter)
-	case "dms":
-		filter, err := optionalFilter(rest)
-		if err != nil {
-			return cli.Usage(stderr, name, usage, err.Error())
-		}
-		return h.dms(filter)
-	case "read":
-		return h.read(rest)
-	case "thread":
-		return h.thread(rest)
-	case cmdFiles:
-		return h.files(rest)
-	case cmdCanvas:
-		return h.canvas(rest)
-	case "search":
-		if len(rest) == 0 {
-			return cli.Usage(stderr, name, usage, "search needs a query")
-		}
-		return h.search(strings.Join(rest, " "))
-	case cmdRefresh:
-		if len(rest) > 0 {
-			return cli.Usage(stderr, name, usage, "refresh takes no arguments")
-		}
-		return h.refresh()
-	default:
-		return cli.Usage(stderr, name, usage, "unknown command: "+verb)
+	return h.dispatch(verb, rest)
+}
+
+// misplacedFlag is the usage refusal for an option given to a verb it does not
+// apply to, or empty. Gated like every other verb-specific flag: a flag
+// accepted and silently dropped teaches that it did something.
+func misplacedFlag(f flags, verb string) string {
+	switch {
+	case f.since != 0 && verb != "read":
+		return "--since applies to read"
+	case (f.out != "" || f.maxSize != 0) && verb != cmdFiles:
+		return "--out and --max-size apply to files"
+	case f.canvasHTML && verb != cmdCanvas:
+		return "--html applies to canvas"
 	}
+	return ""
+}
+
+// dispatch runs verb on its arguments.
+func (h *hear) dispatch(verb string, rest []string) int {
+	verbs := map[string]func([]string) int{
+		"whoami":   h.whoamiVerb,
+		"channels": h.channelsVerb,
+		"dms":      h.dmsVerb,
+		"read":     h.read,
+		"thread":   h.thread,
+		cmdFiles:   h.files,
+		cmdCanvas:  h.canvas,
+		"search":   h.searchVerb,
+		cmdRefresh: h.refreshVerb,
+	}
+	run, ok := verbs[verb]
+	if !ok {
+		return h.usage("unknown command: " + verb)
+	}
+	return run(rest)
+}
+
+// whoamiVerb is arity-strict, and that is what keeps "asking what a tool does
+// never prompts for a credential" true one level down from the shared flags: a
+// verb that ignored its trailing arguments would answer `hear whoami --version`
+// by opening the keychain.
+func (h *hear) whoamiVerb(rest []string) int {
+	if len(rest) > 0 {
+		return h.usage("whoami takes no arguments")
+	}
+	return h.whoami()
+}
+
+func (h *hear) channelsVerb(rest []string) int {
+	filter, err := optionalFilter(rest)
+	if err != nil {
+		return h.usage(err.Error())
+	}
+	return h.channels(filter)
+}
+
+func (h *hear) dmsVerb(rest []string) int {
+	filter, err := optionalFilter(rest)
+	if err != nil {
+		return h.usage(err.Error())
+	}
+	return h.dms(filter)
+}
+
+func (h *hear) searchVerb(rest []string) int {
+	if len(rest) == 0 {
+		return h.usage("search needs a query")
+	}
+	return h.search(strings.Join(rest, " "))
+}
+
+func (h *hear) refreshVerb(rest []string) int {
+	if len(rest) > 0 {
+		return h.usage("refresh takes no arguments")
+	}
+	return h.refresh()
 }
 
 // hear is one invocation: what was asked for, where the answer goes, and the
@@ -384,6 +411,20 @@ type flags struct {
 	rest []string
 }
 
+// flagValue is the value of the option at args[i], given as --flag=value or as
+// the next argument, and the index of the last argument it used. ok is false
+// when the value should be the next argument and there is none.
+func flagValue(args []string, i int, flag string) (string, int, bool) {
+	v, inline := strings.CutPrefix(args[i], flag+"=")
+	if inline {
+		return v, i, true
+	}
+	if i+1 >= len(args) {
+		return "", i, false
+	}
+	return args[i+1], i + 1, true
+}
+
 // parseArgs reads the options, which are accepted in any position — `hear --ts
 // read #eng` and `hear read #eng --ts` are the same command. done reports that
 // there is nothing left to do:
@@ -397,79 +438,131 @@ type flags struct {
 func parseArgs(args []string, stdout, stderr io.Writer) (flags, bool, int) {
 	var f flags
 	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--":
+		if args[i] == "--" {
 			f.rest = append(f.rest, args[i+1:]...)
 			return f, false, 0
-		case a == "--ts":
-			f.showTS = true
-		case a == "--json":
-			f.asJSON = true
-		case a == "--html":
-			f.canvasHTML = true
-		case a == "--since" || strings.HasPrefix(a, "--since="):
-			v, ok := strings.CutPrefix(a, "--since=")
-			if !ok {
-				if i+1 >= len(args) {
-					return f, true, cli.Usage(stderr, name, usage, "--since needs a duration")
-				}
-				i++
-				v = args[i]
-			}
-			d, err := parseSince(v)
-			if err != nil {
-				return f, true, cli.Usage(stderr, name, usage, err.Error())
-			}
-			f.since = d
-		case a == "--out" || strings.HasPrefix(a, "--out="):
-			v, ok := strings.CutPrefix(a, "--out=")
-			if !ok {
-				if i+1 >= len(args) {
-					return f, true, cli.Usage(stderr, name, usage, "--out needs a directory")
-				}
-				i++
-				v = args[i]
-			}
-			if v == "" {
-				return f, true, cli.Usage(stderr, name, usage, "--out needs a directory")
-			}
-			f.out = v
-		case a == "--max-size" || strings.HasPrefix(a, "--max-size="):
-			v, ok := strings.CutPrefix(a, "--max-size=")
-			if !ok {
-				if i+1 >= len(args) {
-					return f, true, cli.Usage(stderr, name, usage, "--max-size needs a size")
-				}
-				i++
-				v = args[i]
-			}
-			n, err := parseSize(v)
-			if err != nil {
-				return f, true, cli.Usage(stderr, name, usage, err.Error())
-			}
-			f.maxSize = n
-		// Answered only while they lead, which is what cli.Intercept does for a
-		// command with no options of its own. Past the verb they are arguments
-		// like any other, and the verb refuses them by arity: `hear whoami
-		// --help` is a misuse, not a help screen.
-		case a == "-h" || a == "--help":
-			if len(f.rest) > 0 {
-				f.rest = append(f.rest, a)
-				continue
-			}
-			return f, true, cli.Help(stdout, usage)
-		case a == "--version":
-			if len(f.rest) > 0 {
-				f.rest = append(f.rest, a)
-				continue
-			}
-			return f, true, cli.Version(stdout, name)
-		case strings.HasPrefix(a, "--"):
-			return f, true, cli.Usage(stderr, name, usage, "unknown option: "+a)
-		default:
-			f.rest = append(f.rest, a)
 		}
+		next, code, done := f.option(args, i, stdout, stderr)
+		if done {
+			return f, true, code
+		}
+		i = next
 	}
 	return f, false, 0
+}
+
+// option takes in args[i]: an option, which may consume the argument after it,
+// or a word for f.rest. It returns the index of the last argument it used, and
+// done with an exit code when the invocation ends here.
+func (f *flags) option(args []string, i int, stdout, stderr io.Writer) (int, int, bool) {
+	a := args[i]
+	if f.setFlag(a) {
+		return i, 0, false
+	}
+	switch {
+	// Answered only while they lead, which is what cli.Intercept does for a
+	// command with no options of its own. Past the verb they are arguments
+	// like any other, and the verb refuses them by arity: `hear whoami
+	// --help` is a misuse, not a help screen.
+	case a == "-h" || a == "--help" || a == "--version":
+		code, done := f.leading(a, stdout)
+		return i, code, done
+	case strings.HasPrefix(a, "--"):
+		o, ok := valuedOption(a)
+		if !ok {
+			return i, cli.Usage(stderr, name, usage, "unknown option: "+a), true
+		}
+		next, refusal := o.parse(f, args, i)
+		if refusal != "" {
+			return i, cli.Usage(stderr, name, usage, refusal), true
+		}
+		return next, 0, false
+	default:
+		f.rest = append(f.rest, a)
+	}
+	return i, 0, false
+}
+
+// setFlag sets the option a when it is one that takes no value, and reports
+// whether it was.
+func (f *flags) setFlag(a string) bool {
+	switch a {
+	case "--ts":
+		f.showTS = true
+	case "--json":
+		f.asJSON = true
+	case "--html":
+		f.canvasHTML = true
+	default:
+		return false
+	}
+	return true
+}
+
+// leading answers --help or --version when no verb precedes it, and otherwise
+// keeps it as an argument for the verb to refuse.
+func (f *flags) leading(a string, stdout io.Writer) (int, bool) {
+	if len(f.rest) > 0 {
+		f.rest = append(f.rest, a)
+		return 0, false
+	}
+	if a == "--version" {
+		return cli.Version(stdout, name), true
+	}
+	return cli.Help(stdout, usage), true
+}
+
+// valued is an option that takes a value: what to say when the value is
+// missing, and how to store it, returning a usage refusal when it is invalid.
+type valued struct {
+	name    string
+	missing string
+	set     func(f *flags, v string) string
+}
+
+// valuedOptions are hear's options that take a value.
+var valuedOptions = []valued{
+	{name: "--since", missing: "--since needs a duration", set: func(f *flags, v string) string {
+		d, err := parseSince(v)
+		if err != nil {
+			return err.Error()
+		}
+		f.since = d
+		return ""
+	}},
+	{name: "--out", missing: "--out needs a directory", set: func(f *flags, v string) string {
+		if v == "" {
+			return "--out needs a directory"
+		}
+		f.out = v
+		return ""
+	}},
+	{name: "--max-size", missing: "--max-size needs a size", set: func(f *flags, v string) string {
+		n, err := parseSize(v)
+		if err != nil {
+			return err.Error()
+		}
+		f.maxSize = n
+		return ""
+	}},
+}
+
+// valuedOption is the valued option a names, as --name or --name=value.
+func valuedOption(a string) (valued, bool) {
+	for _, o := range valuedOptions {
+		if a == o.name || strings.HasPrefix(a, o.name+"=") {
+			return o, true
+		}
+	}
+	return valued{}, false
+}
+
+// parse reads o's value at args[i] into f, returning the index of the last
+// argument used and a usage refusal, empty when the value was taken.
+func (o valued) parse(f *flags, args []string, i int) (int, string) {
+	v, next, ok := flagValue(args, i, o.name)
+	if !ok {
+		return i, o.missing
+	}
+	return next, o.set(f, v)
 }

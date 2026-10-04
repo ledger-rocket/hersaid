@@ -99,6 +99,9 @@ linters:
   - recvcheck
   - testableexamples
   - unqueryvet
+  - dupl
+  - gocognit
+  - cyclop
   - funlen
   - nonamedreturns
   - noctx
@@ -252,9 +255,6 @@ linters:
   - paralleltest # 558
   - gosec # 8
   - exhaustive # 8
-  - dupl # 4
-  - cyclop # 22
-  - gocognit # 10
   - gosmopolitan # 5
 severity:
   default: error

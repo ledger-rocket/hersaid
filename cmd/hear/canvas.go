@@ -99,18 +99,9 @@ func (h *hear) canvas(args []string) int {
 	if err != nil {
 		return h.fail(err)
 	}
-	id, err := canvasTarget(args[0])
+	id, err := h.canvasID(ctx, c, args[0])
 	if err != nil {
 		return h.fail(err)
-	}
-	if id == "" {
-		// Not a canvas's own address, so it names a conversation whose canvas
-		// is wanted. That is how a channel canvas is reached: it hangs off the
-		// conversation rather than off any message in it.
-		id, err = h.channelCanvas(ctx, c, args[0])
-		if err != nil {
-			return h.fail(err)
-		}
 	}
 	info, err := c.FileInfo(ctx, id)
 	if err != nil {
@@ -120,18 +111,9 @@ func (h *hear) canvas(args []string) int {
 		return h.fail(notCanvasError{title: canvasTitle(info), reason: reason})
 	}
 
-	fc, err := h.src.downloader()
+	rendered, err := h.canvasText(ctx, info)
 	if err != nil {
 		return h.fail(err)
-	}
-	body, err := fc.Read(ctx, info, maxCanvasSize)
-	if err != nil {
-		return h.fail(fmt.Errorf("%s: %w", canvasTitle(info), err))
-	}
-
-	rendered, err := h.canvasBody(body)
-	if err != nil {
-		return h.fail(fmt.Errorf("%s: %w", canvasTitle(info), err))
 	}
 	if h.asJSON {
 		return h.emit(render.Canvas{
@@ -143,6 +125,34 @@ func (h *hear) canvas(args []string) int {
 	}
 	fmt.Fprint(h.stdout, rendered)
 	return 0
+}
+
+// canvasText downloads the canvas info describes and renders it as asked.
+func (h *hear) canvasText(ctx context.Context, info slackread.File) (string, error) {
+	fc, err := h.src.downloader()
+	if err != nil {
+		return "", err
+	}
+	body, err := fc.Read(ctx, info, maxCanvasSize)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", canvasTitle(info), err)
+	}
+	rendered, err := h.canvasBody(body)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", canvasTitle(info), err)
+	}
+	return rendered, nil
+}
+
+// canvasID is the file id of the canvas arg names: a canvas link or id, or
+// else a conversation whose canvas is wanted. That is how a channel canvas is
+// reached: it hangs off the conversation rather than off any message in it.
+func (h *hear) canvasID(ctx context.Context, c *slackread.Client, arg string) (string, error) {
+	id, err := canvasTarget(arg)
+	if err != nil || id != "" {
+		return id, err
+	}
+	return h.channelCanvas(ctx, c, arg)
 }
 
 // canvasBody is the rendering the caller asked for. The Markdown path is the

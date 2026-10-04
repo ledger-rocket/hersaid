@@ -99,21 +99,10 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 	if done {
 		return code
 	}
-	remove, dry, rest := f.remove, f.dry, f.rest
-	if len(rest) != 3 {
-		return cli.Usage(stderr, name, usage, "")
-	}
-	channel, targetTS, emoji := rest[0], rest[1], rest[2]
-
-	if strings.HasPrefix(channel, "-") {
-		return fail(stderr, "refusing a channel that looks like a flag: %s", channel)
-	}
-	if !tsRe.MatchString(targetTS) {
-		return fail(stderr, "not a message timestamp: %s  (expected e.g. 1785712596.256909)", targetTS)
-	}
-	emoji = strings.TrimSuffix(strings.TrimPrefix(emoji, ":"), ":")
-	if !emojiRe.MatchString(emoji) {
-		return fail(stderr, "not a valid emoji name: %s  (lowercase letters, digits, _ + - only)", emoji)
+	remove, dry := f.remove, f.dry
+	channel, targetTS, emoji, code, ok := reactionArgs(f.rest, stderr)
+	if !ok {
+		return code
 	}
 
 	wcred, credErr := resolveWrite()
@@ -130,11 +119,7 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 		fmt.Fprintf(stderr, "tap: warning — %s\n", w)
 	}
 
-	action := audit.Add
-	if remove {
-		action = audit.Remove
-	}
-	rec := audit.Reaction{Action: action, Channel: channel, TS: targetTS, Emoji: emoji, DryRun: dry}
+	rec := audit.Reaction{Action: reactionAction(remove), Channel: channel, TS: targetTS, Emoji: emoji, DryRun: dry}
 
 	// The gate: still before any client exists, so a refusal cannot issue a
 	// request — but after the log, because a refused reaction is an attempt and
@@ -161,19 +146,53 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 	}
 
 	if dry {
-		fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
-		fmt.Fprintf(stdout, "action  : %s\n", action)
-		fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
-		fmt.Fprintf(stdout, "message : %s\n", targetTS)
-		fmt.Fprintf(stdout, "emoji   : :%s:\n", emoji)
-		if credErr != nil {
-			fmt.Fprintln(stdout, "token   : absent (reacting currently impossible)")
-		}
+		printDryRun(stdout, rec, target, credErr == nil)
 		rec.Phase, rec.OK = audit.DryRun, audit.Succeeded
 		return orAuditFailure(writeRecord(stderr, log, rec), 0)
 	}
 	a := attempt{stdout: stdout, stderr: stderr, log: log, baseURL: baseURL, cred: wcred, target: target}
 	return react(a, rec, remove, targetTS, emoji)
+}
+
+// reactionArgs reads the channel, message ts and emoji name, with the colons
+// around the name dropped. ok is false when the invocation ends here with code.
+func reactionArgs(rest []string, stderr io.Writer) (string, string, string, int, bool) {
+	if len(rest) != 3 {
+		return "", "", "", cli.Usage(stderr, name, usage, ""), false
+	}
+	channel, targetTS, emoji := rest[0], rest[1], rest[2]
+
+	if strings.HasPrefix(channel, "-") {
+		return "", "", "", fail(stderr, "refusing a channel that looks like a flag: %s", channel), false
+	}
+	if !tsRe.MatchString(targetTS) {
+		return "", "", "", fail(stderr, "not a message timestamp: %s  (expected e.g. 1785712596.256909)", targetTS), false
+	}
+	emoji = strings.TrimSuffix(strings.TrimPrefix(emoji, ":"), ":")
+	if !emojiRe.MatchString(emoji) {
+		return "", "", "", fail(stderr, "not a valid emoji name: %s  (lowercase letters, digits, _ + - only)", emoji), false
+	}
+	return channel, targetTS, emoji, 0, true
+}
+
+// reactionAction is the audit action for adding a reaction, or removing one.
+func reactionAction(remove bool) audit.Action {
+	if remove {
+		return audit.Remove
+	}
+	return audit.Add
+}
+
+// printDryRun shows what a reaction would do, without doing it.
+func printDryRun(stdout io.Writer, rec audit.Reaction, target resolve.Target, haveCred bool) {
+	fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
+	fmt.Fprintf(stdout, "action  : %s\n", rec.Action)
+	fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
+	fmt.Fprintf(stdout, "message : %s\n", rec.TS)
+	fmt.Fprintf(stdout, "emoji   : :%s:\n", rec.Emoji)
+	if !haveCred {
+		fmt.Fprintln(stdout, "token   : absent (reacting currently impossible)")
+	}
 }
 
 // attempt is what the send path needs: where it reports, where it records,

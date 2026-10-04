@@ -110,51 +110,16 @@ func (w *writer) element(n *html.Node, depth int) bool {
 		w.emit(strings.Repeat("#", level) + " " + inline(n))
 		return true
 	case atom.P, atom.Div:
-		// A div is a block in canvas markup, but it is also the wrapper
-		// around everything, so it only emits when it holds text directly
-		// rather than other blocks.
-		if hasBlockChild(n) {
-			w.children(n, depth+1)
-			return true
-		}
-		if s := inline(n); strings.TrimSpace(s) != "" {
-			w.emit(s)
-		}
+		w.paragraph(n, depth)
 		return true
 	case atom.Ul, atom.Ol:
-		w.list = append(w.list, listState{ordered: n.DataAtom == atom.Ol})
-		var items []string
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if c.Type != html.ElementNode {
-				continue
-			}
-			switch c.DataAtom {
-			case atom.Li:
-				items = append(items, w.item(c, depth+1))
-			case atom.Ul, atom.Ol:
-				// A list directly inside a list, which the parser will hand
-				// back for markup that omitted the item around it. Rendered
-				// rather than dropped.
-				w.block(c, depth+1)
-			}
-		}
-		w.list = w.list[:len(w.list)-1]
-		if len(items) > 0 {
-			w.emit(strings.Join(items, "\n"))
-		}
+		w.listBlock(n, depth)
 		return true
 	case atom.Pre:
-		body := strings.TrimRight(textOf(n), "\n")
-		fence := "```"
-		for strings.Contains(body, fence) {
-			fence += "`"
-		}
-		w.emit(fence + "\n" + body + "\n" + fence)
+		w.emit(fenced(n))
 		return true
 	case atom.Blockquote:
-		for line := range strings.SplitSeq(inline(n), "\n") {
-			w.emit("> " + line)
-		}
+		w.quote(n)
 		return true
 	case atom.Hr:
 		w.emit("---")
@@ -168,6 +133,60 @@ func (w *writer) element(n *html.Node, depth int) bool {
 		return true
 	}
 	return false
+}
+
+// paragraph renders a p or a div. A div is a block in canvas markup, but it is
+// also the wrapper around everything, so it only emits when it holds text
+// directly rather than other blocks.
+func (w *writer) paragraph(n *html.Node, depth int) {
+	if hasBlockChild(n) {
+		w.children(n, depth+1)
+		return
+	}
+	if s := inline(n); strings.TrimSpace(s) != "" {
+		w.emit(s)
+	}
+}
+
+// listBlock renders a ul or an ol, one line per item.
+func (w *writer) listBlock(n *html.Node, depth int) {
+	w.list = append(w.list, listState{ordered: n.DataAtom == atom.Ol})
+	var items []string
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != html.ElementNode {
+			continue
+		}
+		switch c.DataAtom {
+		case atom.Li:
+			items = append(items, w.item(c, depth+1))
+		case atom.Ul, atom.Ol:
+			// A list directly inside a list, which the parser will hand
+			// back for markup that omitted the item around it. Rendered
+			// rather than dropped.
+			w.block(c, depth+1)
+		}
+	}
+	w.list = w.list[:len(w.list)-1]
+	if len(items) > 0 {
+		w.emit(strings.Join(items, "\n"))
+	}
+}
+
+// fenced is a pre as a code fence one backtick longer than any run inside it.
+func fenced(n *html.Node) string {
+	body := strings.TrimRight(textOf(n), "\n")
+	fence := "```"
+	for strings.Contains(body, fence) {
+		fence += "`"
+	}
+	return fence + "\n" + body + "\n" + fence
+}
+
+// quote renders a blockquote, one quoted block per line.
+func (w *writer) quote(n *html.Node) {
+	for line := range strings.SplitSeq(inline(n), "\n") {
+		w.emit("> " + line)
+	}
 }
 
 func (w *writer) children(n *html.Node, depth int) {
@@ -192,13 +211,7 @@ func (w *writer) item(n *html.Node, depth int) string {
 		if c.Type != html.ElementNode || (c.DataAtom != atom.Ul && c.DataAtom != atom.Ol) {
 			continue
 		}
-		w.list = append(w.list, listState{ordered: c.DataAtom == atom.Ol})
-		for gc := c.FirstChild; gc != nil; gc = gc.NextSibling {
-			if gc.Type == html.ElementNode && gc.DataAtom == atom.Li {
-				nested = append(nested, w.item(gc, depth+1))
-			}
-		}
-		w.list = w.list[:len(w.list)-1]
+		nested = append(nested, w.nestedItems(c, depth)...)
 	}
 	if len(nested) > 0 {
 		line += "\n" + strings.Join(nested, "\n")
@@ -211,41 +224,72 @@ func (w *writer) item(n *html.Node, depth int) string {
 // and a header made of the first row reads better than a column of empties.
 func (w *writer) table(n *html.Node) string {
 	var rows [][]string
-	var walk func(*html.Node)
-	walk = func(x *html.Node) {
-		if x.Type == html.ElementNode && x.DataAtom == atom.Tr {
-			var cells []string
-			for c := x.FirstChild; c != nil; c = c.NextSibling {
-				if c.Type == html.ElementNode && (c.DataAtom == atom.Td || c.DataAtom == atom.Th) {
-					cells = append(cells, cellEscaper.Replace(strings.TrimSpace(inline(c))))
-				}
-			}
-			if len(cells) > 0 {
-				rows = append(rows, cells)
-			}
-			return
-		}
-		for c := x.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
-	}
-	walk(n)
+	collectRows(n, &rows)
 	if len(rows) == 0 {
 		return ""
 	}
-	width := 0
-	for _, r := range rows {
-		if len(r) > width {
-			width = len(r)
-		}
-	}
+	width := widest(rows)
 	// One wide row among many narrow ones would otherwise be paid for by every
 	// row: padding is the width times the count, which a small document can
 	// make enormous. Past the bound the rows are emitted as they are. Markdown
 	// readers accept a ragged table, and the cost is then what the document
 	// itself cost.
 	pad := width*len(rows) <= maxCells
+	return tableText(rows, width, pad)
+}
 
+// nestedItems renders the items of a list c found inside an item.
+func (w *writer) nestedItems(c *html.Node, depth int) []string {
+	var nested []string
+	w.list = append(w.list, listState{ordered: c.DataAtom == atom.Ol})
+	for gc := c.FirstChild; gc != nil; gc = gc.NextSibling {
+		if gc.Type == html.ElementNode && gc.DataAtom == atom.Li {
+			nested = append(nested, w.item(gc, depth+1))
+		}
+	}
+	w.list = w.list[:len(w.list)-1]
+	return nested
+}
+
+// collectRows appends to rows every table row under x that has cells, in
+// document order.
+func collectRows(x *html.Node, rows *[][]string) {
+	if x.Type == html.ElementNode && x.DataAtom == atom.Tr {
+		if cells := rowCells(x); len(cells) > 0 {
+			*rows = append(*rows, cells)
+		}
+		return
+	}
+	for c := x.FirstChild; c != nil; c = c.NextSibling {
+		collectRows(c, rows)
+	}
+}
+
+// rowCells is the escaped text of each td or th directly in the row tr.
+func rowCells(tr *html.Node) []string {
+	var cells []string
+	for c := tr.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode && (c.DataAtom == atom.Td || c.DataAtom == atom.Th) {
+			cells = append(cells, cellEscaper.Replace(strings.TrimSpace(inline(c))))
+		}
+	}
+	return cells
+}
+
+// widest is the number of cells in the longest row.
+func widest(rows [][]string) int {
+	width := 0
+	for _, r := range rows {
+		if len(r) > width {
+			width = len(r)
+		}
+	}
+	return width
+}
+
+// tableText writes rows as a Markdown table, the first as its header, padding
+// each to width cells when pad is set.
+func tableText(rows [][]string, width int, pad bool) string {
 	var b strings.Builder
 	for i, r := range rows {
 		if pad {

@@ -73,22 +73,7 @@ func (h *hear) fetchFiles(ch render.ChannelRef, ts string) int {
 	dir := filepath.Join(h.out, messageDir(ch, ts))
 	results := fc.Fetch(ctx, msg.Files, h.out, messageDir(ch, ts), h.limit())
 
-	out := make([]render.FileResult, 0, len(results))
-	incomplete := false
-	for _, r := range results {
-		if r.Status != slackfiles.Written {
-			incomplete = true
-		}
-		out = append(out, render.FileResult{
-			ID:     r.File.ID,
-			Name:   render.FileLabel(r.File),
-			Size:   r.File.Size,
-			Status: string(r.Status),
-			Path:   r.Path,
-			Bytes:  r.Bytes,
-			Reason: r.Reason,
-		})
-	}
+	out, incomplete := fileResults(results)
 
 	if h.asJSON {
 		code := h.emit(render.Files{
@@ -107,6 +92,28 @@ func (h *hear) fetchFiles(ch render.ChannelRef, ts string) int {
 		return cli.ExitFailure
 	}
 	return cli.ExitOK
+}
+
+// fileResults is what fetchFiles reports for each file, and whether any of
+// them was not written.
+func fileResults(results []slackfiles.Result) ([]render.FileResult, bool) {
+	out := make([]render.FileResult, 0, len(results))
+	incomplete := false
+	for _, r := range results {
+		if r.Status != slackfiles.Written {
+			incomplete = true
+		}
+		out = append(out, render.FileResult{
+			ID:     r.File.ID,
+			Name:   render.FileLabel(r.File),
+			Size:   r.File.Size,
+			Status: string(r.Status),
+			Path:   r.Path,
+			Bytes:  r.Bytes,
+			Reason: r.Reason,
+		})
+	}
+	return out, incomplete
 }
 
 // limit is the per-file ceiling in bytes, --max-size or the default.

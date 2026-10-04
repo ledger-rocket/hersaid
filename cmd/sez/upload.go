@@ -364,25 +364,7 @@ func upload(a attempt, rec audit.Post, thread, text string, files []slackupload.
 	rec.Phase = audit.Outcome
 
 	if serr != nil {
-		// Recorded failed, never unknown: until the sharing leg nothing is
-		// visible, so there is no doubt to record and no retry to forbid.
-		rec.OK, rec.Error = audit.Failed, serr.Error()
-		werr := prog.writeOutcome(stderr, log, rec)
-		code := fail(stderr, "%s  (logged)", termsafe.Text(serr.Error()))
-		if n := len(staged); n > 0 {
-			// Named, but not as something to go and deal with: Slack discards
-			// an upload whose completion never comes, and asking files.info
-			// for one of these ids is answered file_deleted. The ids are here
-			// because they say how far the send got, and they are in the record
-			// for the same reason.
-			fmt.Fprintf(stderr,
-				"sez: note — %s reached Slack before this failed (%s), but an upload that is never shared is discarded. Nothing was posted and there is nothing to clean up.\n",
-				plural(n, "file"), strings.Join(idsOf(staged), ", "))
-		}
-		if slackwrite.Code(serr) == slackwrite.CodeMissingScope {
-			fmt.Fprint(stderr, missingScopeFor(serr))
-		}
-		return orAuditFailure(werr, code)
+		return prog.stageFailed(stderr, log, rec, staged, serr)
 	}
 
 	shared, sherr := up.Share(ctx, slackupload.ShareRequest{
@@ -400,16 +382,7 @@ func upload(a attempt, rec audit.Post, thread, text string, files []slackupload.
 
 	rec = outcomeOf(rec, shared, sherr)
 	if sherr != nil {
-		werr := prog.writeOutcome(stderr, log, rec)
-		if rec.OK == audit.Unknown {
-			return orAuditFailure(werr,
-				fail(stderr, "%s (delivery UNKNOWN — logged)", termsafe.Text(sherr.Error())))
-		}
-		code := fail(stderr, "%s  (logged)", termsafe.Text(sherr.Error()))
-		if slackwrite.Code(sherr) == slackwrite.CodeMissingScope {
-			fmt.Fprint(stderr, missingScopeFor(sherr))
-		}
-		return orAuditFailure(werr, code)
+		return prog.shareFailed(stderr, log, rec, sherr)
 	}
 
 	// Best effort, as a send's is: the message is already delivered, so a
@@ -422,21 +395,8 @@ func upload(a attempt, rec audit.Post, thread, text string, files []slackupload.
 	}
 	werr := prog.writeOutcome(stderr, log, rec)
 
-	fmt.Fprintf(stdout, "uploaded to %s", target.Input)
-	if thread != "" {
-		fmt.Fprintf(stdout, " (thread %s)", thread)
-	}
-	if rec.TS != "" {
-		fmt.Fprintf(stdout, " ts=%s", rec.TS)
-	}
-	fmt.Fprintln(stdout)
-	for i, f := range files {
-		id := ""
-		if i < len(shared.IDs) {
-			id = shared.IDs[i]
-		}
-		fmt.Fprintf(stdout, "  %-24s %s\n", termsafe.Text(f.Name), id)
-	}
+	uploadedLine(stdout, target.Input, thread, rec.TS)
+	listUploaded(stdout, files, shared.IDs)
 	if rec.Permalink != "" {
 		fmt.Fprintln(stdout, rec.Permalink)
 	}
@@ -503,3 +463,64 @@ type localPathError struct {
 }
 
 func (e localPathError) Error() string { return e.shown + ": " + e.err.Error() }
+
+// stageFailed records and reports a failure while staging. It is recorded
+// failed, never unknown: until the sharing leg nothing is visible, so there is
+// no doubt to record and no retry to forbid.
+func (p *progress) stageFailed(stderr io.Writer, log *audit.Log, rec audit.Post, staged []slackupload.Staged, serr error) int {
+	rec.OK, rec.Error = audit.Failed, serr.Error()
+	werr := p.writeOutcome(stderr, log, rec)
+	code := fail(stderr, "%s  (logged)", termsafe.Text(serr.Error()))
+	if n := len(staged); n > 0 {
+		// Named, but not as something to go and deal with: Slack discards
+		// an upload whose completion never comes, and asking files.info
+		// for one of these ids is answered file_deleted. The ids are here
+		// because they say how far the send got, and they are in the record
+		// for the same reason.
+		fmt.Fprintf(stderr,
+			"sez: note — %s reached Slack before this failed (%s), but an upload that is never shared is discarded. Nothing was posted and there is nothing to clean up.\n",
+			plural(n, "file"), strings.Join(idsOf(staged), ", "))
+	}
+	if slackwrite.Code(serr) == slackwrite.CodeMissingScope {
+		fmt.Fprint(stderr, missingScopeFor(serr))
+	}
+	return orAuditFailure(werr, code)
+}
+
+// shareFailed records and reports a failure of the sharing leg, as unknown
+// when Slack's answer leaves delivery in doubt.
+func (p *progress) shareFailed(stderr io.Writer, log *audit.Log, rec audit.Post, sherr error) int {
+	werr := p.writeOutcome(stderr, log, rec)
+	if rec.OK == audit.Unknown {
+		return orAuditFailure(werr,
+			fail(stderr, "%s (delivery UNKNOWN — logged)", termsafe.Text(sherr.Error())))
+	}
+	code := fail(stderr, "%s  (logged)", termsafe.Text(sherr.Error()))
+	if slackwrite.Code(sherr) == slackwrite.CodeMissingScope {
+		fmt.Fprint(stderr, missingScopeFor(sherr))
+	}
+	return orAuditFailure(werr, code)
+}
+
+// uploadedLine is the first line of an upload's report.
+func uploadedLine(stdout io.Writer, input, thread, ts string) {
+	fmt.Fprintf(stdout, "uploaded to %s", input)
+	if thread != "" {
+		fmt.Fprintf(stdout, " (thread %s)", thread)
+	}
+	if ts != "" {
+		fmt.Fprintf(stdout, " ts=%s", ts)
+	}
+	fmt.Fprintln(stdout)
+}
+
+// listUploaded lists each file with the id Slack gave it, where it gave one.
+func listUploaded(stdout io.Writer, files []slackupload.Local, ids []string) {
+	for i, f := range files {
+		id := ""
+		if i < len(ids) {
+			id = ids[i]
+		}
+		fmt.Fprintf(stdout, "  %-24s %s\n", termsafe.Text(f.Name), id)
+	}
+}

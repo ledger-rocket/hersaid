@@ -137,6 +137,115 @@ type current struct {
 	Files []audit.File
 }
 
+// invocation is what the arguments ask for, read before anything is opened.
+type invocation struct {
+	f       flags
+	verb    verb
+	channel string
+	ts      string
+	text    string
+}
+
+// parseInvocation reads the arguments and the message text. --help and
+// --version are answered here, with no side effects of their own: before stdin
+// is read, before the audit log is created and before any credential is
+// resolved. done reports that the invocation ends here with code.
+func parseInvocation(args []string, stdin io.Reader, stdout, stderr io.Writer) (invocation, int, bool) {
+	f, done, code := parseFlags(args, stdout, stderr)
+	if done {
+		return invocation{}, code, true
+	}
+	thread, rest := f.thread, f.rest
+	if len(rest) == 0 {
+		return invocation{}, cli.Usage(stderr, name, usage, ""), true
+	}
+	verb, refusal := chooseVerb(f, thread)
+	if refusal != "" {
+		return invocation{}, cli.Usage(stderr, name, usage, refusal), true
+	}
+
+	channel := rest[0]
+	rest = rest[1:]
+	if strings.HasPrefix(channel, "-") {
+		return invocation{}, fail(stderr, "refusing a channel that looks like a flag: %s", channel), true
+	}
+
+	var ts string
+	if verb != verbSend {
+		if len(rest) == 0 {
+			return invocation{}, cli.Usage(stderr, name, usage, "--edit and --delete need a message ts"), true
+		}
+		ts = rest[0]
+		rest = rest[1:]
+	}
+
+	text, code, done := messageText(stderr, f, verb, rest, stdin)
+	if done {
+		return invocation{}, code, true
+	}
+	return invocation{f: f, verb: verb, channel: channel, ts: ts, text: text}, 0, false
+}
+
+// postRecord is the audit record an invocation starts from.
+func postRecord(inv invocation) audit.Post {
+	action := verbAction(inv.verb)
+	if len(inv.f.files) > 0 {
+		action = audit.Upload
+	}
+	return audit.Post{
+		Channel: inv.channel, ThreadTS: inv.f.thread, DryRun: !inv.f.send, Text: inv.text,
+		Action: action,
+	}
+}
+
+// deliver renders or sends what the invocation asked for, once every gate in run
+// has passed: an edit or delete, an upload, or a plain message.
+func deliver(a attempt, p preview, rec audit.Post, inv invocation) int {
+	send, thread, verb, ts, text := inv.f.send, inv.f.thread, inv.verb, inv.ts, inv.text
+	if verb != verbSend {
+		// The read gates the write: an edit or delete rewrites or destroys what
+		// people have already read, so the render must show it as it stands. If
+		// the current text cannot be read, nothing changes — not under --send
+		// either. A tool that could not show its own change has not earned the
+		// send, and a warning is something people learn to scroll past.
+		// Stamped before the read, so the intent line that outlives a kill, the
+		// abort written when the read fails, and every failure outcome all name
+		// the message that was addressed. Without it a delete interrupted before
+		// its outcome cannot be reconciled against Slack at all.
+		rec.TS = ts
+		now, readErr := readMessage(context.Background(), a.target.ID, ts, verb)
+		if readErr != nil {
+			return abort(a.stderr, a.log, rec, "cannot read the current message: "+readErr.Error())
+		}
+		rec = recordRead(rec, verb, now)
+		if !send {
+			renderChange(p, verb, ts, now, text)
+			return dryRunRecorded(a.stderr, a.log, rec)
+		}
+		return change(a, rec, verb, ts)
+	}
+
+	if len(inv.f.files) > 0 {
+		files, ferr := openFiles(inv.f.files)
+		if ferr != nil {
+			return abort(a.stderr, a.log, rec, ferr.Error())
+		}
+		defer closeFiles(files)
+		rec.Files = auditFiles(files)
+		if !send {
+			renderUpload(p, thread, text, files)
+			return dryRunRecorded(a.stderr, a.log, rec)
+		}
+		return upload(a, rec, thread, text, files)
+	}
+
+	if !send {
+		render(p.stdout, p.target, thread, text, p.haveCred)
+		return dryRunRecorded(a.stderr, a.log, rec)
+	}
+	return post(a, rec, thread, text)
+}
+
 // capabilityFor is what resolving the target must allow. An edit or delete
 // addresses an existing message; an upload's completeUploadExternal takes a
 // conversation id, resolving no #name and opening no DM. Resolving as a send
@@ -278,38 +387,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	// First, and with no side effects of its own: --help and --version are
 	// answered here, before stdin is read, before the audit log is created and
 	// before any credential is resolved.
-	f, done, code := parseFlags(args, stdout, stderr)
+	inv, code, done := parseInvocation(args, stdin, stdout, stderr)
 	if done {
 		return code
 	}
-	send, thread, rest := f.send, f.thread, f.rest
-	if len(rest) == 0 {
-		return cli.Usage(stderr, name, usage, "")
-	}
-	verb, refusal := chooseVerb(f, thread)
-	if refusal != "" {
-		return cli.Usage(stderr, name, usage, refusal)
-	}
-
-	channel := rest[0]
-	rest = rest[1:]
-	if strings.HasPrefix(channel, "-") {
-		return fail(stderr, "refusing a channel that looks like a flag: %s", channel)
-	}
-
-	var ts string
-	if verb != verbSend {
-		if len(rest) == 0 {
-			return cli.Usage(stderr, name, usage, "--edit and --delete need a message ts")
-		}
-		ts = rest[0]
-		rest = rest[1:]
-	}
-
-	text, code, done := messageText(stderr, f, verb, rest, stdin)
-	if done {
-		return code
-	}
+	f, send, thread, verb, channel, ts, text := inv.f, inv.f.send, inv.f.thread, inv.verb, inv.channel, inv.ts, inv.text
 
 	// Resolved once: a second lookup would mean a second keyring access, which on
 	// a locked keychain is a second prompt for the same invocation.
@@ -326,14 +408,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		fmt.Fprintf(stderr, "sez: warning — %s\n", w)
 	}
 
-	action := verbAction(verb)
-	if len(f.files) > 0 {
-		action = audit.Upload
-	}
-	rec := audit.Post{
-		Channel: channel, ThreadTS: thread, DryRun: !send, Text: text,
-		Action: action,
-	}
+	rec := postRecord(inv)
 
 	// The gate: still before any client exists, so a refusal cannot issue a
 	// request — but after the log, because a refused send is an attempt and the
@@ -362,7 +437,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 		return orAuditFailure(werr, fail(stderr, "%v", err))
 	}
 
-	refusal = suspicious(target.ID, thread, ts, verb)
+	refusal := suspicious(target.ID, thread, ts, verb)
 	if refusal != "" {
 		return abort(stderr, log, rec, refusal)
 	}
@@ -378,48 +453,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	a := attempt{stdout: stdout, stderr: stderr, log: log, baseURL: baseURL, cred: wcred, target: target}
 	p := preview{stdout: stdout, target: target, haveCred: credErr == nil}
 
-	if verb != verbSend {
-		// The read gates the write: an edit or delete rewrites or destroys what
-		// people have already read, so the render must show it as it stands. If
-		// the current text cannot be read, nothing changes — not under --send
-		// either. A tool that could not show its own change has not earned the
-		// send, and a warning is something people learn to scroll past.
-		// Stamped before the read, so the intent line that outlives a kill, the
-		// abort written when the read fails, and every failure outcome all name
-		// the message that was addressed. Without it a delete interrupted before
-		// its outcome cannot be reconciled against Slack at all.
-		rec.TS = ts
-		now, readErr := readMessage(context.Background(), target.ID, ts, verb)
-		if readErr != nil {
-			return abort(stderr, log, rec, "cannot read the current message: "+readErr.Error())
-		}
-		rec = recordRead(rec, verb, now)
-		if !send {
-			renderChange(p, verb, ts, now, text)
-			return dryRunRecorded(stderr, log, rec)
-		}
-		return change(a, rec, verb, ts)
-	}
-
-	if len(f.files) > 0 {
-		files, ferr := openFiles(f.files)
-		if ferr != nil {
-			return abort(stderr, log, rec, ferr.Error())
-		}
-		defer closeFiles(files)
-		rec.Files = auditFiles(files)
-		if !send {
-			renderUpload(p, thread, text, files)
-			return dryRunRecorded(stderr, log, rec)
-		}
-		return upload(a, rec, thread, text, files)
-	}
-
-	if !send {
-		render(stdout, target, thread, text, credErr == nil)
-		return dryRunRecorded(stderr, log, rec)
-	}
-	return post(a, rec, thread, text)
+	return deliver(a, p, rec, inv)
 }
 
 func post(a attempt, rec audit.Post, thread, text string) int {
@@ -727,6 +761,27 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 	if err != nil {
 		return current{}, err
 	}
+	out, err := runHear(ctx, bin, channelID, ts)
+	if err != nil {
+		return current{}, err
+	}
+	var tr hearTranscript
+	err = json.Unmarshal(out, &tr)
+	if err != nil {
+		return current{}, fmt.Errorf("parsing hear output: %w", err)
+	}
+	for _, m := range tr.Messages {
+		if m.TS != ts {
+			continue
+		}
+		return checkHearMessage(m, ts, v)
+	}
+	return current{}, fmt.Errorf("%w %s", errHearNoMessageTs, ts)
+}
+
+// runHear runs hear thread for the message, bounded by hearBound, and returns
+// its JSON output.
+func runHear(ctx context.Context, bin, channelID, ts string) ([]byte, error) {
 	bound := hearBound()
 	ctx, cancel := context.WithTimeout(ctx, bound)
 	defer cancel()
@@ -747,87 +802,95 @@ func viaHear(ctx context.Context, channelID, ts string, v verb) (current, error)
 		// carries it because Output captures stderr.
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && len(bytes.TrimSpace(ee.Stderr)) > 0 {
-			return current{}, fmt.Errorf("%w: %s", errHear, bytes.TrimSpace(ee.Stderr))
+			return nil, fmt.Errorf("%w: %s", errHear, bytes.TrimSpace(ee.Stderr))
 		}
 		if ctx.Err() != nil {
-			return current{}, fmt.Errorf("%w %s", errHearNoAnswerWithin, bound)
+			return nil, fmt.Errorf("%w %s", errHearNoAnswerWithin, bound)
 		}
-		return current{}, fmt.Errorf("hear: %w", err)
+		return nil, fmt.Errorf("hear: %w", err)
 	}
-	var tr struct {
-		Messages []struct {
-			TS   string `json:"ts"`
-			Text string `json:"text"`
-			// Partial is what every hear has always emitted; Blocks is a
-			// pointer so that a hear too old to emit it is distinguishable from
-			// one saying there are none.
-			Partial bool  `json:"partial"`
-			Blocks  *bool `json:"blocks"`
-			Files   []struct {
-				ID   string `json:"id"`
-				Name string `json:"name"`
-			} `json:"files"`
-		} `json:"messages"`
+	return out, nil
+}
+
+// hearTranscript is the part of hear's --json thread output sez reads.
+type hearTranscript struct {
+	Messages []hearMessage `json:"messages"`
+}
+
+// hearMessage is one message of hearTranscript.
+type hearMessage struct {
+	TS   string `json:"ts"`
+	Text string `json:"text"`
+	// Partial is what every hear has always emitted; Blocks is a pointer so
+	// that a hear too old to emit it is distinguishable from one saying there
+	// are none.
+	Partial bool  `json:"partial"`
+	Blocks  *bool `json:"blocks"`
+	Files   []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"files"`
+}
+
+// fileNames names m's files. Neither a printable name nor an id is nothing to
+// show, and a delete must not offer a blank line as its account of what goes.
+func fileNames(m hearMessage, ts string) ([]audit.File, error) {
+	names := make([]audit.File, 0, len(m.Files))
+	for _, f := range m.Files {
+		if strings.TrimSpace(termsafe.Text(f.Name)) == "" && f.ID == "" {
+			return nil, fmt.Errorf(
+				"%w at %s carries a file that cannot be identified", errMessage, ts)
+		}
+		names = append(names, audit.File{Name: f.Name, ID: f.ID})
 	}
-	err = json.Unmarshal(out, &tr)
+	return names, nil
+}
+
+// checkHearMessage is the message as sez may show and change it, or the refusal.
+func checkHearMessage(m hearMessage, ts string, v verb) (current, error) {
+	// Fails closed on a message whose text is not the whole of it. A
+	// blocks-built message reads as fallback text or as nothing, so the
+	// render would show something the author never wrote — and Slack drops
+	// existing blocks from a text-only chat.update, so the replacement
+	// would not be what the message became either.
+	// A hear that does not report blocks is one sez will not change anything
+	// on. findHear falls back to PATH, so the two binaries are not always
+	// upgraded together, and an older hear is wrong in both directions: it
+	// says partial without saying why, and — older still, before it knew
+	// files existed — it calls a message carrying them plain. The second is
+	// the dangerous one, because it looks exactly like a message with
+	// nothing to show. Neither can be told apart from a sound reply by
+	// reading the reply, so the field's absence is the refusal.
+	if m.Blocks == nil {
+		return current{}, fmt.Errorf(
+			"%w at %s carries; update hear, or change the message in Slack", errThisHearTooOld, ts)
+	}
+	// The other direction of the same problem. A later hear could set partial
+	// for a kind of content this sez has never heard of, with no blocks and
+	// no files to explain it — and that is the same unshowable message the
+	// gate exists to refuse, arriving from the future rather than the past.
+	if m.Partial && !*m.Blocks && len(m.Files) == 0 {
+		return current{}, fmt.Errorf(
+			"%w at %s as carrying something this sez does not know about; update sez, or change the message in Slack", errHearReportsMessage, ts)
+	}
+	if *m.Blocks {
+		return current{}, fmt.Errorf(
+			"%w at %s carries blocks that cannot be shown here; change it in Slack", errMessage, ts)
+	}
+	names, err := fileNames(m, ts)
 	if err != nil {
-		return current{}, fmt.Errorf("parsing hear output: %w", err)
+		return current{}, err
 	}
-	for _, m := range tr.Messages {
-		if m.TS != ts {
-			continue
-		}
-		// Fails closed on a message whose text is not the whole of it. A
-		// blocks-built message reads as fallback text or as nothing, so the
-		// render would show something the author never wrote — and Slack drops
-		// existing blocks from a text-only chat.update, so the replacement
-		// would not be what the message became either.
-		// A hear that does not report blocks is one sez will not change anything
-		// on. findHear falls back to PATH, so the two binaries are not always
-		// upgraded together, and an older hear is wrong in both directions: it
-		// says partial without saying why, and — older still, before it knew
-		// files existed — it calls a message carrying them plain. The second is
-		// the dangerous one, because it looks exactly like a message with
-		// nothing to show. Neither can be told apart from a sound reply by
-		// reading the reply, so the field's absence is the refusal.
-		if m.Blocks == nil {
-			return current{}, fmt.Errorf(
-				"%w at %s carries; update hear, or change the message in Slack", errThisHearTooOld, ts)
-		}
-		// The other direction of the same problem. A later hear could set partial
-		// for a kind of content this sez has never heard of, with no blocks and
-		// no files to explain it — and that is the same unshowable message the
-		// gate exists to refuse, arriving from the future rather than the past.
-		if m.Partial && !*m.Blocks && len(m.Files) == 0 {
-			return current{}, fmt.Errorf(
-				"%w at %s as carrying something this sez does not know about; update sez, or change the message in Slack", errHearReportsMessage, ts)
-		}
-		if *m.Blocks {
-			return current{}, fmt.Errorf(
-				"%w at %s carries blocks that cannot be shown here; change it in Slack", errMessage, ts)
-		}
-		names := make([]audit.File, 0, len(m.Files))
-		for _, f := range m.Files {
-			// Neither a printable name nor an id is nothing to show, and a
-			// delete must not offer a blank line as its account of what goes.
-			if strings.TrimSpace(termsafe.Text(f.Name)) == "" && f.ID == "" {
-				return current{}, fmt.Errorf(
-					"%w at %s carries a file that cannot be identified", errMessage, ts)
-			}
-			names = append(names, audit.File{Name: f.Name, ID: f.ID})
-		}
-		// A file can be shown by name, and a delete removes the message and its
-		// share of the file rather than the file itself, so a delete may
-		// proceed. An edit may not: chat.update carries text alone, and whether
-		// the shares survive it is not established — an edit that silently
-		// detached them would be the very thing this gate exists to prevent.
-		if len(names) > 0 && v == verbEdit {
-			return current{}, fmt.Errorf(
-				"%w at %s carries files; sez cannot edit a message with files, only delete it", errMessage, ts)
-		}
-		return current{Text: m.Text, Files: names}, nil
+	// A file can be shown by name, and a delete removes the message and its
+	// share of the file rather than the file itself, so a delete may
+	// proceed. An edit may not: chat.update carries text alone, and whether
+	// the shares survive it is not established — an edit that silently
+	// detached them would be the very thing this gate exists to prevent.
+	if len(names) > 0 && v == verbEdit {
+		return current{}, fmt.Errorf(
+			"%w at %s carries files; sez cannot edit a message with files, only delete it", errMessage, ts)
 	}
-	return current{}, fmt.Errorf("%w %s", errHearNoMessageTs, ts)
+	return current{Text: m.Text, Files: names}, nil
 }
 
 // findHear names the hear binary to run, preferring the one installed beside
@@ -958,48 +1021,86 @@ type flags struct {
 func parseFlags(args []string, stdout, stderr io.Writer) (flags, bool, int) {
 	var f flags
 	for len(args) > 0 {
-		switch args[0] {
-		case "--send":
-			f.send, args = true, args[1:]
-		case "--dry-run", "-n":
-			f.send, args = false, args[1:]
-		case "--md":
-			f.md, args = true, args[1:]
-		case flagEdit:
-			f.edit, args = true, args[1:]
-		case "--delete":
-			f.del, args = true, args[1:]
-		case "--thread":
-			if len(args) < 2 || args[1] == "" {
-				return f, true, cli.Usage(stderr, name, usage, "--thread needs a parent ts")
-			}
-			f.thread, args = args[1], args[2:]
-		case "--file":
-			if len(args) < 2 || args[1] == "" {
-				return f, true, cli.Usage(stderr, name, usage, "--file needs a path")
-			}
-			// stdin is the text channel, and a file has to be seekable: the
-			// length is declared before the bytes are sent.
-			if args[1] == "-" {
-				return f, true, cli.Usage(stderr, name, usage, "--file needs a path; stdin carries the text, not a file")
-			}
-			f.files, args = append(f.files, args[1]), args[2:]
-		case "-h", "--help":
-			return f, true, cli.Help(stdout, usage)
-		case "--version":
-			return f, true, cli.Version(stdout, name)
-		case "--":
-			f.rest = args[1:]
-			return f, false, 0
-		default:
-			if strings.HasPrefix(args[0], "-") && args[0] != "-" {
-				return f, true, cli.Usage(stderr, name, usage, "unknown flag: "+args[0])
-			}
-			f.rest = args
-			return f, false, 0
+		if f.setFlag(args[0]) {
+			args = args[1:]
+			continue
 		}
+		rest, refusal, ok := f.valued(args)
+		if refusal != "" {
+			return f, true, cli.Usage(stderr, name, usage, refusal)
+		}
+		if ok {
+			args = rest
+			continue
+		}
+		code, done := f.final(args, stdout, stderr)
+		return f, done, code
 	}
 	return f, false, 0
+}
+
+// setFlag sets the option a when it is one that takes no value, and reports
+// whether it was.
+func (f *flags) setFlag(a string) bool {
+	switch a {
+	case "--send":
+		f.send = true
+	case "--dry-run", "-n":
+		f.send = false
+	case "--md":
+		f.md = true
+	case flagEdit:
+		f.edit = true
+	case "--delete":
+		f.del = true
+	default:
+		return false
+	}
+	return true
+}
+
+// valued takes the option at args[0] when it is one with a value, returning
+// the arguments after it, or the usage refusal for a missing or unusable value.
+func (f *flags) valued(args []string) ([]string, string, bool) {
+	switch args[0] {
+	case "--thread":
+		if len(args) < 2 || args[1] == "" {
+			return nil, "--thread needs a parent ts", true
+		}
+		f.thread = args[1]
+		return args[2:], "", true
+	case "--file":
+		if len(args) < 2 || args[1] == "" {
+			return nil, "--file needs a path", true
+		}
+		// stdin is the text channel, and a file has to be seekable: the
+		// length is declared before the bytes are sent.
+		if args[1] == "-" {
+			return nil, "--file needs a path; stdin carries the text, not a file", true
+		}
+		f.files = append(f.files, args[1])
+		return args[2:], "", true
+	}
+	return nil, "", false
+}
+
+// final handles the argument that ends option parsing: --help or --version,
+// "--", an unknown option, or the first positional argument.
+func (f *flags) final(args []string, stdout, stderr io.Writer) (int, bool) {
+	switch args[0] {
+	case "-h", "--help":
+		return cli.Help(stdout, usage), true
+	case "--version":
+		return cli.Version(stdout, name), true
+	case "--":
+		f.rest = args[1:]
+		return 0, false
+	}
+	if strings.HasPrefix(args[0], "-") && args[0] != "-" {
+		return cli.Usage(stderr, name, usage, "unknown flag: "+args[0]), true
+	}
+	f.rest = args
+	return 0, false
 }
 
 func readText(rest []string, stdin io.Reader) (string, error) {

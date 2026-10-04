@@ -102,6 +102,23 @@ func (h *hear) dms(filter string) int {
 	// disagreement is deliberate: the list
 	// answers "what conversations do I have", and a DM with someone who has
 	// left is one of them, whether or not it can still be addressed by name.
+	list := dmList(convs, names, filter)
+	if h.asJSON {
+		return h.emit(render.DMs{Kind: render.KindDMs, DMs: list})
+	}
+	seen := ""
+	for i, d := range list {
+		if i > 0 && d.Name == seen {
+			continue
+		}
+		seen = d.Name
+		fmt.Fprintln(h.stdout, "@"+d.Name)
+	}
+	return cli.ExitOK
+}
+
+// dmList is the DMs among convs whose @name matches filter, by name and then id.
+func dmList(convs []cache.Conversation, names map[string]string, filter string) []render.DM {
 	list := []render.DM{}
 	for _, c := range convs {
 		if !c.IsIM {
@@ -122,18 +139,7 @@ func (h *hear) dms(filter string) int {
 		}
 		return list[i].ID < list[j].ID
 	})
-	if h.asJSON {
-		return h.emit(render.DMs{Kind: render.KindDMs, DMs: list})
-	}
-	seen := ""
-	for i, d := range list {
-		if i > 0 && d.Name == seen {
-			continue
-		}
-		seen = d.Name
-		fmt.Fprintln(h.stdout, "@"+d.Name)
-	}
-	return cli.ExitOK
+	return list
 }
 
 func (h *hear) read(args []string) int {
@@ -143,35 +149,12 @@ func (h *hear) read(args []string) int {
 	target, rest := args[0], args[1:]
 
 	if link, isLink, err := parsePermalink(target); isLink {
-		if err != nil {
-			return h.fail(err)
-		}
-		// A permalink names one message, so there is nothing for a count or a
-		// window to mean. Refusing is the honest answer; honouring the address
-		// and ignoring the rest would read something nobody asked for.
-		if len(rest) > 0 {
-			return h.usage("a permalink names one message; a count applies only to a channel")
-		}
-		if h.since != 0 {
-			return h.usage("a permalink names one message; --since applies only to a channel")
-		}
-		return h.readThread(render.ChannelRef{ID: link.channelID, Input: target}, link.parentTS())
+		return h.readPermalink(link, err, target, rest)
 	}
 
-	count := defaultCount
-	switch len(rest) {
-	case 0:
-	case 1:
-		if h.since != 0 {
-			return h.usage("--since and a count ask for different things; give one")
-		}
-		n, err := strconv.Atoi(rest[0])
-		if err != nil || n <= 0 {
-			return h.usage("count must be a positive whole number: " + rest[0])
-		}
-		count = n
-	default:
-		return h.usage("read takes an address and at most a count")
+	count, refusal := h.readCount(rest)
+	if refusal != "" {
+		return h.usage(refusal)
 	}
 
 	ctx := context.Background()
@@ -197,6 +180,41 @@ func (h *hear) read(args []string) int {
 	// conversations.history answers newest-first; a transcript reads downwards.
 	slices.Reverse(msgs)
 	return h.transcript(channelRef(t), "", msgs, complete)
+}
+
+// readPermalink reads the one message a permalink names. There is nothing for
+// a count or a window to mean there. Refusing is the honest answer; honouring
+// the address and ignoring the rest would read something nobody asked for.
+func (h *hear) readPermalink(link permalink, err error, target string, rest []string) int {
+	if err != nil {
+		return h.fail(err)
+	}
+	if len(rest) > 0 {
+		return h.usage("a permalink names one message; a count applies only to a channel")
+	}
+	if h.since != 0 {
+		return h.usage("a permalink names one message; --since applies only to a channel")
+	}
+	return h.readThread(render.ChannelRef{ID: link.channelID, Input: target}, link.parentTS())
+}
+
+// readCount is how many messages read was asked for, or the usage refusal.
+func (h *hear) readCount(rest []string) (int, string) {
+	switch len(rest) {
+	case 0:
+		return defaultCount, ""
+	case 1:
+		if h.since != 0 {
+			return 0, "--since and a count ask for different things; give one"
+		}
+		n, err := strconv.Atoi(rest[0])
+		if err != nil || n <= 0 {
+			return 0, "count must be a positive whole number: " + rest[0]
+		}
+		return n, ""
+	default:
+		return 0, "read takes an address and at most a count"
+	}
 }
 
 func (h *hear) thread(args []string) int {

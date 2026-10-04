@@ -76,17 +76,7 @@ func current(name string, link Info, build *debug.BuildInfo) Info {
 		return i.withDefaults()
 	}
 
-	var stamp Info
-	for _, s := range build.Settings {
-		switch s.Key {
-		case "vcs.revision":
-			stamp.Commit = s.Value
-		case "vcs.time":
-			stamp.Date = s.Value
-		case "vcs.modified":
-			stamp.Modified = s.Value == "true"
-		}
-	}
+	stamp := vcsStamp(build)
 
 	// Field by field, so a partial set of -X flags does not discard the rest.
 	// The stamp's dirty marker is taken only alongside its revision: it
@@ -111,6 +101,22 @@ func current(name string, link Info, build *debug.BuildInfo) Info {
 		}
 	}
 	return i.withDefaults()
+}
+
+// vcsStamp is the revision, time and dirty flag the toolchain recorded.
+func vcsStamp(build *debug.BuildInfo) Info {
+	var stamp Info
+	for _, s := range build.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			stamp.Commit = s.Value
+		case "vcs.time":
+			stamp.Date = s.Value
+		case "vcs.modified":
+			stamp.Modified = s.Value == "true"
+		}
+	}
+	return stamp
 }
 
 // splitDirty removes the marker either producer appends for a modified tree.
