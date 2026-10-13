@@ -37,13 +37,13 @@ func client(t *testing.T, s *slacktest.Server) *Client {
 
 func TestAuthTest(t *testing.T) {
 	s := slacktest.New(t)
-	s.Reply("auth.test", `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0123ABCD"}`)
+	s.Reply("auth.test", `{"ok":true,"user":"alice","team":"Acme","user_id":"U0123ABCD"}`)
 
 	got, err := client(t, s).AuthTest(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.User != "stepan" || got.Team != "LedgerRocket" || got.UserID != "U0123ABCD" {
+	if got.User != "alice" || got.Team != "Acme" || got.UserID != "U0123ABCD" {
 		t.Fatalf("response = %+v", got)
 	}
 	if auth := s.Last().Auth; auth != "Bearer xoxp-fake-read-token" {
@@ -374,7 +374,7 @@ func TestHistoryWindow(t *testing.T) {
 func TestSearch(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("search.messages",
-		`{"ok":true,"messages":{"matches":[{"ts":"1.1","text":"found","username":"stepan","channel":{"id":"C1","name":"eng"}}]}}`)
+		`{"ok":true,"messages":{"matches":[{"ts":"1.1","text":"found","username":"alice","channel":{"id":"C1","name":"eng"}}]}}`)
 
 	got, err := client(t, s).Search(context.Background(), "deploy failed", 20)
 	if err != nil {

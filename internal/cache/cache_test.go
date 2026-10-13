@@ -147,7 +147,7 @@ func TestACacheWrittenByHandIsRead(t *testing.T) {
 // half-written cache and the file is never briefly world-readable.
 func TestWriteIsAtomicAndPrivate(t *testing.T) {
 	dir := isolate(t)
-	err := Write(UsersFile, Users{Members: []User{{ID: "U1", Name: "stepan"}}})
+	err := Write(UsersFile, Users{Members: []User{{ID: "U1", Name: "alice"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestFillingStoreFetchesOnceAndWritesBack(t *testing.T) {
 // read scope of its own.
 func TestFillingStoreSkipsTheFetchWhenWarm(t *testing.T) {
 	isolate(t)
-	err := Write(UsersFile, Users{Members: []User{{ID: "U1", Name: "stepan"}}})
+	err := Write(UsersFile, Users{Members: []User{{ID: "U1", Name: "alice"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,9 +345,9 @@ func TestUserLabelPrefersDisplayName(t *testing.T) {
 		user User
 		want string
 	}{
-		{User{ID: "U1", Name: "s", RealName: "Stepan S", Profile: Profile{DisplayName: "step"}}, "step"},
-		{User{ID: "U1", Name: "s", RealName: "Stepan S"}, "Stepan S"},
-		{User{ID: "U1", Name: "s"}, "s"},
+		{User{ID: "U1", Name: "a", RealName: "Alice A", Profile: Profile{DisplayName: "ali"}}, "ali"},
+		{User{ID: "U1", Name: "a", RealName: "Alice A"}, "Alice A"},
+		{User{ID: "U1", Name: "a"}, "a"},
 		{User{ID: "U1"}, "U1"},
 	} {
 		if got := tc.user.Label(); got != tc.want {

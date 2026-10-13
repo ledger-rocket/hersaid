@@ -27,14 +27,14 @@ func TestReactionsAreNamedAndAttributed(t *testing.T) {
 			{Name: "eyes", Count: 1, Users: []string{"U2"}},
 		},
 	}}
-	names := Names{"U1": "Stepan", "U2": "Raj"}
+	names := Names{"U1": "Alice", "U2": "Ada"}
 
 	err := WriteTranscript(&b, msgs, names, opts())
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := "08-02 22:13  bot  topic\n" +
-		strings.Repeat(" ", 20) + ":white_check_mark: 2 (Stepan, Raj)  :eyes: 1 (Raj)\n"
+		strings.Repeat(" ", 20) + ":white_check_mark: 2 (Alice, Ada)  :eyes: 1 (Ada)\n"
 	if b.String() != want {
 		t.Fatalf("transcript = %q, want %q", b.String(), want)
 	}
@@ -70,7 +70,7 @@ func TestReactionsPrecedeTheReplyHint(t *testing.T) {
 	o := opts()
 	o.ThreadCommand = threadCmd
 
-	err := WriteTranscript(&b, msgs, Names{"U1": "Stepan"}, o)
+	err := WriteTranscript(&b, msgs, Names{"U1": "Alice"}, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,11 +120,11 @@ func TestAnUnknownReactorKeepsItsID(t *testing.T) {
 		},
 	}}
 
-	err := WriteTranscript(&b, msgs, Names{"U1": "Stepan"}, opts())
+	err := WriteTranscript(&b, msgs, Names{"U1": "Alice"}, opts())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), ":eyes: 2 (Stepan, UNKNOWN)") {
+	if !strings.Contains(b.String(), ":eyes: 2 (Alice, UNKNOWN)") {
 		t.Fatalf("transcript = %q, want the unresolved id kept", b.String())
 	}
 }
@@ -140,7 +140,7 @@ func TestStructuredReactionsCarryUserIDs(t *testing.T) {
 		Reactions: []slackread.Reaction{
 			{Name: "white_check_mark", Count: 2, Users: []string{"U1", "U2"}},
 		},
-	}}, Names{"U1": "Stepan", "U2": "Raj"})
+	}}, Names{"U1": "Alice", "U2": "Ada"})
 
 	if len(msgs) != 1 || len(msgs[0].Reactions) != 1 {
 		t.Fatalf("messages = %+v, want one message with one reaction", msgs)

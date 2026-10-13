@@ -27,13 +27,13 @@ func TestWhoamiFormatIsStable(t *testing.T) {
 	isolate(t)
 	t.Setenv("SLACK_READ_TOKEN", "xoxp-fake-read-token")
 	s := slacktest.New(t)
-	s.Reply("auth.test", `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0123ABCD"}`)
+	s.Reply("auth.test", `{"ok":true,"user":"alice","team":"Acme","user_id":"U0123ABCD"}`)
 
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"whoami"}, &stdout, &stderr, testEndpoints(s.URL)); code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr.String())
 	}
-	if want := "stepan @ LedgerRocket  (U0123ABCD)\n"; stdout.String() != want {
+	if want := "alice @ Acme  (U0123ABCD)\n"; stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
 	if got := s.Last().Auth; got != "Bearer xoxp-fake-read-token" {
@@ -147,7 +147,7 @@ func TestHelpDocumentsTheCommandsAndFlags(t *testing.T) {
 // rests on each verb refusing arguments it has no use for: a verb that ignored
 // the rest would answer `hear whoami --help` by calling the API.
 func TestWhoamiRejectsTrailingArguments(t *testing.T) {
-	for _, args := range [][]string{{"whoami", "--help"}, {"whoami", "-h"}, {"whoami", "stepan"}} {
+	for _, args := range [][]string{{"whoami", "--help"}, {"whoami", "-h"}, {"whoami", "alice"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			isolateHome(t)
 			consulted := watchCredential(t)

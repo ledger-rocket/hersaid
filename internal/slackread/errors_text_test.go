@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// PRO-7722 replaced fmt.Errorf("%s: %s", method, apiErr) with apiError; the
+// The API error type stands in for fmt.Errorf("%s: %s", method, apiErr); the
 // text must not change.
 func TestAPIErrorKeepsTheOldText(t *testing.T) {
 	t.Parallel()

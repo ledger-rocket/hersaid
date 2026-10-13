@@ -139,7 +139,7 @@ func TestVerifyReportsTheAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if acct.user != "stepan" || acct.team != "LedgerRocket" {
+	if acct.user != "alice" || acct.team != "Acme" {
 		t.Fatalf("account = %+v", acct)
 	}
 	if got := s.Last().Auth; got != "Bearer "+readToken {
@@ -160,7 +160,7 @@ func TestVerifyReportsTheAccountEvenWhenItRefuses(t *testing.T) {
 	if err == nil {
 		t.Fatal("a token carrying chat:write was accepted for the read role")
 	}
-	if acct.user != "stepan" {
+	if acct.user != "alice" {
 		t.Fatalf("account = %+v, want the account Slack named", acct)
 	}
 }

@@ -8,8 +8,8 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/cache"
 )
 
-// stepID is a user id in the fake catalogue.
-const stepID = "U0000STEP"
+// aliceID is a user id in the fake catalogue.
+const aliceID = "U0ALICE00"
 
 // engID is #eng's id in the fake catalogue.
 const engID = "C0000ENG1"
@@ -41,17 +41,17 @@ func fixture() catalog {
 		convs: []cache.Conversation{
 			{ID: engID, Name: "eng"},
 			{ID: "C0000ENG2", Name: "eng"}, // duplicate name; the first must win
-			{ID: "C0000ENGX", Name: "eng-standup"},
+			{ID: "C0000ENGX", Name: "eng-general"},
 			{ID: "C0000UPPER", Name: "ENG"},
-			{ID: "D0000STEP", IsIM: true, User: stepID},
+			{ID: "D0ALICE00", IsIM: true, User: aliceID},
 			{ID: "D0000DELE", IsIM: true, User: "U0000DELE"},
 		},
 		users: []cache.User{
 			{
-				ID: stepID, Name: "stepan", RealName: "Stepan Marks",
-				Profile: cache.Profile{DisplayName: "step"},
+				ID: aliceID, Name: "alice", RealName: "Alice A",
+				Profile: cache.Profile{DisplayName: "ali"},
 			},
-			{ID: "U0000STEV", Name: "steve", RealName: "Steve Smith"},
+			{ID: "U0ALICIA0", Name: "alicia", RealName: "Alicia Smith"},
 			{ID: "U0000DELE", Name: "gone", RealName: "Gone Away", Deleted: true},
 			{ID: "U0000NODM", Name: "nodm", RealName: "No Dm"},
 		},
@@ -97,7 +97,7 @@ func TestChannelNameMatchingIsCaseSensitive(t *testing.T) {
 // A prefix of a real channel is not a channel.
 func TestChannelNameIsNotPrefixMatched(t *testing.T) {
 	t.Parallel()
-	_, err := Resolve(context.Background(), fixture(), ForRead, "#eng-stand")
+	_, err := Resolve(context.Background(), fixture(), ForRead, "#eng-gen")
 	if !errors.Is(err, ErrNoSuchChannel) {
 		t.Fatalf("error = %v, want ErrNoSuchChannel", err)
 	}
@@ -133,8 +133,8 @@ func TestUserIDIsOnlyATargetForAnEndpointThatOpensDMs(t *testing.T) {
 
 func TestPersonResolvesToTheOpenDM(t *testing.T) {
 	t.Parallel()
-	got := mustResolve(t, fixture(), ForReact, "@stepan")
-	if got.ID != "D0000STEP" || got.UserID != stepID {
+	got := mustResolve(t, fixture(), ForReact, "@alice")
+	if got.ID != "D0ALICE00" || got.UserID != aliceID {
 		t.Fatalf("target = %+v", got)
 	}
 }
@@ -142,9 +142,9 @@ func TestPersonResolvesToTheOpenDM(t *testing.T) {
 // Handle, display name and real name are all matched, case-insensitively.
 func TestPersonMatchesEveryNameField(t *testing.T) {
 	t.Parallel()
-	for _, q := range []string{"@stepan", "@STEPAN", "@step", "@Stepan Marks"} {
-		if got := mustResolve(t, fixture(), ForReact, q); got.UserID != stepID {
-			t.Fatalf("Resolve(%q) = %q, want U0000STEP", q, got.UserID)
+	for _, q := range []string{"@alice", "@ALICE", "@ali", "@Alice A"} {
+		if got := mustResolve(t, fixture(), ForReact, q); got.UserID != aliceID {
+			t.Fatalf("Resolve(%q) = %q, want U0ALICE00", q, got.UserID)
 		}
 	}
 }
@@ -154,11 +154,11 @@ func TestPersonMatchesEveryNameField(t *testing.T) {
 func TestExactHandleBeatsPrefix(t *testing.T) {
 	t.Parallel()
 	cat := fixture()
-	cat.users = append(cat.users, cache.User{ID: "U0000STEPX", Name: "stepanx"})
-	cat.convs = append(cat.convs, cache.Conversation{ID: "D0000STEX", IsIM: true, User: "U0000STEPX"})
+	cat.users = append(cat.users, cache.User{ID: "U0ALICE00X", Name: "alicex"})
+	cat.convs = append(cat.convs, cache.Conversation{ID: "D0ALICEX0", IsIM: true, User: "U0ALICE00X"})
 
-	if got := mustResolve(t, cat, ForReact, "@stepan"); got.UserID != stepID {
-		t.Fatalf("UserID = %q, want the exact handle U0000STEP", got.UserID)
+	if got := mustResolve(t, cat, ForReact, "@alice"); got.UserID != aliceID {
+		t.Fatalf("UserID = %q, want the exact handle U0ALICE00", got.UserID)
 	}
 }
 
@@ -166,7 +166,7 @@ func TestExactHandleBeatsPrefix(t *testing.T) {
 // person, and the mistake is only visible in Slack afterwards.
 func TestAmbiguousPrefixIsAnError(t *testing.T) {
 	t.Parallel()
-	_, err := Resolve(context.Background(), fixture(), ForReact, "@ste")
+	_, err := Resolve(context.Background(), fixture(), ForReact, "@al")
 	if !errors.Is(err, ErrAmbiguousUser) {
 		t.Fatalf("error = %v, want ErrAmbiguousUser", err)
 	}
@@ -251,7 +251,7 @@ func TestColdCacheIsFatalForReactions(t *testing.T) {
 // A person cannot be resolved without the user list, whatever the capability.
 func TestColdCacheIsFatalForAPerson(t *testing.T) {
 	t.Parallel()
-	_, err := Resolve(context.Background(), catalog{cold: true}, ForPost, "@stepan")
+	_, err := Resolve(context.Background(), catalog{cold: true}, ForPost, "@alice")
 	if !errors.Is(err, cache.ErrCold) {
 		t.Fatalf("error = %v, want cache.ErrCold", err)
 	}
@@ -328,17 +328,17 @@ func TestABareUserIDResolvesThroughTheOpenDM(t *testing.T) {
 		{"ForReact", ForReact},
 		{"ForEdit", ForEdit},
 	} {
-		got, err := Resolve(context.Background(), fixture(), can.cap, stepID)
+		got, err := Resolve(context.Background(), fixture(), can.cap, aliceID)
 		if err != nil {
-			t.Fatalf("%s: Resolve(U0000STEP) error = %v", can.name, err)
+			t.Fatalf("%s: Resolve(U0ALICE00) error = %v", can.name, err)
 		}
-		if got.ID != "D0000STEP" {
-			t.Errorf("%s: ID = %q, want the DM id D0000STEP", can.name, got.ID)
+		if got.ID != "D0ALICE00" {
+			t.Errorf("%s: ID = %q, want the DM id D0ALICE00", can.name, got.ID)
 		}
 		if !got.Resolved {
 			t.Errorf("%s: Resolved = false, want true", can.name)
 		}
-		if got.UserID != stepID {
+		if got.UserID != aliceID {
 			t.Errorf("%s: UserID = %q, want the person it went through", can.name, got.UserID)
 		}
 	}
@@ -368,9 +368,9 @@ func TestAChannelNamedLikeAUserIDStillResolves(t *testing.T) {
 	cat := catalog{
 		convs: []cache.Conversation{
 			{ID: "C0000UPD1", Name: "UPDATES"},
-			{ID: "D0000STEP", IsIM: true, User: stepID},
+			{ID: "D0ALICE00", IsIM: true, User: aliceID},
 		},
-		users: []cache.User{{ID: stepID, Name: "stepan"}},
+		users: []cache.User{{ID: aliceID, Name: "alice"}},
 	}
 	for _, can := range []struct {
 		name string

@@ -120,7 +120,7 @@ func slack(t *testing.T, scopes, body string) *slacktest.Server {
 	return s
 }
 
-const okBody = `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0123ABCD"}`
+const okBody = `{"ok":true,"user":"alice","team":"Acme","user_id":"U0123ABCD"}`
 
 // storedToken reads a role's credential back without going through this
 // package's own lookup, so that a test asserting "it was stored" cannot be
@@ -302,7 +302,7 @@ func TestBotTokenIsRefusedByItsPrefix(t *testing.T) {
 func TestBotTokenIsRefusedByBotIDInTheReply(t *testing.T) {
 	isolate(t)
 	script(t, enrolment(readToken))
-	s := slack(t, readScopes, `{"ok":true,"user":"some-app","team":"LedgerRocket","bot_id":"B0123ABCD"}`)
+	s := slack(t, readScopes, `{"ok":true,"user":"some-app","team":"Acme","bot_id":"B0123ABCD"}`)
 
 	var stdout, stderr bytes.Buffer
 	code := run(nil, strings.NewReader(""), &stdout, &stderr, s.URL)
@@ -432,7 +432,7 @@ func TestVerificationNamesTheAccount(t *testing.T) {
 	if code := run(nil, strings.NewReader(""), &stdout, &stderr, s.URL); code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "verified as stepan @ LedgerRocket") {
+	if !strings.Contains(stdout.String(), "verified as alice @ Acme") {
 		t.Errorf("stdout did not name the account:\n%s", stdout.String())
 	}
 }
@@ -941,7 +941,7 @@ func TestTheWriteRoleDoesNotOverwriteTheIdentity(t *testing.T) {
 		scopes, body := readScopes, okBody
 		if strings.Contains(r.Header.Get("Authorization"), writeToken) {
 			scopes = writeScopes
-			body = `{"ok":true,"user":"other","team":"LedgerRocket","user_id":"UOTHER999"}`
+			body = `{"ok":true,"user":"other","team":"Acme","user_id":"UOTHER999"}`
 		}
 		w.Header().Set("X-Oauth-Scopes", scopes)
 		w.Header().Set("Content-Type", "application/json")

@@ -8,7 +8,7 @@
 /tap
 /dist/
 
-# rb delegation specs: local working material, not part of the tool
+# Agent delegation specs: local working material, not part of the tool
 /.rb/
 
 # Agent worktrees: a nested checkout of this repo, put here by the harness.

@@ -23,9 +23,9 @@ darwin binary links `libSystem` and `Security.framework` even at
 macOS, to read the keychain; the file credential needs nothing at all.
 
 ```console
-$ hear read '#eng-standup' 5          # read
-$ sez '#eng-standup' 'deploy is done' # renders it, sends nothing
-$ sez --send '#eng-standup' 'deploy is done'
+$ hear read '#general' 5          # read
+$ sez '#general' 'deploy is done' # renders it, sends nothing
+$ sez --send '#general' 'deploy is done'
 ```
 
 ## Install
@@ -360,11 +360,11 @@ payload.
 `HERSAID_WRITE_CHANNELS` restricts what `sez` and `tap` may touch:
 
 ```sh
-export HERSAID_WRITE_CHANNELS='#eng-standup,C0123ABCD,D0456EFGH'
+export HERSAID_WRITE_CHANNELS='#general,C0123ABCD,D0456EFGH'
 ```
 
 - Unset or empty means unrestricted. It is opt-in.
-- The check runs **after** the channel is resolved — `#eng-standup` and its
+- The check runs **after** the channel is resolved — `#general` and its
   `C…` id are the same conversation — and **before any request**, so a refusal
   costs no network call and reveals nothing.
 - Resolution here is against the local cache only, since `sez` and `tap` hold
@@ -512,7 +512,7 @@ what it does never raises a keychain prompt. They go to stdout and exit 0. A
 
 Put the flag first. Once a command's own arguments have begun, `--help` is an
 argument like any other: `hear whoami --help` is a usage error, `hear read
---help` looks up a channel called `--help`, and `sez '#eng-standup' --help`
+--help` looks up a channel called `--help`, and `sez '#general' --help`
 renders `--help` as the message text and logs the render.
 
 Exit statuses, shared by all four commands:
@@ -584,8 +584,8 @@ is an empty result and exit 0, not an error.
 `--ts` shows each message's raw Slack timestamp, for `read`, `thread` and
 `search`. It exists because reading doesn't need a timestamp but *acting* on a
 message does: it is the `<ts>` `tap` takes and the value `sez --thread` takes.
-It is accepted in any position — `hear read --ts '#eng-standup'` and
-`hear --ts read '#eng-standup'` are the same command.
+It is accepted in any position — `hear read --ts '#general'` and
+`hear --ts read '#general'` are the same command.
 
 `--since` reads a window instead of a count, and pages until the whole window
 is covered rather than stopping at Slack's first page. A duration says nothing
@@ -601,25 +601,25 @@ Examples:
 $ hear whoami
 jane @ some-workspace  (U0123ABCDE)
 
-$ hear channels standup
-#eng-standup
-#standup-notes
+$ hear channels gen
+#general
+#general-notes
 
-$ hear read '#eng-standup' 5
+$ hear read '#general' 5
 08-01 09:03  jane  good morning
 08-01 09:04  bot  deploy finished
                     :white_check_mark: 2 (jane, john)  :eyes: 1 (jane)
 08-01 09:10  jane  @john can you take a look at this?
                     it's blocking the release
-                    ⤷ 2 replies — hear thread #eng-standup 1722500000.123456
+                    ⤷ 2 replies — hear thread #general 1722500000.123456
 
-$ hear read --ts '#eng-standup' 1
+$ hear read --ts '#general' 1
 1722500000.123456  08-01 09:03  jane  good morning
 
 $ hear read '#alerts' --since 2h
-$ hear thread '#eng-standup' 1722500000.123456
+$ hear thread '#general' 1722500000.123456
 $ hear search deploy failed
-#eng-standup  jane  looks like the deploy failed on the last run
+#general  jane  looks like the deploy failed on the last run
 
 $ hear read '#eng' --ts 1
 1785708834.862009  08-01 09:12  jane  here's the trace
@@ -768,7 +768,7 @@ $ hear channels --json
   "channels": [
     {
       "id": "C0123ABCD",
-      "name": "eng-standup"
+      "name": "general"
     }
   ]
 }
@@ -877,23 +877,23 @@ lists the environment variables, the exit statuses and the audit-log path.
 
 ```console
 # default: renders, sends nothing
-$ sez '#eng-standup' 'deploy is done'
+$ sez '#general' 'deploy is done'
 --- dry run: nothing sent ---
-channel : #eng-standup -> C0123ABCD
+channel : #general -> C0123ABCD
 --- message as Slack will receive it ---
 deploy is done
 ----------------------------------------
 
 # --send delivers it
-$ sez --send '#eng-standup' 'deploy is done'
-sent to #eng-standup ts=1722500000.123456
+$ sez --send '#general' 'deploy is done'
+sent to #general ts=1722500000.123456
 https://yourteam.slack.com/archives/C0123ABCD/p1722500000123456
 
 # text on stdin — still render-only without --send
-$ echo 'deploy is done' | sez '#eng-standup'
+$ echo 'deploy is done' | sez '#general'
 
 # thread reply, sent
-$ sez --send --thread 1722500000.123456 '#eng-standup' 'fixed in the follow-up'
+$ sez --send --thread 1722500000.123456 '#general' 'fixed in the follow-up'
 
 # attach files; the text becomes the message alongside them
 $ sez --send --file ./trace.pdf --file ./out.log '#eng' "here's the repro"
@@ -906,24 +906,24 @@ https://yourteam.slack.com/archives/C0123ABCD/p1722500000123456
 $ sez --send --file ./chart.png '#eng'
 
 # Markdown conversion, rendered
-$ sez --md '#eng-standup' '**deploy** done, see [changelog](https://example.com)'
+$ sez --md '#general' '**deploy** done, see [changelog](https://example.com)'
 --- dry run: nothing sent ---
-channel : #eng-standup -> C0123ABCD
+channel : #general -> C0123ABCD
 --- message as Slack will receive it ---
 *deploy* done, see <https://example.com|changelog>
 ----------------------------------------
 
 # no write credential yet — rendering still works, and says so
-$ sez '#eng-standup' 'test'
+$ sez '#general' 'test'
 --- dry run: nothing sent ---
-channel : #eng-standup -> C0123ABCD
+channel : #general -> C0123ABCD
 token   : absent (posting currently impossible)
 --- message as Slack will receive it ---
 test
 ----------------------------------------
 
 # --send with no write credential — refused, nothing sent, no request made
-$ sez --send '#eng-standup' 'test'; echo "exit=$?"
+$ sez --send '#general' 'test'; echo "exit=$?"
 sez: no write credential found (keychain service: hersaid-write).
   Posting is disabled by design until one exists:
     security add-generic-password -a "$USER" -s hersaid-write -w
@@ -975,20 +975,20 @@ usage: tap [--remove] [--dry-run] <#chan|@person|ID> <ts> <emoji>
 Abridged, as above; `tap --help` prints the rest.
 
 ```console
-$ tap '#eng-standup' 1722500000.123456 +1
-add :+1: on #eng-standup (1722500000.123456)
+$ tap '#general' 1722500000.123456 +1
+add :+1: on #general (1722500000.123456)
 
-$ tap --remove '#eng-standup' 1722500000.123456 ':+1:'
-remove :+1: on #eng-standup (1722500000.123456)
+$ tap --remove '#general' 1722500000.123456 ':+1:'
+remove :+1: on #general (1722500000.123456)
 
 # reacting twice is a no-op, not an error
-$ tap '#eng-standup' 1722500000.123456 +1
+$ tap '#general' 1722500000.123456 +1
 :+1: already on that message
 
-$ tap --dry-run '#eng-standup' 1722500000.123456 eyes
+$ tap --dry-run '#general' 1722500000.123456 eyes
 --- dry run: nothing sent ---
 action  : react.add
-channel : #eng-standup -> C0123ABCD
+channel : #general -> C0123ABCD
 message : 1722500000.123456
 emoji   : :eyes:
 ```

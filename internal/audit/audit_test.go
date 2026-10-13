@@ -30,7 +30,7 @@ const (
 	// which pins where those two keys sit.
 	goldenPostSchedule = `{"at":"2026-08-03T09:15:04Z","by":"alice","phase":"outcome","action":"message.schedule","channel":"#eng","channel_id":"C0000000000","thread_ts":null,"dry_run":false,"ok":true,"error":null,"ts":null,"permalink":null,"text":"later","slack_text":"later","previous_text":null,"files":null,"post_at":"2026-08-04T08:00:00Z","scheduled_message_id":"Q0000000000"}`
 
-	goldenReactionOutcome = `{"at":"2026-08-03T09:15:02Z","by":"stepan","phase":"outcome","action":"react.add","channel":"#eng","channel_id":"C0123ABCD","ts":"1785712596.256909","emoji":"thumbsup","dry_run":false,"ok":true,"error":null}`
+	goldenReactionOutcome = `{"at":"2026-08-03T09:15:02Z","by":"alice","phase":"outcome","action":"react.add","channel":"#eng","channel_id":"C0123ABCD","ts":"1785712596.256909","emoji":"thumbsup","dry_run":false,"ok":true,"error":null}`
 )
 
 func ts(s string) time.Time {
@@ -72,7 +72,7 @@ func TestPostRecordFieldSetAndOrder(t *testing.T) {
 func TestReactionRecordFieldSetAndOrder(t *testing.T) {
 	t.Parallel()
 	got, err := json.Marshal(Reaction{
-		At: ts("2026-08-03T09:15:02Z"), By: "stepan", Action: Add,
+		At: ts("2026-08-03T09:15:02Z"), By: "alice", Action: Add,
 		Channel: "#eng", ChannelID: "C0123ABCD", TS: "1785712596.256909",
 		Emoji: "thumbsup", OK: Succeeded,
 	})
@@ -185,7 +185,7 @@ func TestLoggedBytesEqualMarshalledBytes(t *testing.T) {
 	t.Parallel()
 	l, path := openTemp(t)
 	rec := Post{
-		At: ts("2026-08-03T09:15:00Z"), By: "stepan", Phase: Outcome,
+		At: ts("2026-08-03T09:15:00Z"), By: "alice", Phase: Outcome,
 		Channel: "#eng", ChannelID: "C0123ABCD", OK: Succeeded,
 		Text: "<b> & \"quoted\"",
 	}

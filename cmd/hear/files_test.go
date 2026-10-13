@@ -34,7 +34,7 @@ func fileHost(t *testing.T, body string) string {
 // messageWithFiles stubs conversations.history answering for one message.
 func (e *env) messageWithFiles(files string) {
 	e.srv.Reply("conversations.history", fmt.Sprintf(
-		`{"ok":true,"messages":[{"ts":"1785708834.862009","user":"U0STEPAN0","text":"here","files":[%s]}]}`,
+		`{"ok":true,"messages":[{"ts":"1785708834.862009","user":"U0ALICE00","text":"here","files":[%s]}]}`,
 		files))
 }
 
@@ -219,7 +219,7 @@ func TestFilesFollowsAPermalinkToTheMessageItNames(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
 	e.srv.Reply("conversations.history",
-		`{"ok":true,"messages":[{"ts":"1785708834.862009","user":"U0STEPAN0","files":[{"id":"F1","name":"a link","mode":"external"}]}]}`)
+		`{"ok":true,"messages":[{"ts":"1785708834.862009","user":"U0ALICE00","files":[{"id":"F1","name":"a link","mode":"external"}]}]}`)
 
 	link := "https://acme.slack.com/archives/C0ENG0000/p1785708834862009?thread_ts=1785700000.000100"
 	e.run(cmdFiles, link, "--out", t.TempDir())
@@ -241,7 +241,7 @@ func TestFilesFindsAFileOnAThreadReply(t *testing.T) {
 	e.srv.Reply("conversations.replies", fmt.Sprintf(
 		`{"ok":true,"messages":[`+
 			`{"ts":"1785700000.000100","user":"U0ANN0000","text":"the parent"},`+
-			`{"ts":"1785708834.862009","user":"U0STEPAN0","text":"here","files":[`+
+			`{"ts":"1785708834.862009","user":"U0ALICE00","text":"here","files":[`+
 			`{"id":"F1","name":"trace.pdf","mimetype":"application/pdf","size":9,"mode":"hosted","url_private_download":%q}]}]}`,
 		url))
 
@@ -286,7 +286,7 @@ func TestFilesRefusesAMessageWithNoFiles(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
 	e.srv.Reply("conversations.history",
-		`{"ok":true,"messages":[{"ts":"1785708834.862009","user":"U0STEPAN0","text":"just words"}]}`)
+		`{"ok":true,"messages":[{"ts":"1785708834.862009","user":"U0ALICE00","text":"just words"}]}`)
 
 	_, stderr, code := e.run(cmdFiles, "#eng", fixtureTS, "--out", t.TempDir())
 
@@ -424,7 +424,7 @@ func TestMessageDirIsAlwaysOneElement(t *testing.T) {
 		name, id, ts, want string
 	}{
 		{"eng", engID, fixtureTS, "eng-1785708834.862009"},
-		{"", "D0STEPAN0", fixtureTS, "D0STEPAN0-1785708834.862009"},
+		{"", "D0ALICE00", fixtureTS, "D0ALICE00-1785708834.862009"},
 		{"../etc", "C1", "1.1", "..-etc-1.1"},
 		{"..", "C1", "1.1", "--1.1"},
 		{"a b/c", "C1", "1.1", "a-b-c-1.1"},

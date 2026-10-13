@@ -118,8 +118,8 @@ name    : trace.pdf
 type    : application/pdf   1.2 MB
 uploaded: 2026-08-24T09:14:02Z by @jane
 visible : #eng                     1785708834.862009
-          #eng-standup             1785712596.256909
-          @stepan (DM)             1785713001.114900
+          #general                 1785712596.256909
+          @alice (DM)              1785713001.114900
 --- the file goes; the 3 messages carrying it stay, showing a deleted file ---
 ----------------------------------------
 ```
@@ -257,7 +257,7 @@ one fact worth reconstructing later: what was visible where, at the moment it wa
 destroyed.
 
 ```json
-{"at":"2026-08-26T11:02:14Z","by":"stepan","phase":"intent","action":"file.delete",
+{"at":"2026-08-26T11:02:14Z","by":"alice","phase":"intent","action":"file.delete",
  "file":{"id":"F07ABC123","name":"trace.pdf","size":1258291,
          "mimetype":"application/pdf","created":"2026-08-24T09:14:02Z",
          "uploader":"U0123ABCD"},
@@ -407,7 +407,7 @@ has been observed.
    deleting its message *is* returned by `files.info` on the read token:
 
    ```
-   F0BSRP8SUG1: name=hersaid-test-1.txt mode=snippet channels=[] ims=[] shares={}
+   F0123ABCDEF: name=hersaid-test-1.txt mode=snippet channels=[] ims=[] shares={}
    ```
 
    Both credentials are user tokens for the same person, so this is expected —

@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// PRO-7722 replaced fmt.Errorf("%s: %s", title, reason) with notCanvasError;
-// the text a user sees must not change.
+// notCanvasError stands in for fmt.Errorf("%s: %s", title, reason); the text a
+// user sees must not change.
 func TestNotCanvasErrorKeepsTheOldText(t *testing.T) {
 	t.Parallel()
 	got := notCanvasError{title: "Plan", reason: "a PDF, not a canvas"}.Error()
@@ -15,8 +15,8 @@ func TestNotCanvasErrorKeepsTheOldText(t *testing.T) {
 	}
 }
 
-// The --max-size and --since refusals are rebuilt around the errMaxSize and
-// errSince sentinels; their full text must read as it did before PRO-7722.
+// The --max-size and --since refusals are built around the errMaxSize and
+// errSince sentinels; their full text must read as it did before the sentinels.
 func TestFlagRefusalsKeepTheOldText(t *testing.T) {
 	t.Parallel()
 	_, sizeErr := parseSize("big")

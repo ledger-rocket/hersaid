@@ -29,14 +29,14 @@ func opts() Options { return Options{Location: utc} }
 func TestTranscriptLineFormatIsStable(t *testing.T) {
 	t.Parallel()
 	var b bytes.Buffer
-	names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: "stepan"}}})
+	names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: "alice"}}})
 	msgs := []slackread.Message{{TS: "1785708834.862009", User: "U1", Text: "ship it"}}
 
 	err := WriteTranscript(&b, msgs, names, opts())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "08-02 22:13  stepan  ship it\n"; b.String() != want {
+	if want := "08-02 22:13  alice  ship it\n"; b.String() != want {
 		t.Fatalf("transcript = %q, want %q", b.String(), want)
 	}
 }

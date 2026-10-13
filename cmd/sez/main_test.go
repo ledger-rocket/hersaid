@@ -536,11 +536,11 @@ func TestAFailedIntentRecordRefusesToSend(t *testing.T) {
 func TestAllowlistRefusesATargetOutsideItWithNoRequest(t *testing.T) {
 	log := isolate(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
-	t.Setenv("HERSAID_WRITE_CHANNELS", "#eng-standup,D0123ABCD")
+	t.Setenv("HERSAID_WRITE_CHANNELS", "#general,D0123ABCD")
 	s := slacktest.New(t)
 	s.Reply("chat.postMessage", `{"ok":true,"ts":"1.1"}`)
 
-	code, _, stderr := sez(t, s, "--send", "#general", "hi")
+	code, _, stderr := sez(t, s, "--send", "#random", "hi")
 
 	if code == 0 {
 		t.Fatal("exit code = 0; a target outside the allowlist must be refused")
@@ -556,7 +556,7 @@ func TestAllowlistRefusesATargetOutsideItWithNoRequest(t *testing.T) {
 	if got := phases(recs); !reflect.DeepEqual(got, []string{"refused"}) {
 		t.Fatalf("audit phases = %v, want [refused] — no intent, because nothing was attempted", got)
 	}
-	if recs[0]["ok"] != false || recs[0]["channel"] != "#general" {
+	if recs[0]["ok"] != false || recs[0]["channel"] != "#random" {
 		t.Fatalf("refusal record = %v", recs[0])
 	}
 }
@@ -564,12 +564,12 @@ func TestAllowlistRefusesATargetOutsideItWithNoRequest(t *testing.T) {
 func TestAllowlistPermitsAListedTarget(t *testing.T) {
 	log := isolate(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
-	t.Setenv("HERSAID_WRITE_CHANNELS", "#eng-standup")
+	t.Setenv("HERSAID_WRITE_CHANNELS", "#general")
 	s := slacktest.New(t)
 	s.Reply("chat.postMessage", `{"ok":true,"ts":"1.1","message":{"text":"hi"}}`)
 	s.Reply("chat.getPermalink", `{"ok":true,"permalink":"https://x/p1"}`)
 
-	code, _, stderr := sez(t, s, "--send", "#eng-standup", "hi")
+	code, _, stderr := sez(t, s, "--send", "#general", "hi")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr)
 	}

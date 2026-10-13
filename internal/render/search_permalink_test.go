@@ -18,7 +18,7 @@ func TestASearchHitCarriesItsPermalink(t *testing.T) {
 	var m slackread.SearchMatch
 	m.TS = "1782660796.826639"
 	m.Text = "found"
-	m.Username = "stepan"
+	m.Username = "alice"
 	m.Channel.ID = "C1"
 	m.Channel.Name = "eng"
 	m.Permalink = link

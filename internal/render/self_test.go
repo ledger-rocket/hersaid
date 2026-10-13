@@ -18,7 +18,7 @@ func reacted(count int, users ...string) []slackread.Message {
 	}}
 }
 
-var five = Names{"U1": "A", "U2": "B", "U3": "C", "U4": "D", selfID: "Stepan"}
+var five = Names{"U1": "A", "U2": "B", "U3": "C", "U4": "D", selfID: "Alice"}
 
 // The reader is named "you" and placed first. Slack does not order the users
 // array, so past three reactors the reader's own name would otherwise fall into
@@ -70,7 +70,7 @@ func TestTheReaderIsNotDuplicatedWhenAlreadyListed(t *testing.T) {
 	if !strings.Contains(b.String(), ":tada: 3 (you, A, B)") {
 		t.Fatalf("transcript = %q, want the reader listed once", b.String())
 	}
-	if strings.Contains(b.String(), "Stepan") {
+	if strings.Contains(b.String(), "Alice") {
 		t.Fatalf("transcript = %q, want the reader as 'you' rather than by name", b.String())
 	}
 }

@@ -16,7 +16,7 @@ func TestSearchCarriesThePermalink(t *testing.T) {
 	const link = "https://example.slack.test/archives/C1/p1782660796826639"
 	s.Reply("search.messages",
 		`{"ok":true,"messages":{"matches":[{"ts":"1782660796.826639","text":"found",`+
-			`"username":"stepan","channel":{"id":"C1","name":"eng"},`+
+			`"username":"alice","channel":{"id":"C1","name":"eng"},`+
 			`"permalink":"`+link+`"}]}}`)
 
 	got, err := client(t, s).Search(context.Background(), "deploy failed", 20)
@@ -37,7 +37,7 @@ func TestSearchToleratesAMatchWithNoPermalink(t *testing.T) {
 	s := slacktest.New(t)
 	s.Reply("search.messages",
 		`{"ok":true,"messages":{"matches":[{"ts":"1.1","text":"found",`+
-			`"username":"stepan","channel":{"id":"C1","name":"eng"}}]}}`)
+			`"username":"alice","channel":{"id":"C1","name":"eng"}}]}}`)
 
 	got, err := client(t, s).Search(context.Background(), "q", 20)
 	if err != nil {

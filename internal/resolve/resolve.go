@@ -1,4 +1,4 @@
-// Package resolve turns a human target — "#eng", "@stepan", "C0123ABCD" — into
+// Package resolve turns a human target — "#eng", "@alice", "C0123ABCD" — into
 // the channel value an endpoint accepts.
 //
 // Resolution is capability-aware because the endpoints genuinely differ:

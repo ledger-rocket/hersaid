@@ -69,10 +69,10 @@ func TestPermitsByID(t *testing.T) {
 // a user types on the command line.
 func TestPermitsByName(t *testing.T) {
 	t.Parallel()
-	for _, spec := range []string{"#eng-standup", "eng-standup"} {
+	for _, spec := range []string{"#general", "general"} {
 		l := Parse(spec)
-		if !l.Permits(resolved("C0123ABCD", "eng-standup")) {
-			t.Errorf("Parse(%q) refused #eng-standup", spec)
+		if !l.Permits(resolved("C0123ABCD", "general")) {
+			t.Errorf("Parse(%q) refused #general", spec)
 		}
 	}
 }
@@ -98,11 +98,11 @@ func TestNameEntryPermitsAPassThroughTarget(t *testing.T) {
 	}
 }
 
-// Exact match only. #eng must not open #eng-standup, #engineering or #eng2.
+// Exact match only. #eng must not open #eng-general, #engineering or #eng2.
 func TestNameMatchingIsExact(t *testing.T) {
 	t.Parallel()
 	l := Parse("#eng")
-	for _, name := range []string{"eng-standup", "engineering", "eng2", "en", "ENG"} {
+	for _, name := range []string{"eng-general", "engineering", "eng2", "en", "ENG"} {
 		if l.Permits(resolved("C0123ABCD", name)) {
 			t.Errorf("#eng permitted #%s", name)
 		}
@@ -124,8 +124,8 @@ func TestRawIDIsNotPermittedByANameEntry(t *testing.T) {
 // starts yielding the D… id instead.
 func TestUserIDEntryPermitsTheResolvedDM(t *testing.T) {
 	t.Parallel()
-	l := Parse("U0000STEP")
-	dm := resolve.Target{Input: "@stepan", ID: "D0000STEP", UserID: "U0000STEP", Resolved: true}
+	l := Parse("U0ALICE00")
+	dm := resolve.Target{Input: "@alice", ID: "D0ALICE00", UserID: "U0ALICE00", Resolved: true}
 	if !l.Permits(dm) {
 		t.Fatal("a user-id entry did not permit that person's DM")
 	}
@@ -133,13 +133,13 @@ func TestUserIDEntryPermitsTheResolvedDM(t *testing.T) {
 
 func TestMixedEntriesAndWhitespace(t *testing.T) {
 	t.Parallel()
-	l := Parse(" D0123ABCD , #eng-standup ,, plain ")
+	l := Parse(" D0123ABCD , #general ,, plain ")
 	for _, tc := range []struct {
 		target resolve.Target
 		want   bool
 	}{
 		{resolve.Target{Input: "@x", ID: "D0123ABCD", Resolved: true}, true},
-		{resolved("C1", "eng-standup"), true},
+		{resolved("C1", "general"), true},
 		{resolved("C2", "plain"), true},
 		{resolved("C3", "other"), false},
 	} {

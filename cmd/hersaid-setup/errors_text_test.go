@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// PRO-7722 replaced errors.New(const) and fmt.Errorf(botRefusal, user) with
-// sentinels and botTokenError; the refusal texts must not change.
+// Sentinels and botTokenError stand in for errors.New(const) and
+// fmt.Errorf(botRefusal, user); the refusal texts must not change.
 func TestRefusalsKeepTheOldText(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ got, want string }{

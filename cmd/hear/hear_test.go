@@ -79,12 +79,12 @@ var testConvs = []cache.Conversation{
 	{ID: engID, Name: "eng"},
 	{ID: "C0ALERTS0", Name: "alerts-dev"},
 	{ID: "C0RANDOM0", Name: "Random"},
-	{ID: "D0STEPAN0", IsIM: true, User: "U0STEPAN0"},
 	{ID: "D0DELETED", IsIM: true, User: "U0DELETED"},
+	{ID: "D0ALICE00", IsIM: true, User: "U0ALICE00"},
 }
 
 var testUsers = []cache.User{
-	{ID: "U0STEPAN0", Name: "stepan", RealName: "Stepan S", Profile: cache.Profile{DisplayName: "stepan"}},
+	{ID: "U0ALICE00", Name: "alice", RealName: "Alice A", Profile: cache.Profile{DisplayName: "alice"}},
 	{ID: "U0ANN0000", Name: "ann", Profile: cache.Profile{DisplayName: "ann"}},
 	{ID: "U0ANNABEL", Name: "annabel", Profile: cache.Profile{DisplayName: "annabel"}},
 	{ID: "U0DELETED", Name: "departed", Deleted: true},
@@ -99,7 +99,7 @@ const permalinkHost = "https://example.slack.test"
 // history answers newest-first, which is what conversations.history does.
 const twoMessages = `{"ok":true,"messages":[
   {"ts":"1785712434.000000","user":"U0ANN0000","text":"newest"},
-  {"ts":"1785708834.000000","user":"U0STEPAN0","text":"oldest"}
+  {"ts":"1785708834.000000","user":"U0ALICE00","text":"oldest"}
 ]}`
 
 func decode(t *testing.T, s string, v any) {
@@ -249,7 +249,7 @@ func TestDMsAreListedByPerson(t *testing.T) {
 	}
 	// A deleted account is still listed when the conversation exists: the list
 	// answers what conversations there are, not who is still active.
-	if want := "@departed\n@stepan\n"; stdout != want {
+	if want := "@alice\n@departed\n"; stdout != want {
 		t.Fatalf("stdout = %q, want %q", stdout, want)
 	}
 }
@@ -368,7 +368,7 @@ func TestThreadIsNotReversed(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
 	e.srv.Reply("conversations.replies", `{"ok":true,"messages":[
-	  {"ts":"1785708834.000000","user":"U0STEPAN0","text":"parent"},
+	  {"ts":"1785708834.000000","user":"U0ALICE00","text":"parent"},
 	  {"ts":"1785708900.000000","user":"U0ANN0000","text":"reply"}
 	]}`)
 
@@ -810,10 +810,10 @@ func TestReadingAPersonUsesTheirDM(t *testing.T) {
 	e.warm()
 	e.srv.Reply("conversations.history", twoMessages)
 
-	if _, stderr, code := e.run("read", "@stepan"); code != 0 {
+	if _, stderr, code := e.run("read", "@alice"); code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
-	if got := e.query(0).Get("channel"); got != "D0STEPAN0" {
+	if got := e.query(0).Get("channel"); got != "D0ALICE00" {
 		t.Fatalf("channel = %q, want the DM", got)
 	}
 }
@@ -956,7 +956,7 @@ func TestADisplayNameNeverBecomesAReplacementTemplate(t *testing.T) {
 func TestJSONOutputShapes(t *testing.T) {
 	t.Run("identity", func(t *testing.T) {
 		e := newEnv(t)
-		e.srv.Reply("auth.test", `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0STEPAN0"}`)
+		e.srv.Reply("auth.test", `{"ok":true,"user":"alice","team":"Acme","user_id":"U0ALICE00"}`)
 
 		stdout, stderr, code := e.run("--json", "whoami")
 		if code != 0 {
@@ -964,7 +964,7 @@ func TestJSONOutputShapes(t *testing.T) {
 		}
 		var got render.Identity
 		decode(t, stdout, &got)
-		want := render.Identity{Kind: "identity", User: "stepan", Team: "LedgerRocket", UserID: "U0STEPAN0"}
+		want := render.Identity{Kind: "identity", User: "alice", Team: "Acme", UserID: "U0ALICE00"}
 		if got != want {
 			t.Fatalf("identity = %+v, want %+v", got, want)
 		}
@@ -994,7 +994,7 @@ func TestJSONOutputShapes(t *testing.T) {
 		e := newEnv(t)
 		e.warm()
 
-		stdout, _, code := e.run("--json", "dms", "stepan")
+		stdout, _, code := e.run("--json", "dms", "alice")
 		if code != 0 {
 			t.Fatalf("exit = %d", code)
 		}
@@ -1003,7 +1003,7 @@ func TestJSONOutputShapes(t *testing.T) {
 		if got.Kind != "dms" || len(got.DMs) != 1 {
 			t.Fatalf("dms = %+v", got)
 		}
-		if got.DMs[0] != (render.DM{ID: "D0STEPAN0", UserID: "U0STEPAN0", Name: "stepan"}) {
+		if got.DMs[0] != (render.DM{ID: "D0ALICE00", UserID: "U0ALICE00", Name: "alice"}) {
 			t.Fatalf("dm = %+v", got.DMs[0])
 		}
 	})
@@ -1012,7 +1012,7 @@ func TestJSONOutputShapes(t *testing.T) {
 		e := newEnv(t)
 		e.warm()
 		e.srv.Reply("conversations.history",
-			`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0ANN0000","text":"hi <@U0STEPAN0>","reply_count":2}]}`)
+			`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0ANN0000","text":"hi <@U0ALICE00>","reply_count":2}]}`)
 
 		stdout, _, code := e.run("--json", "read", "#eng")
 		if code != 0 {
@@ -1030,7 +1030,7 @@ func TestJSONOutputShapes(t *testing.T) {
 			t.Fatalf("messages = %+v", got.Messages)
 		}
 		m := got.Messages[0]
-		if m.Text != "hi <@U0STEPAN0>" || m.TextRendered != "hi @stepan" {
+		if m.Text != "hi <@U0ALICE00>" || m.TextRendered != "hi @alice" {
 			t.Errorf("text = %q / %q", m.Text, m.TextRendered)
 		}
 		if m.Author != "ann" || m.User != "U0ANN0000" || m.ReplyCount != 2 {
@@ -1058,7 +1058,7 @@ func TestJSONOutputShapes(t *testing.T) {
 		e := newEnv(t)
 		e.warm()
 		e.srv.Reply("search.messages", `{"ok":true,"messages":{"matches":[
-		  {"ts":"1785708834.000000","username":"ann","text":"hi <@U0STEPAN0>","channel":{"id":"C0ENG0000","name":"eng"}}
+		  {"ts":"1785708834.000000","username":"ann","text":"hi <@U0ALICE00>","channel":{"id":"C0ENG0000","name":"eng"}}
 		]}}`)
 
 		stdout, _, code := e.run("--json", "search", "hi")
@@ -1071,7 +1071,7 @@ func TestJSONOutputShapes(t *testing.T) {
 			t.Fatalf("search = %+v", got)
 		}
 		hit := got.Matches[0]
-		if hit.Channel.ID != engID || hit.Author != "ann" || hit.TextRendered != "hi @stepan" {
+		if hit.Channel.ID != engID || hit.Author != "ann" || hit.TextRendered != "hi @alice" {
 			t.Fatalf("hit = %+v", hit)
 		}
 	})
@@ -1263,14 +1263,14 @@ func TestReadPrintsReactions(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
 	e.srv.Reply("conversations.history",
-		`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0STEPAN0","text":"deployed",`+
-			`"reactions":[{"name":"white_check_mark","count":1,"users":["U0STEPAN0"]}]}]}`)
+		`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0ALICE00","text":"deployed",`+
+			`"reactions":[{"name":"white_check_mark","count":1,"users":["U0ALICE00"]}]}]}`)
 
 	stdout, stderr, code := e.run("read", "#eng")
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
 	}
-	if !strings.Contains(stdout, ":white_check_mark: 1 (stepan)") {
+	if !strings.Contains(stdout, ":white_check_mark: 1 (alice)") {
 		t.Fatalf("stdout = %q, want the reaction line", stdout)
 	}
 }
@@ -1284,13 +1284,13 @@ func TestReadMarksTheReadersOwnReaction(t *testing.T) {
 	// Warmed the way a user warms it, which also covers the handoff: whoami
 	// records the credential the identity came from, and the read accepts it
 	// because that is still the credential in use.
-	e.srv.Reply("auth.test", `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0STEPAN0"}`)
+	e.srv.Reply("auth.test", `{"ok":true,"user":"alice","team":"Acme","user_id":"U0ALICE00"}`)
 	if _, stderr, code := e.run("whoami"); code != 0 {
 		t.Fatalf("whoami exit = %d (stderr %q)", code, stderr)
 	}
 	e.srv.Reply("conversations.history",
-		`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0STEPAN0","text":"deployed",`+
-			`"reactions":[{"name":"tada","count":1,"users":["U0STEPAN0"]}]}]}`)
+		`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0ALICE00","text":"deployed",`+
+			`"reactions":[{"name":"tada","count":1,"users":["U0ALICE00"]}]}]}`)
 
 	stdout, stderr, code := e.run("read", "#eng")
 	if code != 0 {
@@ -1308,8 +1308,8 @@ func TestAReadNeverFetchesTheIdentity(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
 	e.srv.Reply("conversations.history",
-		`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0STEPAN0","text":"deployed",`+
-			`"reactions":[{"name":"tada","count":1,"users":["U0STEPAN0"]}]}]}`)
+		`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0ALICE00","text":"deployed",`+
+			`"reactions":[{"name":"tada","count":1,"users":["U0ALICE00"]}]}]}`)
 
 	stdout, stderr, code := e.run("read", "#eng")
 	if code != 0 {
@@ -1328,7 +1328,7 @@ func TestAReadNeverFetchesTheIdentity(t *testing.T) {
 func TestWhoamiWarmsTheIdentity(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
-	e.srv.Reply("auth.test", `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0STEPAN0"}`)
+	e.srv.Reply("auth.test", `{"ok":true,"user":"alice","team":"Acme","user_id":"U0ALICE00"}`)
 
 	if _, stderr, code := e.run("whoami"); code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)
@@ -1338,8 +1338,8 @@ func TestWhoamiWarmsTheIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("identity after whoami: %v, want it warmed", err)
 	}
-	if id.UserID != "U0STEPAN0" {
-		t.Fatalf("UserID = %q, want U0STEPAN0", id.UserID)
+	if id.UserID != "U0ALICE00" {
+		t.Fatalf("UserID = %q, want U0ALICE00", id.UserID)
 	}
 }
 
@@ -1351,7 +1351,7 @@ func TestWhoamiSurvivesAnUnwritableCache(t *testing.T) {
 		t.Skip("root ignores directory permissions, so the cache would stay writable")
 	}
 	e := newEnv(t)
-	e.srv.Reply("auth.test", `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0STEPAN0"}`)
+	e.srv.Reply("auth.test", `{"ok":true,"user":"alice","team":"Acme","user_id":"U0ALICE00"}`)
 	dir, err := cache.Dir()
 	if err != nil {
 		t.Fatal(err)
@@ -1370,7 +1370,7 @@ func TestWhoamiSurvivesAnUnwritableCache(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d (stderr %q), want whoami to answer anyway", code, stderr)
 	}
-	if !strings.Contains(stdout, "U0STEPAN0") {
+	if !strings.Contains(stdout, "U0ALICE00") {
 		t.Fatalf("stdout = %q, want the identity reported", stdout)
 	}
 }
@@ -1383,14 +1383,14 @@ func TestAReadIgnoresAnIdentityFromAnotherCredential(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
 	err := cache.Write(cache.IdentityFile, cache.Identity{
-		UserID: "U0STEPAN0", User: "stepan", CredentialKey: "a-different-credential",
+		UserID: "U0ALICE00", User: "alice", CredentialKey: "a-different-credential",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.srv.Reply("conversations.history",
-		`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0STEPAN0","text":"deployed",`+
-			`"reactions":[{"name":"tada","count":1,"users":["U0STEPAN0"]}]}]}`)
+		`{"ok":true,"messages":[{"ts":"1785708834.000000","user":"U0ALICE00","text":"deployed",`+
+			`"reactions":[{"name":"tada","count":1,"users":["U0ALICE00"]}]}]}`)
 
 	stdout, stderr, code := e.run("read", "#eng")
 	if code != 0 {
@@ -1406,7 +1406,7 @@ func TestAReadIgnoresAnIdentityFromAnotherCredential(t *testing.T) {
 func TestWhoamiRecordsTheCredentialKey(t *testing.T) {
 	e := newEnv(t)
 	e.warm()
-	e.srv.Reply("auth.test", `{"ok":true,"user":"stepan","team":"LedgerRocket","user_id":"U0STEPAN0"}`)
+	e.srv.Reply("auth.test", `{"ok":true,"user":"alice","team":"Acme","user_id":"U0ALICE00"}`)
 
 	if _, stderr, code := e.run("whoami"); code != 0 {
 		t.Fatalf("exit = %d (stderr %q)", code, stderr)

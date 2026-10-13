@@ -13,7 +13,7 @@ import (
 // through instead, so it costs nothing at all.
 func TestIdentityRoundTripsThroughTheCache(t *testing.T) {
 	isolate(t)
-	want := Identity{UserID: "U1", User: "stepan", Team: "LR"}
+	want := Identity{UserID: "U1", User: "alice", Team: "Acme"}
 	err := Write(IdentityFile, want)
 	if err != nil {
 		t.Fatal(err)
