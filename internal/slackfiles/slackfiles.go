@@ -310,8 +310,7 @@ func (c *Client) open(ctx context.Context, f slackread.File) (*http.Response, *b
 		// http.Client wraps a CheckRedirect refusal in a *url.Error carrying the
 		// request URL. Returning the refusal itself keeps the reason and drops
 		// the URL, which is the whole point of the typed error.
-		var re *redirectError
-		if errors.As(err, &re) {
+		if re, ok := errors.AsType[*redirectError](err); ok {
 			return nil, nil, nil, re
 		}
 		return nil, nil, nil, err

@@ -139,11 +139,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      # The version go-service-template pins; .golangci.yml is adopted from it
-      # (PRO-7722). Formatters (gofumpt, goimports) run as part of this step.
+      # 2.14.0 is the first release that type-checks Go 1.27 code.
+      # Formatters (gofumpt, goimports) run as part of this step.
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.11.3
+          version: v2.14.0
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest

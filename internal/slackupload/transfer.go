@@ -180,12 +180,11 @@ func classOf(err error) string {
 }
 
 func isTLS(err error) bool {
-	var rec tls.RecordHeaderError
-	if errors.As(err, &rec) {
+	if _, ok := errors.AsType[tls.RecordHeaderError](err); ok {
 		return true
 	}
-	var ce *tls.CertificateVerificationError
-	return errors.As(err, &ce)
+	_, ok := errors.AsType[*tls.CertificateVerificationError](err)
+	return ok
 }
 
 // errRedirect is the refusal to follow a hop on leg 2. It names nothing: the

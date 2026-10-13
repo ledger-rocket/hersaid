@@ -89,8 +89,7 @@ func TestZeroCredentialIssuesNoRequest(t *testing.T) {
 	if !errors.Is(err, ErrNoCredential) {
 		t.Fatalf("PostMessage error = %v, want ErrNoCredential", err)
 	}
-	var pre *PreflightError
-	if !errors.As(err, &pre) {
+	if _, ok := errors.AsType[*PreflightError](err); !ok {
 		t.Fatalf("error = %#v, want a *PreflightError — nothing left the process", err)
 	}
 	// Rejected, not Ambiguous: no request was issued, so nothing was applied.
@@ -238,8 +237,7 @@ func TestDroppedConnectionIsATransportError(t *testing.T) {
 	s.Drop("chat.postMessage")
 
 	_, err := client(t, s).PostMessage(context.Background(), "C1", "hi", "")
-	var te *TransportError
-	if !errors.As(err, &te) {
+	if _, ok := errors.AsType[*TransportError](err); !ok {
 		t.Fatalf("error = %#v, want a *TransportError", err)
 	}
 	if Classify(err) != Ambiguous {

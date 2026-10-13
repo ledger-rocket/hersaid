@@ -89,7 +89,7 @@ linters:
   - fatcontext
   - gochecknoinits
   - godot
-  - gomodguard
+  - gomodguard_v2
   - goprintffuncname
   - grouper
   - inamedparam
@@ -180,6 +180,14 @@ linters:
       min-len: 3
       min-occurrences: 3
       match-constant: true
+      # golangci-lint 2.14 counts repeated strings inside composite literals,
+      # which 2.11 did not; most of them are test-table fixtures. The list
+      # skips composite literals everywhere, production code included, as 2.11
+      # did. Call is the default entry that the list replaces, so call
+      # arguments stay skipped too.
+      exclude-types:
+      - Call
+      - CompositeLit
     godox:
       keywords:
       - TODO
@@ -271,7 +279,9 @@ formatters:
   settings:
     gofumpt:
       module-path: github.com/ledger-rocket/hersaid
-      extra-rules: true
+      extra:
+        group-params: true
+        clothe-returns: true
     goimports:
       local-prefixes:
       - github.com/ledger-rocket/hersaid

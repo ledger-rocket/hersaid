@@ -161,8 +161,7 @@ func idempotent(method, code string) bool {
 
 // Code returns the Slack error code in err, or "".
 func Code(err error) string {
-	var api *APIError
-	if errors.As(err, &api) {
+	if api, ok := errors.AsType[*APIError](err); ok {
 		return api.Code
 	}
 	return ""
@@ -200,12 +199,10 @@ func Classify(err error) Outcome {
 	if err == nil {
 		return Delivered
 	}
-	var pre *PreflightError
-	if errors.As(err, &pre) {
+	if _, ok := errors.AsType[*PreflightError](err); ok {
 		return Rejected
 	}
-	var api *APIError
-	if errors.As(err, &api) {
+	if api, ok := errors.AsType[*APIError](err); ok {
 		switch {
 		case idempotent(api.Method, api.Code):
 			return AlreadyDone

@@ -277,7 +277,7 @@ func TestSearchLineNamesTheChannel(t *testing.T) {
 	t.Parallel()
 	var b bytes.Buffer
 	names := NamesOf([]cache.User{{ID: "U1", Profile: cache.Profile{DisplayName: "ann"}}})
-	m := slackread.SearchMatch{Message: slackread.Message{TS: "1785708834.862009", Username: "bob", Text: "hi <@U1>"}}
+	m := slackread.SearchMatch{TS: "1785708834.862009", Username: "bob", Text: "hi <@U1>"}
 	m.Channel.Name = "eng"
 
 	err := WriteSearch(&b, []slackread.SearchMatch{m}, names, opts())

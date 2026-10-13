@@ -2,9 +2,12 @@ package slackupload
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -345,5 +348,21 @@ func TestOnlyHTTP200CountsAsATransfer(t *testing.T) {
 				t.Fatalf("HTTP %d accepted as a transfer, want a failure", status)
 			}
 		})
+	}
+}
+
+// Both TLS failure types arrive inside the *url.Error that http.Client returns;
+// a wrong type in isTLS would report them as a plain network error.
+func TestClassOfNamesWrappedTLSFailures(t *testing.T) {
+	t.Parallel()
+	cases := map[string]error{
+		"record header": tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"},
+		"certificate":   &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}},
+	}
+	for name, err := range cases {
+		wrapped := &url.Error{Op: "Put", URL: "https://files.example/upload?" + canary, Err: err}
+		if got := classOf(wrapped); got != "tls" {
+			t.Errorf("%s: classOf = %q, want tls", name, got)
+		}
 	}
 }

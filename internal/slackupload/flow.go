@@ -233,8 +233,7 @@ func ClassifyShare(err error) slackwrite.Outcome {
 	if err == nil {
 		return slackwrite.Delivered
 	}
-	var pre *slackwrite.PreflightError
-	if errors.As(err, &pre) {
+	if _, ok := errors.AsType[*slackwrite.PreflightError](err); ok {
 		return slackwrite.Rejected
 	}
 	if errors.Is(err, ErrUnreconciled) || errors.Is(err, ErrManyMessages) {

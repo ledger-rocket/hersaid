@@ -3,6 +3,7 @@ package slackupload
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -108,7 +109,7 @@ func shareOf(t *testing.T, reply string, files []Staged, channel string) (Shared
 func staged(ids ...string) []Staged {
 	out := make([]Staged, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, Staged{Local: Local{Name: id + ".pdf"}, ID: id})
+		out = append(out, Staged{Name: id + ".pdf", ID: id})
 	}
 	return out
 }
@@ -256,6 +257,11 @@ func TestClassifyShareIsUnknownUnlessTheCodeProvesOtherwise(t *testing.T) {
 	}
 	if got := ClassifyShare(nil); got != slackwrite.Delivered {
 		t.Errorf("ClassifyShare(nil) = %v, want Delivered", got)
+	}
+	// A preflight failure means no request left the process, so nothing was shared.
+	pre := fmt.Errorf("share: %w", &slackwrite.PreflightError{Method: "files.completeUploadExternal", Err: slackwrite.ErrNoCredential})
+	if got := ClassifyShare(pre); got != slackwrite.Rejected {
+		t.Errorf("ClassifyShare(preflight) = %v, want Rejected", got)
 	}
 	// A transport failure on the completion leg is the one case that genuinely
 	// is unknown: the request left and no answer came back.
