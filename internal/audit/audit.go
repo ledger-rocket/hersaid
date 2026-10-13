@@ -126,6 +126,13 @@ type Post struct {
 	// Files are the attachments an upload carried, or the ones a delete removed
 	// from the message it destroyed. Empty for every other kind of record.
 	Files []File
+	// PostAt is when a scheduled message posts: the time asked for on a
+	// schedule, and the time Slack held on a cancellation.
+	PostAt time.Time
+	// ScheduledMessageID is Slack's handle on a scheduled message, the one a
+	// cancellation names. A schedule learns it from the reply, so its intent
+	// line has none.
+	ScheduledMessageID string
 }
 
 // File is one attachment, as an upload record names it.
@@ -206,27 +213,32 @@ type postWire struct {
 	PreviousText *string `json:"previous_text"`
 	// Files is null on every record that carries none, for the same reason.
 	Files []fileWire `json:"files"`
+	// Last, so the keys every older record carries keep their positions.
+	PostAt             *string `json:"post_at"`
+	ScheduledMessageID *string `json:"scheduled_message_id"`
 }
 
 // MarshalJSON emits a post record's field set, in order.
 func (p Post) MarshalJSON() ([]byte, error) {
 	return json.Marshal(postWire{
-		At:           at(p.At),
-		By:           by(p.By),
-		Phase:        phase(p.Phase),
-		Action:       nullAction(p.Action),
-		Channel:      p.Channel,
-		ChannelID:    null(p.ChannelID),
-		ThreadTS:     null(p.ThreadTS),
-		DryRun:       p.DryRun,
-		OK:           p.OK,
-		Error:        null(p.Error),
-		TS:           null(p.TS),
-		Permalink:    null(p.Permalink),
-		Text:         null(p.Text),
-		SlackText:    null(p.SlackText),
-		PreviousText: null(p.PreviousText),
-		Files:        files(p.Files),
+		At:                 at(p.At),
+		By:                 by(p.By),
+		Phase:              phase(p.Phase),
+		Action:             nullAction(p.Action),
+		Channel:            p.Channel,
+		ChannelID:          null(p.ChannelID),
+		ThreadTS:           null(p.ThreadTS),
+		DryRun:             p.DryRun,
+		OK:                 p.OK,
+		Error:              null(p.Error),
+		TS:                 null(p.TS),
+		Permalink:          null(p.Permalink),
+		Text:               null(p.Text),
+		SlackText:          null(p.SlackText),
+		PreviousText:       null(p.PreviousText),
+		Files:              files(p.Files),
+		PostAt:             nullTime(p.PostAt),
+		ScheduledMessageID: null(p.ScheduledMessageID),
 	})
 }
 
@@ -264,6 +276,11 @@ const (
 	Delete Action = "message.delete"
 	// Upload is a file upload completed as a message.
 	Upload Action = "message.upload"
+	// Schedule is a chat.scheduleMessage: a message Slack posts later.
+	Schedule Action = "message.schedule"
+	// Unschedule is a chat.deleteScheduledMessage, cancelling one before it
+	// posts.
+	Unschedule Action = "message.unschedule"
 )
 
 // reactionWire pins the field set and the key order of a reaction record. It
@@ -319,6 +336,15 @@ func phase(p Phase) Phase {
 		return Outcome
 	}
 	return p
+}
+
+// nullTime renders a time as at does, or null when there is none.
+func nullTime(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	s := t.UTC().Format(stamp)
+	return &s
 }
 
 func null(s string) *string {

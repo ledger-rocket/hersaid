@@ -299,13 +299,8 @@ func withIDs(files []audit.File, ids []string) []audit.File {
 // arrives through a shell glob and may hold an ESC or a newline, and the render
 // is what a person reads in order to authorise a send.
 func renderUpload(p preview, thread, text string, files []slackupload.Local) {
-	stdout, target, haveCred := p.stdout, p.target, p.haveCred
-	fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
-	if target.ID != target.Input {
-		fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
-	} else {
-		fmt.Fprintf(stdout, "channel : %s\n", target.Input)
-	}
+	stdout, haveCred := p.stdout, p.haveCred
+	renderHeader(p)
 	if thread != "" {
 		fmt.Fprintf(stdout, "thread  : %s\n", thread)
 	}

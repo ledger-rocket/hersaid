@@ -42,6 +42,9 @@ const (
 	methodDelete         = "chat.delete"
 	methodGetUploadURL   = "files.getUploadURLExternal"
 	methodCompleteUpload = "files.completeUploadExternal"
+	methodSchedule       = "chat.scheduleMessage"
+	methodScheduledList  = "chat.scheduledMessages.list"
+	methodUnschedule     = "chat.deleteScheduledMessage"
 )
 
 const maxBody = 4 << 20
@@ -93,7 +96,8 @@ func (e *APIError) Error() string { return e.Method + ": " + e.Code }
 // missing_scope refusal can name the scope actually missing rather than
 // re-granting one the token already holds. It is fixed at compile time: a
 // value out of a response must not be interpolated into instructions telling
-// somebody what to grant.
+// somebody what to grant. chat.scheduledMessages.list has no entry: Slack's
+// reference lists no scope for it.
 var scopeNames = map[string]string{
 	methodPostMessage:    "chat:write",
 	methodUpdate:         "chat:write",
@@ -102,6 +106,8 @@ var scopeNames = map[string]string{
 	methodRemoveReaction: "reactions:write",
 	methodGetUploadURL:   "files:write",
 	methodCompleteUpload: "files:write",
+	methodSchedule:       "chat:write",
+	methodUnschedule:     "chat:write",
 }
 
 // Scope returns the user token scope the endpoint that produced err needs, or

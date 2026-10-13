@@ -24,7 +24,10 @@ func TestBuiltBinaryReachesNoMessageEndpoints(t *testing.T) {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
 
-	forbidden := []string{"chat.postMessage", "chat.update", "chat.delete", "files.upload"}
+	forbidden := []string{
+		"chat.postMessage", "chat.update", "chat.delete", "files.upload",
+		"chat.scheduleMessage", "chat.deleteScheduledMessage",
+	}
 
 	nm, err := exec.CommandContext(t.Context(), "go", "tool", "nm", bin).CombinedOutput()
 	if err != nil {

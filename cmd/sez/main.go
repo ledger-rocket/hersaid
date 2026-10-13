@@ -47,8 +47,11 @@ var (
 const name = "sez"
 
 const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|@person|ID> [text]
+       sez [--send] [--thread TS] [--md] (--at TIME | --in DURATION) <#chan|@person|ID> [text]
        sez [--send] [--md] --edit <#chan|@person|ID> <ts> <new text>
        sez [--send] --delete <#chan|@person|ID> <ts>
+       sez --scheduled [<#chan|@person|ID>]
+       sez [--send] --unschedule <#chan|@person|ID> <id>
 
   Renders the message WITHOUT sending unless --send is given. Read the rendered
   text first; deliver it second.
@@ -60,6 +63,14 @@ const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|
   render shows the current text first — read from the hear binary — and the
   change beside it. They are mutually exclusive with each other and with
   --thread, and --send is the only thing that acts.
+  --at and --in schedule the message instead of posting it, and the render
+  shows the time in local time and in UTC. Slack posts it then, at most 120
+  days ahead. --in counts from when sez runs, so a later --send resolves it
+  again; --at names the same time on both runs. A schedule cannot carry files.
+  --scheduled lists the messages waiting, with the ids --unschedule takes; it
+  changes nothing and is not logged. --unschedule renders the scheduled message
+  and cancels it under --send. Slack will not cancel one within 60 seconds of
+  its time.
 
   Options:
         --send        actually deliver it (default is render-only)
@@ -67,8 +78,13 @@ const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|
         --md          convert Markdown to Slack mrkdwn before sending
         --thread TS   reply inside the thread with this parent ts
         --file PATH   attach a file; repeatable, and the order is kept
+        --at TIME     schedule for TIME: RFC 3339 (2026-10-13T09:00:00Z), or
+                      local YYYY-MM-DDTHH:MM[:SS], or local HH:MM today
+        --in DURATION schedule for this long from now, e.g. 90m or 2h30m
         --edit        rewrite the message at the given ts; the render shows both
         --delete      delete the message at the given ts; the render shows what goes
+        --scheduled   list scheduled messages, in one conversation if one is given
+        --unschedule  cancel the scheduled message with the given id
         --            stop reading options; what follows is the target and text
     -h, --help        print this help and exit 0
         --version     print the version and exit 0
@@ -85,13 +101,26 @@ const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|
   Audit log: ~/.local/state/hersaid/posts.jsonl
 `
 
-const noCredential = `sez: no write credential found (keychain service: hersaid-write).
+const noCredential = noCredentialWhy + "  Rendering needs no credential — omit --send.\n"
+
+// noCredentialWhy is the gate's explanation up to its advice on rendering,
+// which a cancellation cannot take.
+const noCredentialWhy = `sez: no write credential found (keychain service: hersaid-write).
   Posting is disabled by design until one exists:
     security add-generic-password -a "$USER" -s hersaid-write -w
   Slack issues one token per app, so this needs a SECOND Slack app carrying
   chat:write — the read app's token cannot post.
-  Rendering needs no credential — omit --send.
 `
+
+// noCredentialFor is the gate's explanation for v. A cancellation reads the
+// scheduled message with the write credential before it renders, so for it
+// rendering without one is no way round.
+func noCredentialFor(v verb) string {
+	if v == verbUnschedule {
+		return noCredentialWhy + "  --unschedule reads the scheduled message with it, even to render.\n"
+	}
+	return noCredential
+}
 
 // missingScopeFor names the scope the failing endpoint needs. The scope is read
 // from a table in slackwrite rather than from Slack's reply, so nothing a
@@ -109,8 +138,9 @@ func missingScopeFor(err error) string {
 
 // Defence in depth: the form encoder already escapes every field.
 var (
-	channelRe = regexp.MustCompile(`^#?[A-Za-z0-9._-]+$`)
-	threadRe  = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
+	channelRe     = regexp.MustCompile(`^#?[A-Za-z0-9._-]+$`)
+	threadRe      = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
+	scheduledIDRe = regexp.MustCompile(`^[A-Za-z0-9]+$`)
 )
 
 // resolveWrite is a variable so a test can observe whether the credential was
@@ -142,8 +172,12 @@ type invocation struct {
 	f       flags
 	verb    verb
 	channel string
-	ts      string
-	text    string
+	// ts is the message an edit or delete addresses, or the scheduled message
+	// id a cancellation does.
+	ts   string
+	text string
+	// postAt is when a scheduled message posts, zero for anything else.
+	postAt time.Time
 }
 
 // parseInvocation reads the arguments and the message text. --help and
@@ -155,35 +189,56 @@ func parseInvocation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	if done {
 		return invocation{}, code, true
 	}
-	thread, rest := f.thread, f.rest
+	verb, refusal := chooseVerb(f, f.thread)
+	if refusal != "" {
+		return invocation{}, cli.Usage(stderr, name, usage, refusal), true
+	}
+	if verb == verbList {
+		return listInvocation(f, stderr)
+	}
+	rest := f.rest
 	if len(rest) == 0 {
 		return invocation{}, cli.Usage(stderr, name, usage, ""), true
 	}
-	verb, refusal := chooseVerb(f, thread)
+
+	channel := rest[0]
+	if strings.HasPrefix(channel, "-") {
+		return invocation{}, fail(stderr, "refusing a channel that looks like a flag: %s", channel), true
+	}
+	ts, rest, refusal := messageRef(verb, rest[1:])
 	if refusal != "" {
 		return invocation{}, cli.Usage(stderr, name, usage, refusal), true
 	}
 
-	channel := rest[0]
-	rest = rest[1:]
-	if strings.HasPrefix(channel, "-") {
-		return invocation{}, fail(stderr, "refusing a channel that looks like a flag: %s", channel), true
+	// Before the text, so a time that is wrong does not first wait on stdin.
+	postAt, code, done := scheduleTime(stderr, f, time.Now())
+	if done {
+		return invocation{}, code, true
 	}
-
-	var ts string
-	if verb != verbSend {
-		if len(rest) == 0 {
-			return invocation{}, cli.Usage(stderr, name, usage, "--edit and --delete need a message ts"), true
-		}
-		ts = rest[0]
-		rest = rest[1:]
-	}
-
 	text, code, done := messageText(stderr, f, verb, rest, stdin)
 	if done {
 		return invocation{}, code, true
 	}
-	return invocation{f: f, verb: verb, channel: channel, ts: ts, text: text}, 0, false
+	return invocation{f: f, verb: verb, channel: channel, ts: ts, text: text, postAt: postAt}, 0, false
+}
+
+// messageRef takes what an edit, a delete or a cancellation addresses off the
+// front of rest: a message ts, or a scheduled message id. refusal is the usage
+// error when it is missing.
+func messageRef(v verb, rest []string) (string, []string, string) {
+	switch v {
+	case verbEdit, verbDelete:
+		if len(rest) == 0 {
+			return "", nil, "--edit and --delete need a message ts"
+		}
+	case verbUnschedule:
+		if len(rest) == 0 {
+			return "", nil, "--unschedule needs a scheduled message id"
+		}
+	default:
+		return "", rest, ""
+	}
+	return rest[0], rest[1:], ""
 }
 
 // postRecord is the audit record an invocation starts from.
@@ -192,39 +247,30 @@ func postRecord(inv invocation) audit.Post {
 	if len(inv.f.files) > 0 {
 		action = audit.Upload
 	}
-	return audit.Post{
+	rec := audit.Post{
 		Channel: inv.channel, ThreadTS: inv.f.thread, DryRun: !inv.f.send, Text: inv.text,
-		Action: action,
+		Action: action, PostAt: inv.postAt,
 	}
+	// From the arguments, so the intent line and every failure name the
+	// scheduled message a cancellation addressed.
+	if inv.verb == verbUnschedule {
+		rec.ScheduledMessageID = inv.ts
+	}
+	return rec
 }
 
 // deliver renders or sends what the invocation asked for, once every gate in run
-// has passed: an edit or delete, an upload, or a plain message.
+// has passed: an edit or delete, a cancellation, an upload, or a plain or
+// scheduled message.
 func deliver(a attempt, p preview, rec audit.Post, inv invocation) int {
-	send, thread, verb, ts, text := inv.f.send, inv.f.thread, inv.verb, inv.ts, inv.text
-	if verb != verbSend {
-		// The read gates the write: an edit or delete rewrites or destroys what
-		// people have already read, so the render must show it as it stands. If
-		// the current text cannot be read, nothing changes — not under --send
-		// either. A tool that could not show its own change has not earned the
-		// send, and a warning is something people learn to scroll past.
-		// Stamped before the read, so the intent line that outlives a kill, the
-		// abort written when the read fails, and every failure outcome all name
-		// the message that was addressed. Without it a delete interrupted before
-		// its outcome cannot be reconciled against Slack at all.
-		rec.TS = ts
-		now, readErr := readMessage(context.Background(), a.target.ID, ts, verb)
-		if readErr != nil {
-			return abort(a.stderr, a.log, rec, "cannot read the current message: "+readErr.Error())
-		}
-		rec = recordRead(rec, verb, now)
-		if !send {
-			renderChange(p, verb, ts, now, text)
-			return dryRunRecorded(a.stderr, a.log, rec)
-		}
-		return change(a, rec, verb, ts)
+	switch inv.verb {
+	case verbEdit, verbDelete:
+		return deliverChange(a, p, rec, inv)
+	case verbUnschedule:
+		return deliverUnschedule(a, p, rec, inv)
 	}
 
+	send, thread, text := inv.f.send, inv.f.thread, inv.text
 	if len(inv.f.files) > 0 {
 		files, ferr := openFiles(inv.f.files)
 		if ferr != nil {
@@ -240,24 +286,54 @@ func deliver(a attempt, p preview, rec audit.Post, inv invocation) int {
 	}
 
 	if !send {
-		render(p.stdout, p.target, thread, text, p.haveCred)
+		render(p, thread, text, inv.postAt)
 		return dryRunRecorded(a.stderr, a.log, rec)
+	}
+	if inv.verb == verbSchedule {
+		return schedule(a, rec, thread, text)
 	}
 	return post(a, rec, thread, text)
 }
 
-// capabilityFor is what resolving the target must allow. An edit or delete
-// addresses an existing message; an upload's completeUploadExternal takes a
-// conversation id, resolving no #name and opening no DM. Resolving as a send
-// does would stage every byte of every file and then fail on the last leg.
+// deliverChange renders or sends an edit or a delete.
+func deliverChange(a attempt, p preview, rec audit.Post, inv invocation) int {
+	send, verb, ts, text := inv.f.send, inv.verb, inv.ts, inv.text
+	// The read gates the write: an edit or delete rewrites or destroys what
+	// people have already read, so the render must show it as it stands. If
+	// the current text cannot be read, nothing changes — not under --send
+	// either. A tool that could not show its own change has not earned the
+	// send, and a warning is something people learn to scroll past.
+	// Stamped before the read, so the intent line that outlives a kill, the
+	// abort written when the read fails, and every failure outcome all name
+	// the message that was addressed. Without it a delete interrupted before
+	// its outcome cannot be reconciled against Slack at all.
+	rec.TS = ts
+	now, readErr := readMessage(context.Background(), a.target.ID, ts, verb)
+	if readErr != nil {
+		return abort(a.stderr, a.log, rec, "cannot read the current message: "+readErr.Error())
+	}
+	rec = recordRead(rec, verb, now)
+	if !send {
+		renderChange(p, verb, ts, now, text)
+		return dryRunRecorded(a.stderr, a.log, rec)
+	}
+	return change(a, rec, verb, ts)
+}
+
+// capabilityFor is what resolving the target must allow. An edit, a delete or a
+// cancellation addresses something that exists, by conversation id; an upload's
+// completeUploadExternal takes a conversation id, resolving no #name and
+// opening no DM. Resolving as a send does would stage every byte of every file
+// and then fail on the last leg. chat.scheduleMessage takes a channel exactly
+// as chat.postMessage does, so a schedule resolves as a send.
 func capabilityFor(v verb, uploading bool) resolve.Capability {
-	if uploading {
+	switch {
+	case uploading:
 		return resolve.ForUpload
+	case v == verbSend || v == verbSchedule:
+		return resolve.ForPost
 	}
-	if v != verbSend {
-		return resolve.ForEdit
-	}
-	return resolve.ForPost
+	return resolve.ForEdit
 }
 
 // suspicious is the refusal for an id that does not look like one Slack issued,
@@ -269,8 +345,15 @@ func suspicious(channelID, thread, ts string, v verb) string {
 	if thread != "" && !threadRe.MatchString(thread) {
 		return "refusing suspicious thread ts: " + thread
 	}
-	if v != verbSend && !threadRe.MatchString(ts) {
-		return "refusing suspicious message ts: " + ts
+	switch v {
+	case verbEdit, verbDelete:
+		if !threadRe.MatchString(ts) {
+			return "refusing suspicious message ts: " + ts
+		}
+	case verbUnschedule:
+		if !scheduledIDRe.MatchString(ts) {
+			return "refusing suspicious scheduled message id: " + ts
+		}
 	}
 	return ""
 }
@@ -304,36 +387,77 @@ func chooseVerb(f flags, thread string) (verb, string) {
 	if refusal != "" {
 		return verbSend, refusal
 	}
-	if f.edit {
+	switch {
+	case f.edit:
 		return verbEdit, ""
-	}
-	if f.del {
+	case f.del:
 		return verbDelete, ""
+	case f.unschedule:
+		return verbUnschedule, ""
+	case f.scheduled:
+		return verbList, ""
+	case f.scheduling():
+		return verbSchedule, ""
 	}
 	return verbSend, ""
 }
 
-// flagConflict is the usage refusal for --edit or --delete combined with a
-// flag that addresses, or adds, something else; empty when there is none.
-// Every conflict involves --edit or --delete, so without either there is none.
+// flagConflict is the usage refusal for a combination of flags that names no
+// one thing; empty when there is none. Refused rather than ignored: a flag
+// accepted and silently dropped teaches that it did something.
 func flagConflict(f flags, thread string) string {
 	switch {
-	case !f.edit && !f.del:
+	case f.actions() > 1:
+		return "--edit, --delete, --scheduled and --unschedule each name one action; give one"
+	case f.scheduling():
+		return scheduleConflict(f)
+	case f.scheduled:
+		return listConflict(f, thread)
+	}
+	return changeConflict(f, thread)
+}
+
+// changeConflict is flagConflict for --edit, --delete and --unschedule, each of
+// which addresses something that already exists.
+func changeConflict(f flags, thread string) string {
+	switch {
+	case !f.edit && !f.del && !f.unschedule:
 		return ""
-	// --edit and --delete name one message, as --thread does; they exclude each
-	// other and the thread parent, all three addressing a different message.
-	case f.edit && f.del:
-		return "--edit and --delete name one message; give one"
+	// Each names one message, as --thread does, and the thread parent would be
+	// a different one.
 	case thread != "":
-		return "--edit and --delete name a message; --thread excludes them"
-	// Refused rather than ignored, as every other meaningless combination here
-	// is: a flag accepted and silently dropped teaches that it did something.
-	case f.del && f.md:
-		return "--delete sends no text, so --md has nothing to convert"
+		return "--edit, --delete and --unschedule name a message; --thread excludes them"
+	case (f.del || f.unschedule) && f.md:
+		return "--delete and --unschedule send no text, so --md has nothing to convert"
 	// Slack offers no way to attach a file to a message that already exists, so
 	// --file substitutes the send endpoint rather than adding to it.
 	case len(f.files) > 0:
-		return "--file attaches files to a new message; it cannot combine with --edit or --delete"
+		return "--file attaches files to a new message; it cannot combine with --edit, --delete or --unschedule"
+	}
+	return ""
+}
+
+// scheduleConflict is flagConflict for --at and --in.
+func scheduleConflict(f flags) string {
+	switch {
+	case f.at != "" && f.in != "":
+		return "--at and --in both say when; give one"
+	case f.actions() > 0:
+		return "--at and --in schedule a new message; they cannot combine with --edit, --delete, --scheduled or --unschedule"
+	// chat.scheduleMessage carries text alone, and Slack's upload endpoints
+	// share files at once.
+	case len(f.files) > 0:
+		return "Slack cannot schedule a message with files; --file excludes --at and --in"
+	}
+	return ""
+}
+
+// listConflict is flagConflict for --scheduled, which reads and changes
+// nothing: every flag that shapes or delivers a message is meaningless beside
+// it.
+func listConflict(f flags, thread string) string {
+	if f.send || f.md || thread != "" || len(f.files) > 0 {
+		return "--scheduled lists what is waiting and changes nothing; it takes no other flag"
 	}
 	return ""
 }
@@ -342,9 +466,9 @@ func flagConflict(f flags, thread string) string {
 // upload, otherwise the arguments or stdin, with --md applied. done reports
 // that the invocation ends here with code.
 func messageText(stderr io.Writer, f flags, v verb, rest []string, stdin io.Reader) (string, int, bool) {
-	if v == verbDelete {
+	if v == verbDelete || v == verbUnschedule {
 		if len(rest) > 0 {
-			return "", cli.Usage(stderr, name, usage, "--delete takes a target and a ts and nothing else"), true
+			return "", cli.Usage(stderr, name, usage, noTextRefusal(v)), true
 		}
 		return "", 0, false
 	}
@@ -375,6 +499,14 @@ func messageText(stderr io.Writer, f flags, v verb, rest []string, stdin io.Read
 	return text, 0, false
 }
 
+// noTextRefusal is the usage refusal for text given to a verb that sends none.
+func noTextRefusal(v verb) string {
+	if v == verbUnschedule {
+		return "--unschedule takes a target and an id and nothing else"
+	}
+	return "--delete takes a target and a ts and nothing else"
+}
+
 // hearWaitDelay is how long viaHear waits for hear's stdout to close after the
 // context has killed it.
 const hearWaitDelay = 5 * time.Second
@@ -391,6 +523,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	if done {
 		return code
 	}
+	// A read, so it ends before the log is opened.
+	if inv.verb == verbList {
+		return list(inv, stdout, stderr, baseURL)
+	}
 	f, send, thread, verb, channel, ts, text := inv.f, inv.f.send, inv.f.thread, inv.verb, inv.channel, inv.ts, inv.text
 
 	// Resolved once: a second lookup would mean a second keyring access, which on
@@ -399,14 +535,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 
 	// The log opens once the invocation is a real attempt, so `sez --help`
 	// neither creates the file nor writes a record.
-	log, err := audit.Open(audit.DefaultPath())
+	log, err := openLog(stderr)
 	if err != nil {
 		return fail(stderr, "%v", err)
 	}
 	defer func() { _ = log.Close() }()
-	for _, w := range log.Warnings() {
-		fmt.Fprintf(stderr, "sez: warning — %s\n", w)
-	}
 
 	rec := postRecord(inv)
 
@@ -415,7 +548,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	// log holds every attempt. Reading the log to ask "did anything try to go
 	// out" must not answer no here.
 	if send && credErr != nil {
-		fmt.Fprint(stderr, noCredential)
+		fmt.Fprint(stderr, noCredentialFor(verb))
 		rec.Phase, rec.OK, rec.Error = audit.Abort, audit.Failed, "no write credential"
 		return orAuditFailure(writeRecord(stderr, log, rec), cli.ExitFailure)
 	}
@@ -456,35 +589,38 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, baseURL strin
 	return deliver(a, p, rec, inv)
 }
 
-func post(a attempt, rec audit.Post, thread, text string) int {
-	stdout, stderr, log, baseURL, c, target := a.stdout, a.stderr, a.log, a.baseURL, a.cred, a.target
-	timeout, err := slackhttp.TimeoutFromEnv()
+// openLog opens the audit log, reporting on stderr anything it noticed that
+// does not stop a record being written.
+func openLog(stderr io.Writer) (*audit.Log, error) {
+	log, err := audit.Open(audit.DefaultPath())
 	if err != nil {
-		return abort(stderr, log, rec, err.Error())
+		return nil, err
 	}
+	for _, w := range log.Warnings() {
+		fmt.Fprintf(stderr, "sez: warning — %s\n", w)
+	}
+	return log, nil
+}
 
-	// Intent is recorded BEFORE the request, so an interrupted or hung send
-	// still leaves evidence of what was about to go out. ok is null: unknown,
-	// not success. This is the one record that survives SIGKILL.
+// begin is what a write does before its request. It records the intent first,
+// so an interrupted or hung attempt still leaves evidence of what was about to
+// go out: ok is null there, unknown rather than success, and it is the one
+// record that survives SIGKILL. It then guards the window, so a catchable
+// signal anywhere before the caller's outcome is on disk still leaves an abort
+// record whose outcome is unknown. The returned function releases the guard.
+// An error means the intent could not be recorded, and nothing may be sent.
+func begin(stderr io.Writer, log *audit.Log, rec audit.Post) (func(), error) {
 	intent := rec
 	intent.Phase, intent.OK = audit.Intent, audit.Unknown
-	err = log.Post(intent)
+	err := log.Post(intent)
 	if err != nil {
-		return fail(stderr, "%v — refusing to send", err)
+		return nil, err
 	}
-
-	// A catchable signal anywhere in the window still leaves an outcome. The
-	// window ends when the outcome record is on disk, not when the response
-	// arrives: the permalink fetch after it is a whole round trip, and a guard
-	// released before that would leave only an intent line for a message that
-	// had definitely gone. SIGKILL cannot be caught, which is why the intent
-	// above precedes the request.
-	//
 	// pending is a snapshot. The handler runs on its own goroutine, so reading
 	// the record the outcome path is midway through filling in would be a race
 	// as well as a worse record.
 	pending := rec
-	stop := audit.OnAbort(func(sig os.Signal) {
+	return audit.OnAbort(func(sig os.Signal) {
 		pending.Phase, pending.OK = audit.Abort, audit.Unknown
 		pending.Error = fmt.Sprintf("interrupted by %s before the outcome was recorded; delivery unknown", sig)
 		// Reported, not swallowed. The exit status stays the conventional
@@ -492,7 +628,24 @@ func post(a attempt, rec audit.Post, thread, text string) int {
 		// killed — so stderr is the only place this can be said.
 		_ = writeRecord(stderr, log, pending)
 		_ = log.Close()
-	})
+	}), nil
+}
+
+func post(a attempt, rec audit.Post, thread, text string) int {
+	stdout, stderr, log, baseURL, c, target := a.stdout, a.stderr, a.log, a.baseURL, a.cred, a.target
+	timeout, err := slackhttp.TimeoutFromEnv()
+	if err != nil {
+		return abort(stderr, log, rec, err.Error())
+	}
+
+	// The guard's window ends when the outcome record is on disk, not when the
+	// response arrives: the permalink fetch after it is a whole round trip, and
+	// a guard released before that would leave only an intent line for a
+	// message that had definitely gone.
+	stop, err := begin(stderr, log, rec)
+	if err != nil {
+		return fail(stderr, "%v — refusing to send", err)
+	}
 	defer stop()
 
 	client := slackwrite.New(c, slackhttp.New(timeout), baseURL)
@@ -549,17 +702,18 @@ func post(a attempt, rec audit.Post, thread, text string) int {
 	return orAuditFailure(werr, 0)
 }
 
-func render(stdout io.Writer, target resolve.Target, thread, text string, haveCred bool) {
-	fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
-	if target.ID != target.Input {
-		fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
-	} else {
-		fmt.Fprintf(stdout, "channel : %s\n", target.Input)
-	}
+// render is the dry run for a message, posted now or, when postAt is set,
+// scheduled for then.
+func render(p preview, thread, text string, postAt time.Time) {
+	stdout := p.stdout
+	renderHeader(p)
 	if thread != "" {
 		fmt.Fprintf(stdout, "thread  : %s\n", thread)
 	}
-	if !haveCred {
+	if !postAt.IsZero() {
+		fmt.Fprintf(stdout, "post at : %s\n", when(postAt))
+	}
+	if !p.haveCred {
 		fmt.Fprintln(stdout, "token   : absent (posting currently impossible)")
 	}
 	fmt.Fprintln(stdout, "--- message as Slack will receive it ---")
@@ -572,13 +726,8 @@ func render(stdout io.Writer, target resolve.Target, thread, text string, haveCr
 // stands; an edit also shows the replacement beside it, so what changes is
 // visible rather than asserted.
 func renderChange(p preview, v verb, ts string, now current, text string) {
-	stdout, target, haveCred := p.stdout, p.target, p.haveCred
-	fmt.Fprintln(stdout, "--- dry run: nothing sent ---")
-	if target.ID != target.Input {
-		fmt.Fprintf(stdout, "channel : %s -> %s\n", target.Input, target.ID)
-	} else {
-		fmt.Fprintf(stdout, "channel : %s\n", target.Input)
-	}
+	stdout, haveCred := p.stdout, p.haveCred
+	renderHeader(p)
 	// The address, not only the channel: a ts copied from the wrong line names
 	// a real message whose text reads plausibly, and the reader would have
 	// nothing to check it against.
@@ -613,6 +762,17 @@ func renderChange(p preview, v verb, ts string, now current, text string) {
 	fmt.Fprintln(stdout, "----------------------------------------")
 }
 
+// renderHeader opens every dry run: that nothing was sent, and the conversation
+// as given beside the id it resolved to.
+func renderHeader(p preview) {
+	fmt.Fprintln(p.stdout, "--- dry run: nothing sent ---")
+	if p.target.ID != p.target.Input {
+		fmt.Fprintf(p.stdout, "channel : %s -> %s\n", p.target.Input, p.target.ID)
+	} else {
+		fmt.Fprintf(p.stdout, "channel : %s\n", p.target.Input)
+	}
+}
+
 // attempt is what every send path shares: where it reports, where it records,
 // and how it reaches the one conversation addressed.
 type attempt struct {
@@ -642,25 +802,10 @@ func change(a attempt, rec audit.Post, v verb, ts string) int {
 		return abort(stderr, log, rec, err.Error())
 	}
 
-	// Intent is recorded BEFORE the request, so an interrupted attempt still
-	// leaves evidence of what was about to change. ok is null: unknown, not
-	// success. This is the one record that survives SIGKILL.
-	intent := rec
-	intent.Phase, intent.OK = audit.Intent, audit.Unknown
-	err = log.Post(intent)
+	stop, err := begin(stderr, log, rec)
 	if err != nil {
 		return fail(stderr, "%v — refusing to send", err)
 	}
-
-	// A catchable signal anywhere in the window still leaves an outcome, exactly
-	// as it does for a send.
-	pending := rec
-	stop := audit.OnAbort(func(sig os.Signal) {
-		pending.Phase, pending.OK = audit.Abort, audit.Unknown
-		pending.Error = fmt.Sprintf("interrupted by %s before the outcome was recorded; delivery unknown", sig)
-		_ = writeRecord(stderr, log, pending)
-		_ = log.Close()
-	})
 	defer stop()
 
 	client := slackwrite.New(c, slackhttp.New(timeout), baseURL)
@@ -710,15 +855,21 @@ func change(a attempt, rec audit.Post, v verb, ts string) int {
 	return orAuditFailure(werr, 0)
 }
 
-// changeOutcome records the failure of an edit or a delete. It mirrors post's
-// classification: ambiguous stays unknown, a refusal is failed, and the one
+// changeOutcome records the failure of an edit, a delete, a schedule or a
+// cancellation. It mirrors post's classification: ambiguous stays unknown, a refusal is failed, and the one
 // Slack error a reader can act on names its missing scope.
 func changeOutcome(stderr io.Writer, log *audit.Log, rec audit.Post, err error) int {
 	rec.Phase = audit.Outcome
 	switch outcome := slackwrite.Classify(err); {
 	case outcome == slackwrite.Ambiguous:
 		rec.OK = audit.Unknown
-		rec.Error = err.Error() + " — delivery unknown, check Slack before retrying"
+		// A scheduled message does not show in its conversation until it
+		// posts. The list is where a waiting one shows.
+		advice := "check Slack before retrying"
+		if rec.Action == audit.Schedule {
+			advice = "run sez --scheduled before retrying"
+		}
+		rec.Error = err.Error() + " — delivery unknown, " + advice
 		werr := writeRecord(stderr, log, rec)
 		return orAuditFailure(werr, fail(stderr, "%v (delivery UNKNOWN — logged)", err))
 	default:
@@ -982,6 +1133,13 @@ const (
 	verbSend verb = iota
 	verbEdit
 	verbDelete
+	// verbSchedule is a send that Slack holds until --at or --in.
+	verbSchedule
+	// verbUnschedule cancels a scheduled message.
+	verbUnschedule
+	// verbList lists scheduled messages. It writes nothing, so it has no audit
+	// action.
+	verbList
 )
 
 // verbAction is the audit Action an attempt is recorded with. Every post record
@@ -992,6 +1150,10 @@ func verbAction(v verb) audit.Action {
 		return audit.Update
 	case verbDelete:
 		return audit.Delete
+	case verbSchedule:
+		return audit.Schedule
+	case verbUnschedule:
+		return audit.Unschedule
 	default:
 		return audit.Send
 	}
@@ -999,11 +1161,15 @@ func verbAction(v verb) audit.Action {
 
 // flags is what the option block sets.
 type flags struct {
-	send   bool
-	md     bool
-	edit   bool
-	del    bool
-	thread string
+	send       bool
+	md         bool
+	edit       bool
+	del        bool
+	scheduled  bool
+	unschedule bool
+	thread     string
+	// at and in are --at and --in as given; either schedules the message.
+	at, in string
 	// files are the --file arguments, in the order given.
 	files []string
 	// rest is everything after the options: the target, then the text.
@@ -1053,35 +1219,57 @@ func (f *flags) setFlag(a string) bool {
 		f.edit = true
 	case "--delete":
 		f.del = true
+	case flagScheduled:
+		f.scheduled = true
+	case flagUnschedule:
+		f.unschedule = true
 	default:
 		return false
 	}
 	return true
 }
 
+// valueNeeds is what each option that takes a value needs, as its usage
+// refusal says when the value is missing.
+var valueNeeds = map[string]string{
+	"--thread": "--thread needs a parent ts",
+	"--file":   "--file needs a path",
+	flagAt:     "--at needs a time",
+	flagIn:     "--in needs a duration",
+}
+
 // valued takes the option at args[0] when it is one with a value, returning
 // the arguments after it, or the usage refusal for a missing or unusable value.
 func (f *flags) valued(args []string) ([]string, string, bool) {
-	switch args[0] {
+	missing, ok := valueNeeds[args[0]]
+	if !ok {
+		return nil, "", false
+	}
+	if len(args) < 2 || args[1] == "" {
+		return nil, missing, true
+	}
+	return args[2:], f.setValue(args[0], args[1]), true
+}
+
+// setValue sets the option opt to v, returning the usage refusal for a value
+// it cannot take.
+func (f *flags) setValue(opt, v string) string {
+	switch opt {
 	case "--thread":
-		if len(args) < 2 || args[1] == "" {
-			return nil, "--thread needs a parent ts", true
-		}
-		f.thread = args[1]
-		return args[2:], "", true
+		f.thread = v
 	case "--file":
-		if len(args) < 2 || args[1] == "" {
-			return nil, "--file needs a path", true
-		}
 		// stdin is the text channel, and a file has to be seekable: the
 		// length is declared before the bytes are sent.
-		if args[1] == "-" {
-			return nil, "--file needs a path; stdin carries the text, not a file", true
+		if v == "-" {
+			return "--file needs a path; stdin carries the text, not a file"
 		}
-		f.files = append(f.files, args[1])
-		return args[2:], "", true
+		f.files = append(f.files, v)
+	case flagAt:
+		f.at = v
+	case flagIn:
+		f.in = v
 	}
-	return nil, "", false
+	return ""
 }
 
 // final handles the argument that ends option parsing: --help or --version,

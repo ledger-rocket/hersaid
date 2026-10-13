@@ -8,6 +8,8 @@ explicit `--send`.
 - `sez` — post a message as yourself. Renders by default; `--send` delivers.
   `--edit <target> <ts> <text>` rewrites one and `--delete <target> <ts>`
   removes one, both rendering the message as it currently stands first.
+  `--at` or `--in` schedules one for later, `--scheduled` lists what is
+  waiting, and `--unschedule <target> <id>` cancels one.
 - `tap` — add or remove an emoji reaction as yourself.
 - `hersaid-setup` — enrol the credentials the other three read.
 
@@ -83,6 +85,69 @@ need `hear` installed and its credential enrolled, and both fail closed when
 That pairing is also what lets the audit log record *what* a delete destroyed
 rather than only that something was.
 
+## Scheduling
+
+`sez --at TIME` or `sez --in DURATION` schedules the message instead of posting
+it. Slack holds it and posts it at that time, as you. Everything else is as for
+a send: the render shows exactly what Slack will receive, `--send` is the only
+thing that acts, `--thread` and `--md` mean the same, the target resolves the
+same way, and the write allowlist applies.
+
+- `--at` takes RFC 3339 with an offset (`2026-10-13T09:00:00Z`), or local time
+  as `2026-10-13T09:00`, `2026-10-13 09:00` or `09:00` (today). The two dated
+  local forms also take seconds. A time today that has already passed is
+  refused, not moved to tomorrow: give the date. A local time that a
+  daylight-saving change skips or shows twice is refused too. For a time in
+  the repeated hour, give RFC 3339 with an offset.
+- `--in` takes a Go duration of at least a second: `90m`, `2h30m`, `36h`.
+- The render adds a `post at :` line with the local time and the UTC time.
+  Slack takes whole seconds, so the time is truncated to the second.
+- `--in` counts from when `sez` runs, so the `--send` that follows a render
+  resolves it again, a little later. Use `--at` when the reviewed time must be
+  the sent time.
+- Slack takes a time up to 120 days ahead. A time in the past, or further
+  ahead than that, is refused before anything is opened or logged, as an empty
+  message is.
+- A scheduled message carries text only. `--file` with `--at` or `--in` is a
+  usage error, because Slack shares an upload at once.
+
+```console
+$ sez --at 2026-10-13T09:00 '#general' 'standup moved to 10:00 today'
+--- dry run: nothing sent ---
+channel : #general -> C0000000000
+post at : Tue 2026-10-13 09:00:00 EDT (2026-10-13 13:00:00 UTC)
+--- message as Slack will receive it ---
+standup moved to 10:00 today
+----------------------------------------
+
+$ sez --send --at 2026-10-13T09:00 '#general' 'standup moved to 10:00 today'
+scheduled to #general id=Q0000000001 channel=C0000000000
+post at : Tue 2026-10-13 09:00:00 EDT (2026-10-13 13:00:00 UTC)
+
+$ sez --scheduled
+Q0000000001  C0000000000  Tue 2026-10-13 09:00:00 EDT (2026-10-13 13:00:00 UTC)
+  standup moved to 10:00 today
+
+$ sez --unschedule C0000000000 Q0000000001          # renders it
+$ sez --send --unschedule C0000000000 Q0000000001   # cancels it
+unscheduled Q0000000001 from C0000000000
+```
+
+`--scheduled [target]` lists the scheduled messages that have not posted yet,
+soonest first, in one conversation or in all of them. It is a read: it renders
+nothing first, writes no audit record, and the write allowlist does not limit
+it. It needs the write credential all the same, the only one `sez` holds.
+Slack lists only messages scheduled through its API, so a message scheduled in
+the Slack client does not appear.
+
+`--unschedule <target> <id>` cancels one. Like `--delete`, it reads the message
+first and renders it, and it acts only under `--send`. If the list does not
+hold that id in that conversation, the cancellation is refused, under `--send`
+too: the message may have posted already. The read uses the write credential,
+so unlike any other render this one makes a request to Slack, and it fails
+without a write credential. Slack refuses to cancel a message within 60
+seconds of its time.
+
 ## Credentials
 
 ### 1. Create the Slack app(s)
@@ -106,7 +171,7 @@ Read app — **User Token Scopes**:
 
 Write app — **User Token Scopes**:
 
-- `chat:write`
+- `chat:write` (this also covers scheduling and cancelling a scheduled message)
 - `reactions:write`
 - `files:write`
 
@@ -432,8 +497,9 @@ asked for and declined, and a log read to answer "did anything try to go out"
 must not answer no.
 
 Things that are deliberately *not* logged, because they are not attempts: a
-leading `--help` or `--version`, a usage error, an empty message, and a channel
-argument that looks like a flag.
+leading `--help` or `--version`, a usage error, an empty message, a schedule
+time outside the window Slack takes, a channel argument that looks like a
+flag, and `sez --scheduled`, which only reads.
 
 See [Audit log](#audit-log) for the field-by-field breakdown.
 
@@ -680,6 +746,11 @@ $ hear channels --json
 
 ```
 usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|@person|ID> [text]
+       sez [--send] [--thread TS] [--md] (--at TIME | --in DURATION) <#chan|@person|ID> [text]
+       sez [--send] [--md] --edit <#chan|@person|ID> <ts> <new text>
+       sez [--send] --delete <#chan|@person|ID> <ts>
+       sez --scheduled [<#chan|@person|ID>]
+       sez [--send] --unschedule <#chan|@person|ID> <id>
 
   Renders the message WITHOUT sending unless --send is given. Read the rendered
   text first; deliver it second.
@@ -694,13 +765,20 @@ usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|@person|ID> [te
         --md          convert Markdown to Slack mrkdwn before sending
         --thread TS   reply inside the thread with this parent ts
         --file PATH   attach a file; repeatable, and order is kept
+        --at TIME     schedule for TIME: RFC 3339 (2026-10-13T09:00:00Z), or
+                      local YYYY-MM-DDTHH:MM[:SS], or local HH:MM today
+        --in DURATION schedule for this long from now, e.g. 90m or 2h30m
+        --edit        rewrite the message at the given ts; the render shows both
+        --delete      delete the message at the given ts; the render shows what goes
+        --scheduled   list scheduled messages, in one conversation if one is given
+        --unschedule  cancel the scheduled message with the given id
         --            stop reading options; what follows is the target and text
     -h, --help        print this help and exit 0
         --version     print the version and exit 0
 ```
 
-Abridged: `sez --help` also lists the environment variables, the exit statuses
-and the audit-log path.
+Abridged: `sez --help` also explains `--edit`, `--delete` and scheduling, and
+lists the environment variables, the exit statuses and the audit-log path.
 
 ```console
 # default: renders, sends nothing
@@ -888,16 +966,20 @@ mistake that causes a duplicate message.
 - `by` — `$USER`, falling back to the current user, then `unknown`
 - `phase`, `channel` (as given)
 - `channel_id` — the resolved id; the `#name` itself when `sez` passed a name
-  through unresolved; `null` when resolution never happened
+  through unresolved; `null` when resolution never happened. On a schedule's
+  outcome it is the conversation id Slack reported, which is the one
+  `--unschedule` needs when the target was a `#name` or a person.
 - `thread_ts` — from `--thread`, or `null`
 - `dry_run`, `ok`, `error`
-- `action` — `message.send`, `message.update`, `message.delete` or
-  `message.upload`
+- `action` — `message.send`, `message.update`, `message.delete`,
+  `message.upload`, `message.schedule` or `message.unschedule`
 - `ts` — for a send, the timestamp the send produced, known only afterwards;
-  for an edit or a delete, the `<ts>` argument, so the intent line carries it too
+  for an edit or a delete, the `<ts>` argument, so the intent line carries it
+  too; `null` for a schedule or a cancellation, which name no posted message
 - `permalink` — link to the sent message, or `null`
-- `text` — for a send or an edit, the message text after `--md` conversion; for
-  a delete, the text that was destroyed
+- `text` — for a send, a schedule or an edit, the message text after `--md`
+  conversion; for a delete, the text that was destroyed; for a cancellation,
+  the text that will not now be posted
 - `previous_text` — the wording an edit replaced, or `null`. An edit destroys
   the previous wording as surely as a delete destroys the message, and this is
   the only record of it.
@@ -911,6 +993,13 @@ mistake that causes a duplicate message.
   before any file has been staged, and fills in as each one lands. `null` on
   every record that carries no files. A path that is not valid UTF-8 is
   recorded with the replacement character, JSON strings being Unicode.
+- `post_at` — when a scheduled message posts, in UTC in the same format as
+  `at`: the time asked for on a schedule, the time Slack held on a
+  cancellation. `null` on every other record.
+- `scheduled_message_id` — Slack's id for a scheduled message, the one
+  `--unschedule` takes. A schedule learns it from Slack's reply, so it is
+  `null` on that schedule's intent line; a cancellation has it from its
+  arguments on every line. `null` on every other record.
 
 ### tap records
 
@@ -938,6 +1027,10 @@ LOG=~/.local/state/hersaid/posts.jsonl
 jq -c --arg d "$(date -u +%F)" \
   'select(.phase == "outcome" and .action == "message.send" and .ok == true
           and (.at | startswith($d)))' "$LOG"
+
+# messages scheduled, with the id and conversation that cancel them
+jq -c 'select(.phase == "outcome" and .action == "message.schedule" and .ok == true)
+       | {post_at, channel_id, scheduled_message_id, text}' "$LOG"
 
 # everything destroyed or rewritten, with what it used to say
 jq -c 'select(.phase == "outcome" and .ok == true
@@ -1028,6 +1121,9 @@ action, never the wording.
   whether Slack keeps the shares through one is not established — an edit that
   silently detached them is the failure the read-before-write gate exists to
   prevent.
+- `sez --scheduled` and `sez --unschedule` see only messages scheduled through
+  Slack's API. Slack refuses to cancel a scheduled message in the last 60
+  seconds before it posts.
 - `sez --edit` and `sez --delete` refuse outright if the `hear` they find is too
   old to report what a message carries. The two binaries are installed together
   but `sez` falls back to `PATH`, and an older `hear` is wrong in both

@@ -17,14 +17,18 @@ import (
 // tri-state ok. A single struct shared by both record types would silently
 // change all four.
 const (
-	goldenPostIntent = `{"at":"2026-08-03T09:15:00Z","by":"stepan","phase":"intent","action":null,"channel":"#eng","channel_id":"C0123ABCD","thread_ts":null,"dry_run":false,"ok":null,"error":null,"ts":null,"permalink":null,"text":"hello","slack_text":null,"previous_text":null,"files":null}`
+	goldenPostIntent = `{"at":"2026-08-03T09:15:00Z","by":"alice","phase":"intent","action":null,"channel":"#eng","channel_id":"C0123ABCD","thread_ts":null,"dry_run":false,"ok":null,"error":null,"ts":null,"permalink":null,"text":"hello","slack_text":null,"previous_text":null,"files":null,"post_at":null,"scheduled_message_id":null}`
 
-	goldenPostOutcome = `{"at":"2026-08-03T09:15:01Z","by":"stepan","phase":"outcome","action":null,"channel":"#eng","channel_id":"C0123ABCD","thread_ts":"1785712596.256909","dry_run":false,"ok":true,"error":null,"ts":"1785712599.000100","permalink":"https://example.invalid/archives/C/p1","text":"hello","slack_text":"hello","previous_text":null,"files":null}`
+	goldenPostOutcome = `{"at":"2026-08-03T09:15:01Z","by":"alice","phase":"outcome","action":null,"channel":"#eng","channel_id":"C0123ABCD","thread_ts":"1785712596.256909","dry_run":false,"ok":true,"error":null,"ts":"1785712599.000100","permalink":"https://example.invalid/archives/C/p1","text":"hello","slack_text":"hello","previous_text":null,"files":null,"post_at":null,"scheduled_message_id":null}`
 
 	// An edit, which is the only record that carries both an action and the
 	// wording it replaced — the two fields the other goldens leave at their
 	// zero, and so the only place their position in the key order is pinned.
-	goldenPostEdit = `{"at":"2026-08-03T09:15:03Z","by":"stepan","phase":"outcome","action":"message.update","channel":"#eng","channel_id":"C0123ABCD","thread_ts":null,"dry_run":false,"ok":true,"error":null,"ts":"1785712599.000100","permalink":null,"text":"after","slack_text":"after","previous_text":"before","files":null}`
+	goldenPostEdit = `{"at":"2026-08-03T09:15:03Z","by":"alice","phase":"outcome","action":"message.update","channel":"#eng","channel_id":"C0123ABCD","thread_ts":null,"dry_run":false,"ok":true,"error":null,"ts":"1785712599.000100","permalink":null,"text":"after","slack_text":"after","previous_text":"before","files":null,"post_at":null,"scheduled_message_id":null}`
+
+	// A schedule, the only record carrying post_at and scheduled_message_id,
+	// which pins where those two keys sit.
+	goldenPostSchedule = `{"at":"2026-08-03T09:15:04Z","by":"alice","phase":"outcome","action":"message.schedule","channel":"#eng","channel_id":"C0000000000","thread_ts":null,"dry_run":false,"ok":true,"error":null,"ts":null,"permalink":null,"text":"later","slack_text":"later","previous_text":null,"files":null,"post_at":"2026-08-04T08:00:00Z","scheduled_message_id":"Q0000000000"}`
 
 	goldenReactionOutcome = `{"at":"2026-08-03T09:15:02Z","by":"stepan","phase":"outcome","action":"react.add","channel":"#eng","channel_id":"C0123ABCD","ts":"1785712596.256909","emoji":"thumbsup","dry_run":false,"ok":true,"error":null}`
 )
@@ -40,7 +44,7 @@ func ts(s string) time.Time {
 func TestPostRecordFieldSetAndOrder(t *testing.T) {
 	t.Parallel()
 	got, err := json.Marshal(Post{
-		At: ts("2026-08-03T09:15:00Z"), By: "stepan", Phase: Intent,
+		At: ts("2026-08-03T09:15:00Z"), By: "alice", Phase: Intent,
 		Channel: "#eng", ChannelID: "C0123ABCD", OK: Unknown, Text: "hello",
 	})
 	if err != nil {
@@ -51,7 +55,7 @@ func TestPostRecordFieldSetAndOrder(t *testing.T) {
 	}
 
 	got, err = json.Marshal(Post{
-		At: ts("2026-08-03T09:15:01Z"), By: "stepan", Phase: Outcome,
+		At: ts("2026-08-03T09:15:01Z"), By: "alice", Phase: Outcome,
 		Channel: "#eng", ChannelID: "C0123ABCD", ThreadTS: "1785712596.256909",
 		OK: Succeeded, TS: "1785712599.000100",
 		Permalink: "https://example.invalid/archives/C/p1",
@@ -377,7 +381,7 @@ func TestDefaultPathFollowsXDG(t *testing.T) {
 func TestAnEditRecordPinsItsShape(t *testing.T) {
 	t.Parallel()
 	got, err := json.Marshal(Post{
-		At: ts("2026-08-03T09:15:03Z"), By: "stepan",
+		At: ts("2026-08-03T09:15:03Z"), By: "alice",
 		Phase: Outcome, Action: Update,
 		Channel: "#eng", ChannelID: "C0123ABCD",
 		OK: Succeeded, TS: "1785712599.000100",
@@ -388,5 +392,25 @@ func TestAnEditRecordPinsItsShape(t *testing.T) {
 	}
 	if string(got) != goldenPostEdit {
 		t.Fatalf("edit record\n got: %s\nwant: %s", got, goldenPostEdit)
+	}
+}
+
+// post_at and scheduled_message_id come last, after every key an older record
+// carries, and post_at is written in UTC whatever zone the time was given in.
+func TestAScheduleRecordPinsItsShape(t *testing.T) {
+	t.Parallel()
+	got, err := json.Marshal(Post{
+		At: ts("2026-08-03T09:15:04Z"), By: "alice",
+		Phase: Outcome, Action: Schedule,
+		Channel: "#eng", ChannelID: "C0000000000",
+		OK: Succeeded, Text: "later", SlackText: "later",
+		PostAt:             ts("2026-08-04T09:00:00+01:00"),
+		ScheduledMessageID: "Q0000000000",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != goldenPostSchedule {
+		t.Fatalf("schedule record\n got: %s\nwant: %s", got, goldenPostSchedule)
 	}
 }
