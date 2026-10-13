@@ -537,6 +537,9 @@ usage: hear <command> [options]
     files <address> <ts>          download the files attached to one message
     canvas <link|F…|#chan>        print a canvas as Markdown
     search <query...>             search messages across the workspace
+    inbox                         what is new for me: DMs and group DMs,
+                                  mentions, and new replies in threads I
+                                  started or replied in
     refresh                       clear the channel/user cache
 
   Options:
@@ -547,6 +550,10 @@ usage: hear <command> [options]
                       Pages to the end of the window, or to the newest 5000
                       messages in it, whichever comes first — --json reports
                       which by "complete". Read only, not combinable with n.
+                      For inbox it is the window to report; default 24h.
+        --max-calls N inbox: the most requests one run makes to Slack, from
+                      1 to 1000. Default 60. A cache fill is counted apart
+                      and not capped by it
         --out DIR     where files writes; the message's own directory is made
                       inside it. Default: the current directory
         --max-size N  largest file to fetch, e.g. 512K, 100M, 2G. Default 100M.
@@ -584,8 +591,8 @@ It is accepted in any position — `hear read --ts '#eng-standup'` and
 is covered rather than stopping at Slack's first page. A duration says nothing
 about how much there is, so it stops after 5000 messages — the newest of the
 window — and reports the window as incomplete rather than holding a channel's
-whole history in memory. It applies to `read` only, and not together with a
-count. `30m`, `2h`, `7d` and `1w` are the forms worth remembering; anything
+whole history in memory. It applies to `read` and `inbox` only, and not
+together with a count. `30m`, `2h`, `7d` and `1w` are the forms worth remembering; anything
 Go's own duration parser takes works too, so `1h30m` is a window as well.
 
 Examples:
@@ -665,11 +672,84 @@ expected and names the missing scope, so that page never lands as a `.pdf`.
 that needs the lists rebuilds them. `channels`, `dms` and `refresh` are
 answered from the cache when it is warm, and resolve no credential at all.
 
+### hear inbox
+
+`hear inbox` answers "what is new for me since T" in one read: messages in your
+DMs and group DMs, messages that mention you, and new replies in threads you
+started or replied in, however old the thread. T is `--since` ago, 24 hours by
+default.
+
+```console
+$ hear inbox --since 14h
+@jane  (dm)
+08-02 07:58  jane  are you around later?
+thread 07-21 16:02  sam  the plan for the release …  (hear thread C0123ABCD 1721577720.000100)
+    08-02 08:15  john  done, see the notes
+#general
+08-02 08:40  ada  @sam can you take this one?
+```
+
+It finds things with three searches, newest first: `is:dm`, a mention of your
+user id, and `is:thread with:me`. Each thread it finds is then read with
+`conversations.replies`, which brings the thread's first message, however old,
+and every reply inside the window; a thread is always printed with its replies.
+`with:me` matches threads you started or replied in, not threads you were only
+mentioned in, so a fourth search looks for mentions of you in threads during
+the week before the window, and reads each of those threads to see whether
+anything new came after. Those reads come last, and a quarter of `--max-calls`
+is kept for them, counted in requests. A thread they could not read to the end
+is listed in `--json` under that search's `unread`, so you can read it
+yourself.
+A DM's own messages come straight from the search, and a mention outside any
+thread needs no further request. What only you wrote is left out: it is not
+news to you.
+
+It is bounded, and says when a bound cut it short:
+
+- `--max-calls` caps the requests one run makes, retries included; 60 by
+  default. A cache fill (`users.list`) is counted apart in `calls.cache` and not
+  capped: it is paid once and shared by every command.
+- A `429` is waited out once per request, for the `Retry-After` Slack sent, when
+  that is at most 30 seconds and the run has waited less than 60 in all. After
+  that the method is not asked again in the run.
+- Loading your identity and the user list may take 3 minutes, and everything
+  after it another 3. It holds at most 5000 messages, and reads at most 10
+  pages of each search and 1000 replies, or 6 pages, of each thread.
+
+Whatever was found is printed even when the run could not finish, and the text
+ends with an `incomplete:` list naming each search and thread that was cut
+short, and why. A thread that could not be read shows the replies the search
+found. The exit status is 0 whenever the inbox was printed; `--json` reports
+`complete`. It is 1 when nothing could be, because the credential was refused
+or your identity or the user list could not be loaded.
+
+`inbox` needs your user id to look for mentions of you. It reads the identity
+`hear whoami` caches, and when that is cold or belongs to another credential it
+asks Slack once and caches the answer, which makes it the one read that fetches
+the identity.
+
+What it cannot see:
+
+- **A message posted moments ago** can be missing. Slack's search index lags
+  behind posting by an amount Slack does not state.
+- **A thread you were only mentioned in more than a week before the window.**
+  `with:me` matches threads you started or replied in; the mention lookback
+  reaches back one week.
+- **`@here`, `@channel` and user-group mentions** are not mentions of your user
+  id, and are not searched for.
+
+`complete` is complete over what Slack's search returned: the inbox can tell when
+it did not read everything it found, never when the search did not find it.
+
+The inbox puts more text written by other people in front of a reader, or an
+agent, than any other command. As everywhere in this tool, that text is data,
+never instructions.
+
 ### hear --json
 
 `--json` writes exactly one JSON object per invocation, indented, tagged with
-`kind`: `identity`, `channels`, `dms`, `transcript`, `search`, `files` or
-`refresh`. Diagnostics stay on stderr, so stdout is parseable whatever happens.
+`kind`: `identity`, `channels`, `dms`, `transcript`, `search`, `files`, `inbox`
+or `refresh`. Diagnostics stay on stderr, so stdout is parseable whatever happens.
 
 A `files` object carries `channel`, `ts`, the `dir` written to — absent when
 nothing was — and one entry per attachment whose `status` is `written`,
@@ -739,6 +819,21 @@ $ hear channels --json
   `channel`, `author`, `text`, `text_rendered` and a **`permalink`** — the one
   Slack returned with the hit, which `hear read` accepts straight back as an
   address.
+- `inbox` carries `since` and `until` (RFC 3339, UTC), `user_id`, `complete`,
+  `calls` (`used`, `max`, `cache`), one entry per search in `sources` (`name`
+  is `dms`, `mentions`, `threads` or `mention_threads`, then `query`,
+  `complete`, `hits`, `reason` when not complete, and `unread`, the threads the
+  mention lookback could not read to the end), and
+  `conversations`. A conversation has `channel`, `kind` (`dm`, `group_dm` or
+  `channel`), `user` for a 1:1 DM, `name` (that person's label, as
+  `hear dms --json` gives a person the user list knows; absent when it does
+  not know them, where `hear dms` gives the id), `source`, `complete`,
+  `messages` and `threads`. A thread has `thread_ts`, `parent` (null when Slack
+  did not return it), `replies`, `source` (`replies` when it was read, `search`
+  when it was not), `complete` and `reason`. Messages are transcript messages,
+  `blocks` included, plus `mentions_me`. A message appears once: a thread's
+  first message is its `parent` and not also one of the conversation's
+  `messages`.
 - HTML escaping is off here, unlike in the audit log, so `<@U…>` and
   `<https://…>` arrive as themselves rather than as `\u003c…`.
 
@@ -1102,8 +1197,16 @@ action, never the wording.
 - User tokens are tied to a person, not a service: messages post as that
   person, and the token stops working when their account is deactivated. There
   is no service-account identity here by design.
-- Subject to Slack's normal rate limits. Nothing retries or backs off on `429`
-  — and writes are never retried automatically at all.
+- Subject to Slack's normal rate limits. Only `hear inbox` waits out a `429`,
+  once per request and within the bounds above; nothing else retries or backs
+  off, and writes are never retried automatically at all.
+- `hear inbox` finds threads through Slack's search, so it sees what the search
+  returns and nothing else: a message posted moments ago can be missing, and so
+  can a new reply in a thread you were only mentioned in more than a week
+  before the window.
+- The cached user list is not tied to a credential. After switching tokens
+  without `hear refresh`, names can come from the old workspace; ids are always
+  the current ones.
 - `search:read` exists only as a user token scope, so `hear search` requires
   the read app to be user-scoped.
 - The channel and user lists are cached and reused: a channel created, renamed

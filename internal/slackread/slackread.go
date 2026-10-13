@@ -49,6 +49,10 @@ const conversationTypes = "public_channel,private_channel,im,mpim"
 // hostile or broken server should not be able to exhaust memory.
 const maxBody = 32 << 20
 
+// drainLimit is how much of a refused response is read only to free its
+// connection for reuse.
+const drainLimit = 4 << 10
+
 // maxPages bounds cursor following. At pageSize that is 200,000 entries, far
 // past any real workspace; the bound exists because a server that returns the
 // same non-empty cursor forever — broken, hostile, or something in the middle —
@@ -362,28 +366,20 @@ type SearchMatch struct {
 
 	Permalink string `json:"permalink"`
 	Channel   struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		IsIM   bool   `json:"is_im"`
+		IsMPIM bool   `json:"is_mpim"`
 	} `json:"channel"`
 }
 
 // Search runs a workspace message search.
 func (c *Client) Search(ctx context.Context, query string, count int) ([]SearchMatch, error) {
-	params := url.Values{}
-	params.Set("query", query)
-	params.Set("count", strconv.Itoa(count))
-	var out struct {
-		envelope
-
-		Messages struct {
-			Matches []SearchMatch `json:"matches"`
-		} `json:"messages"`
-	}
-	err := c.get(ctx, "search.messages", params, &out)
+	results, err := c.SearchPage(ctx, SearchOptions{Query: query, Count: count})
 	if err != nil {
 		return nil, err
 	}
-	return out.Messages.Matches, nil
+	return results.Matches, nil
 }
 
 // envelope is the part of every Slack reply that decides success.
@@ -395,10 +391,29 @@ type envelope struct {
 	} `json:"response_metadata"`
 }
 
-// apiError is Slack's ok:false answer to method, with the error code it gave.
-type apiError struct{ method, code string }
+// APIError is Slack's ok:false answer to Method, with the error code it gave.
+// It is exported so a caller can decide what a refusal means by its code
+// rather than by matching the text.
+type APIError struct{ Method, Code string }
 
-func (e apiError) Error() string { return e.method + ": " + e.code }
+func (e APIError) Error() string { return e.Method + ": " + e.Code }
+
+// authCodes are the refusals that say the credential itself is no good, so
+// nothing that follows with it can succeed either.
+var authCodes = map[string]bool{
+	"invalid_auth":     true,
+	"not_authed":       true,
+	"token_revoked":    true,
+	"token_expired":    true,
+	"account_inactive": true,
+}
+
+// IsAuthError reports whether err, however wrapped, is Slack refusing the
+// credential rather than the request.
+func IsAuthError(err error) bool {
+	var ae APIError
+	return errors.As(err, &ae) && authCodes[ae.Code]
+}
 
 // enveloped is what get needs of its destination. Every response struct embeds
 // envelope, so each satisfies it without saying so.
@@ -573,6 +588,15 @@ func (c *Client) get(ctx context.Context, method string, params url.Values, out 
 	}
 	defer resp.Body.Close()
 
+	// A 429 is told apart from every other refusal before the body is read: the
+	// status decides, not the JSON, and a rate limit is the one refusal a caller
+	// may want to wait out.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// Drained, so the connection can carry the retry a caller may make.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, drainLimit))
+		return RateLimitedError{Method: method, RetryAfter: retryAfter(resp.Header.Get("Retry-After"))}
+	}
+
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return fmt.Errorf("network error calling %s: %w", method, err)
@@ -585,7 +609,7 @@ func (c *Client) get(ctx context.Context, method string, params url.Values, out 
 		if apiErr == "" {
 			apiErr = "unknown error"
 		}
-		return apiError{method: method, code: apiErr}
+		return APIError{Method: method, Code: apiErr}
 	}
 	return nil
 }

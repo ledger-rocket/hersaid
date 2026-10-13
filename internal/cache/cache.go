@@ -29,10 +29,11 @@ const (
 	IdentityFile      = "identity.json"
 )
 
-// Identity is who the read token belongs to, from auth.test. It is never
-// fetched on demand — a read's call count is a tested property — so the
-// commands that already call auth.test write it through and reads only look at
-// what is already on disk.
+// Identity is who the read token belongs to, from auth.test. A transcript
+// never fetches it, since a read's call count is a tested property: whoami
+// writes it through, and transcripts only look at what is already on disk.
+// inbox is the one read that fetches it when it is cold, because its mention
+// search cannot be written without the user id; it writes it through too.
 type Identity struct {
 	UserID string `json:"user_id"`
 	User   string `json:"user"`

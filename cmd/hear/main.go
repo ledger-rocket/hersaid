@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,8 +28,10 @@ const cmdRefresh = "refresh"
 
 const cmdFiles = "files"
 
-// cmdCanvas, cmdFiles and cmdRefresh are hear subcommands.
+// cmdCanvas, cmdFiles, cmdInbox and cmdRefresh are hear subcommands.
 const cmdCanvas = "canvas"
+
+const cmdInbox = "inbox"
 
 var errOneFilterMost = errors.New("one filter at most")
 
@@ -47,6 +51,9 @@ const usage = `usage: hear <command> [options]
     files <address> <ts>          download the files attached to one message
     canvas <link|F…|#chan>        print a canvas as Markdown
     search <query...>             search messages across the workspace
+    inbox                         what is new for me: DMs and group DMs,
+                                  mentions, and new replies in threads I
+                                  started or replied in
     refresh                       clear the channel/user cache
 
   An address is #channel, @person, a Slack id, or a message permalink —
@@ -64,6 +71,10 @@ const usage = `usage: hear <command> [options]
                       Pages to the end of the window, or to the newest 5000
                       messages in it, whichever comes first — --json reports
                       which by "complete". Read only, and not combinable with n.
+                      For inbox it is the window to report; default 24h.
+        --max-calls N inbox: the most requests one run makes to Slack, from
+                      1 to 1000. Default 60. A cache fill is counted apart
+                      and not capped by it
         --out DIR     where files writes; the message's own directory is made
                       inside it. Default: the current directory
         --max-size N  largest file to fetch, e.g. 512K, 100M, 2G. Default 100M.
@@ -87,8 +98,15 @@ const usage = `usage: hear <command> [options]
   when any file was skipped or failed, whatever else was written. Needs the
   files:read scope on the read app.
 
+  inbox finds what is new with searches (is:dm, a mention of you, is:thread
+  with:me, and mentions of you in threads during the week before the window)
+  and reads each thread it finds. It prints what it found even when it could
+  not finish, and says so: --json reports "complete", and the text ends with
+  an "incomplete:" list. It exits 0 either way. A message posted moments ago
+  can be missing, because Slack's search index lags.
+
   JSON: one object, tagged with "kind": identity, channels, dms, transcript,
-  search, files or refresh. A transcript carries "channel", "messages" and
+  search, files, inbox or refresh. A transcript carries "channel", "messages" and
   "complete"; "complete": false means Slack held more messages than were read.
   Each message has ts, time (RFC3339), author, user, text, and text_rendered —
   the same text with <@U…> mentions resolved. Diagnostics stay on stderr, so
@@ -159,6 +177,21 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer, where endpoints) int {
+	return runWith(args, stdout, stderr, where, timing{clock: realClock{}, setup: inboxDeadline, deadline: inboxDeadline})
+}
+
+// timing is the clock the inbox reads and waits on, and how long each stage of
+// a run may take: setup, which loads the identity and the user list, and the
+// rest. A test replaces them, so a window is fixed, a wait takes no time and a
+// deadline can be reached on purpose.
+type timing struct {
+	clock    clock
+	setup    time.Duration
+	deadline time.Duration
+}
+
+// runWith is run with the timing the inbox uses.
+func runWith(args []string, stdout, stderr io.Writer, where endpoints, tm timing) int {
 	// First, and with no side effects: --help and --version are answered here,
 	// before the filesystem, the cache or any credential. They are handled by
 	// the parser rather than by cli.Intercept because hear has options of its
@@ -186,6 +219,7 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 		flags:  f,
 		store:  cache.Filling(src),
 		src:    src,
+		timing: tm,
 		stdout: stdout,
 		stderr: stderr,
 	}
@@ -197,13 +231,19 @@ func run(args []string, stdout, stderr io.Writer, where endpoints) int {
 // apply to, or empty. Gated like every other verb-specific flag: a flag
 // accepted and silently dropped teaches that it did something.
 func misplacedFlag(f flags, verb string) string {
-	switch {
-	case f.since != 0 && verb != "read":
-		return "--since applies to read"
-	case (f.out != "" || f.maxSize != 0) && verb != cmdFiles:
-		return "--out and --max-size apply to files"
-	case f.canvasHTML && verb != cmdCanvas:
-		return "--html applies to canvas"
+	for _, g := range []struct {
+		set     bool
+		verbs   []string
+		refusal string
+	}{
+		{f.since != 0, []string{"read", cmdInbox}, "--since applies to read and inbox"},
+		{f.maxCalls != 0, []string{cmdInbox}, "--max-calls applies to inbox"},
+		{f.out != "" || f.maxSize != 0, []string{cmdFiles}, "--out and --max-size apply to files"},
+		{f.canvasHTML, []string{cmdCanvas}, "--html applies to canvas"},
+	} {
+		if g.set && !slices.Contains(g.verbs, verb) {
+			return g.refusal
+		}
 	}
 	return ""
 }
@@ -219,6 +259,7 @@ func (h *hear) dispatch(verb string, rest []string) int {
 		cmdFiles:   h.files,
 		cmdCanvas:  h.canvas,
 		"search":   h.searchVerb,
+		cmdInbox:   h.inboxVerb,
 		cmdRefresh: h.refreshVerb,
 	}
 	run, ok := verbs[verb]
@@ -276,6 +317,7 @@ type hear struct {
 
 	store  *cache.Store
 	src    *source
+	timing timing
 	stdout io.Writer
 	stderr io.Writer
 }
@@ -311,6 +353,9 @@ type source struct {
 	where  endpoints
 	client *slackread.Client
 	files  *slackfiles.Client
+	// budget, when set, is charged for every request the read client sends.
+	// It must be set before the client is first built.
+	budget *slackhttp.Budget
 	// key identifies the credential the client was built from, so a fact
 	// cached under a different one can be told apart from a current fact.
 	key  string
@@ -369,7 +414,11 @@ func (s *source) resolve() {
 		s.err = err
 		return
 	}
-	s.client = slackread.New(c, slackhttp.New(timeout), s.where.api)
+	hc := slackhttp.New(timeout)
+	if s.budget != nil {
+		hc.Transport = s.budget.Wrap(hc.Transport)
+	}
+	s.client = slackread.New(c, hc, s.where.api)
 	s.files = slackfiles.New(c, timeout*downloadTimeoutFactor, s.where.files)
 	s.key = c.Key()
 }
@@ -406,6 +455,8 @@ type flags struct {
 	out string
 	// maxSize is the largest file to fetch in bytes, zero when unset.
 	maxSize int64
+	// maxCalls is inbox's request ceiling, zero when unset.
+	maxCalls int
 	// rest is everything that was not an option, in order: the verb, then its
 	// arguments.
 	rest []string
@@ -543,6 +594,14 @@ var valuedOptions = []valued{
 			return err.Error()
 		}
 		f.maxSize = n
+		return ""
+	}},
+	{name: "--max-calls", missing: "--max-calls needs a number", set: func(f *flags, v string) string {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > maxMaxCalls {
+			return "--max-calls must be a whole number from 1 to 1000: " + v
+		}
+		f.maxCalls = n
 		return ""
 	}},
 }

@@ -32,13 +32,8 @@ func (h *hear) whoami() int {
 		return h.fail(err)
 	}
 	// whoami already paid for auth.test, so the result is written through: one
-	// whoami warms the marker every later read uses, at no extra call. The error
-	// is dropped deliberately — the answer came from Slack, and an unwritable
-	// cache must not fail a whoami that already has it.
-	_ = cache.Write(cache.IdentityFile, cache.Identity{
-		UserID: resp.UserID, User: resp.User, Team: resp.Team,
-		CredentialKey: h.src.credentialKey(),
-	})
+	// whoami warms the marker every later read uses, at no extra call.
+	h.rememberIdentity(resp)
 	if h.asJSON {
 		return h.emit(render.Identity{
 			Kind: render.KindIdentity, User: resp.User, Team: resp.Team, UserID: resp.UserID,
@@ -47,6 +42,17 @@ func (h *hear) whoami() int {
 	// Two spaces before the id: the column is part of the format people read.
 	fmt.Fprintf(h.stdout, "%s @ %s  (%s)\n", resp.User, resp.Team, resp.UserID)
 	return cli.ExitOK
+}
+
+// rememberIdentity writes an auth.test answer through to the cache, bound to
+// the credential it came from. The error is dropped deliberately: the answer
+// came from Slack, and an unwritable cache must not fail a command that already
+// has it.
+func (h *hear) rememberIdentity(resp *slackread.AuthTestResponse) {
+	_ = cache.Write(cache.IdentityFile, cache.Identity{
+		UserID: resp.UserID, User: resp.User, Team: resp.Team,
+		CredentialKey: h.src.credentialKey(),
+	})
 }
 
 func (h *hear) channels(filter string) int {
