@@ -25,6 +25,13 @@ if [[ ! -x "$DIST/hear" && -x "$SRC/hear" ]]; then
   DIST="$SRC"
 fi
 
+# A release archive holds no source, so there is nothing to build there even
+# with Go installed: the commands beside this script are what installs.
+SOURCE_CHECKOUT=false
+if [[ -f "$SRC/go.mod" ]]; then
+  SOURCE_CHECKOUT=true
+fi
+
 say()  { printf '%s\n' "$*"; }
 warn() { printf '\033[33m%s\033[0m\n' "$*" >&2; }
 err()  { printf '\033[31m%s\033[0m\n' "$*" >&2; }
@@ -40,9 +47,9 @@ usage: install.sh
     PREFIX   where to install the commands. Default: ~/.local/bin, or ~/bin when
              that is the one already on PATH.
 
-  A Go toolchain builds the commands into ./dist. Without one, whatever is
-  already in ./dist is what gets installed, which is how downloaded release
-  binaries are set up.
+  In a source checkout, a Go toolchain builds the commands into ./dist, and
+  without one whatever is already in ./dist is installed. A release archive
+  installs the commands that come with it, whether or not Go is present.
 
   Exit: 0 installed, 1 nothing to install, 2 usage.
 EOF
@@ -73,7 +80,7 @@ esac
 
 # --- the binaries ---------------------------------------------------------
 
-if command -v go >/dev/null 2>&1; then
+if $SOURCE_CHECKOUT && command -v go >/dev/null 2>&1; then
   # go build stamps the revision, the commit date and a dirty tree by itself.
   # Only a tag has to be passed in, and only when one describes this commit.
   # The module path is asked for rather than written out, so a rename cannot
@@ -92,13 +99,22 @@ if command -v go >/dev/null 2>&1; then
 else
   for cmd in "${COMMANDS[@]}"; do
     if [[ ! -x "$DIST/$cmd" ]]; then
-      err "no Go toolchain, and $DIST/$cmd is not there to install."
-      err "  Install Go — https://go.dev/dl/ — and run this again, or put the"
-      err "  release binaries in $DIST/ first."
+      if $SOURCE_CHECKOUT; then
+        err "no Go toolchain, and $DIST/$cmd is not there to install."
+        err "  Install Go — https://go.dev/dl/ — and run this again, or put the"
+        err "  release binaries in $DIST/ first."
+      else
+        err "$cmd is missing from this release archive ($SRC)."
+        err "  Download and extract the archive again; there is no source here to build."
+      fi
       exit 1
     fi
   done
-  say "no Go toolchain — installing what is already in $DIST"
+  if $SOURCE_CHECKOUT; then
+    say "no Go toolchain — installing what is already in $DIST"
+  else
+    say "installing the release commands in $DIST"
+  fi
 fi
 
 # --- install into a directory on PATH -------------------------------------

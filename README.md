@@ -37,9 +37,9 @@ PREFIX=/usr/local/bin ./install.sh
 
 `install.sh`:
 
-- builds `hear`, `sez`, `tap` and `hersaid-setup` into `./dist` when a Go
-  toolchain is present; without one it installs whatever is already in
-  `./dist`, which is how downloaded release binaries are installed
+- builds `hear`, `sez`, `tap` and `hersaid-setup` into `./dist` when it runs
+  in a source checkout with a Go toolchain; in a release archive, or without
+  Go, it installs the commands already there
 - picks an install directory: `$PREFIX` if set, else `~/.local/bin` if already
   on `PATH`, else `~/bin` if already on `PATH`, else `~/.local/bin`; warns if
   the chosen directory still isn't on `PATH`

@@ -59,7 +59,11 @@ jobs:
       - name: Installed commands outlive a cleaned tree
         run: |
           prefix="$(mktemp -d)"
-          PREFIX="$prefix" ./install.sh >/dev/null
+          # Emptied first, so the step passes only if a source checkout with Go
+          # really builds rather than installing what the step above left.
+          rm -rf dist
+          out="$(PREFIX="$prefix" ./install.sh)"
+          grep -q '^built:' <<<"$out" || { echo "a source checkout with Go must build: $out"; exit 1; }
           rm -rf dist
           for cmd in hear sez tap hersaid-setup; do
             "$prefix/$cmd" --version >/dev/null
@@ -130,6 +134,36 @@ jobs:
             "$prefix/$cmd" >/dev/null || { echo "$cmd does not run"; exit 1; }
           done
           echo "ok - an extracted archive installs itself"
+      # The same layout on a machine that has Go. With no source beside it there
+      # is nothing to build, and the commands in the archive are what installs.
+      - name: Install from a release-archive layout with Go on PATH
+        run: |
+          # A go that fails if it is run: present for the check, and proof that
+          # nothing builds.
+          fakego="$(mktemp -d)"
+          printf '#!/bin/sh\necho "go was run: $*" >&2\nexit 97\n' > "$fakego/go"
+          chmod +x "$fakego/go"
+          export PATH="$fakego:$PATH"
+          arch="$(mktemp -d)"; prefix="$(mktemp -d)"
+          cp install.sh "$arch/"
+          for cmd in hear sez tap hersaid-setup; do
+            printf '#!/bin/sh\necho ok\n' > "$arch/$cmd"
+            chmod +x "$arch/$cmd"
+          done
+          out="$(cd "$arch" && PREFIX="$prefix" ./install.sh 2>&1)" || { echo "install failed: $out"; exit 1; }
+          grep -q "installing the release commands" <<<"$out" || { echo "wrong branch: $out"; exit 1; }
+          for cmd in hear sez tap hersaid-setup; do
+            test -x "$prefix/$cmd" || { echo "$cmd was not installed"; exit 1; }
+            "$prefix/$cmd" >/dev/null || { echo "$cmd does not run"; exit 1; }
+          done
+          # An archive missing a command must say so, not ask for Go.
+          rm "$arch/sez"
+          if out="$(cd "$arch" && PREFIX="$prefix" ./install.sh 2>&1)"; then
+            echo "an incomplete archive must fail the install"
+            exit 1
+          fi
+          grep -q "missing from this release archive" <<<"$out" || { echo "wrong diagnosis: $out"; exit 1; }
+          echo "ok - an extracted archive installs itself with Go on PATH"
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
