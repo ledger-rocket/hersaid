@@ -428,7 +428,7 @@ func (l *Log) append(rec any) error {
 	// serialise the same way here as it does for any other caller, and the
 	// outer encoder re-escapes a MarshalJSON result anyway. Go spells < > & as
 	// \u003c \u003e \u0026 where jq spells them literally; jq -r decodes both
-	// to the same string, so the README's examples are unaffected.
+	// to the same string, so the examples in docs/audit-log.md are unaffected.
 	body, err := json.Marshal(rec)
 	if err != nil {
 		return fmt.Errorf("audit: %w", err)

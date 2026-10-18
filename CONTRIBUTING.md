@@ -6,7 +6,7 @@ issue: follow [SECURITY.md](SECURITY.md).
 ## Before you start
 
 Open an issue first for anything larger than a small fix. hersaid holds a
-narrow safety model (see [The safety model](README.md#the-safety-model)), and a
+narrow safety model (see [The safety model](docs/safety-model.md)), and a
 change that widens what a command can do is easier to agree on before it is
 written. In particular, a pull request is not accepted if it:
 
@@ -40,8 +40,10 @@ needs one uses it.
   (`#general`, `#eng`) and ids (`C0123ABCD`, `U0123ABCDE`). Never paste real
   workspace content, names or ids, even in a comment.
 - Comments say why the code is the way it is, not what it does.
-- A change to what a command prints or accepts updates `README.md` in the same
-  pull request.
+- A change to what a command prints or accepts updates the page under `docs/`
+  that describes it in the same pull request, and `README.md` too when its
+  quick start or summaries mention it. The release install snippet is in both
+  `README.md` and `docs/install.md`: change both.
 
 ## Commits and pull requests
 

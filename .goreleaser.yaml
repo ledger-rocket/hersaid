@@ -60,9 +60,14 @@ archives:
       # binary that contains their code.
       - THIRD_PARTY_NOTICES.md
       - README.md
-      # The README links both, so an extracted archive carries them too.
+      # The README links these, so an extracted archive carries them too.
       - CONTRIBUTING.md
       - SECURITY.md
+      # The top level of docs/ only: docs/superpowers holds design notes for
+      # contributors, not reference for someone installing a release.
+      - docs/*.md
+      # The README shows these, so they render when the archive is read offline.
+      - docs/images/*
       - install.sh
 
 checksum:
