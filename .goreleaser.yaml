@@ -59,6 +59,9 @@ archives:
       # binary that contains their code.
       - THIRD_PARTY_NOTICES.md
       - README.md
+      # The README links both, so an extracted archive carries them too.
+      - CONTRIBUTING.md
+      - SECURITY.md
       - install.sh
 
 checksum:
@@ -72,3 +75,6 @@ changelog:
 release:
   # Draft: the archives are built and attached, and a human presses publish.
   draft: true
+  # A -rc tag is marked a prerelease, so it never becomes the latest release
+  # the README installs from.
+  prerelease: auto

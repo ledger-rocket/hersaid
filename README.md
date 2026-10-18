@@ -19,8 +19,10 @@ Each command is a single Go binary: no interpreter, no `jq`, no SDK, nothing
 fetched while it runs, nothing to install alongside it. A Linux build at
 `CGO_ENABLED=0` is fully static. **A macOS build is not, and cannot be** — a
 darwin binary links `libSystem` and `Security.framework` even at
-`CGO_ENABLED=0`. The one thing any of them execs is `/usr/bin/security`, on
-macOS, to read the keychain; the file credential needs nothing at all.
+`CGO_ENABLED=0`. They exec three things: `/usr/bin/security`, on macOS, to
+read the keychain; `dbus-launch`, found on `PATH`, on a Linux host with no
+session bus, when the keyring lookup tries to start one; and `hear`, which
+`sez --edit` and `sez --delete` run to read the message they change.
 
 ```console
 $ hear read '#general' 5          # read
@@ -30,7 +32,54 @@ $ sez --send '#general' 'deploy is done'
 
 ## Install
 
+macOS and Linux, on amd64 or arm64. Each route installs all four commands;
+none of them sets up a credential. [Credentials](#credentials) does that.
+
+### From a release
+
+No Go toolchain needed. Download the latest archive for your platform from
+[Releases](https://github.com/ledger-rocket/hersaid/releases), check it against
+`checksums.txt`, unpack it and run the installer inside it:
+
 ```sh
+cd "$(mktemp -d)"
+os=$(uname -s | tr '[:upper:]' '[:lower:]')                   # darwin or linux
+arch=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')    # amd64 or arm64
+base=https://github.com/ledger-rocket/hersaid/releases/latest/download
+curl -fsSLO "$base/checksums.txt"
+tarball=$(grep -o "hersaid_[^ ]*_${os}_${arch}\.tar\.gz" checksums.txt) ||
+  echo "no release archive for ${os}/${arch}; use go install or build from source" >&2
+curl -fsSLO "$base/$tarball"
+sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+grep " $tarball\$" checksums.txt | sha256 -c - &&
+  mkdir -p hersaid && tar -xzf "$tarball" -C hersaid &&
+  ./hersaid/install.sh
+```
+
+The last command stops at a checksum mismatch, so a corrupted or incomplete
+download is never installed. `checksums.txt` comes from the same release and is
+not signed, so it does not prove who built the archive.
+
+### With `go install`
+
+```sh
+go install github.com/ledger-rocket/hersaid/cmd/hear@latest
+go install github.com/ledger-rocket/hersaid/cmd/sez@latest
+go install github.com/ledger-rocket/hersaid/cmd/tap@latest
+go install github.com/ledger-rocket/hersaid/cmd/hersaid-setup@latest
+```
+
+This puts the commands in `$(go env GOBIN)`, or in `$(go env GOPATH)/bin` when
+that is empty; make sure that directory is on `PATH`. It needs the Go version
+in `go.mod`. A Go 1.21 or later toolchain downloads it for itself unless
+`go env GOTOOLCHAIN` prints `local`. Install
+all four: `sez --edit` and `sez --delete` run `hear` to read the message they
+change.
+
+### From source
+
+```sh
+git clone https://github.com/ledger-rocket/hersaid.git && cd hersaid
 ./install.sh                      # build into ./dist, install onto PATH
 PREFIX=/usr/local/bin ./install.sh
 ```
@@ -46,7 +95,7 @@ PREFIX=/usr/local/bin ./install.sh
 - copies the four commands into it, and is safe to re-run
 
 The commands are copied rather than symlinked because `dist` is build output
-and gitignored, so a link into it dangles as soon as the tree is cleaned — and
+and gitignored, so a link into it dangles as soon as the tree is cleaned, and
 a command that disappears reports only `command not found`. Re-run the
 installer to pick up a rebuild.
 
@@ -54,16 +103,6 @@ It enrols nothing. `hersaid-setup` does that, and it is the only thing that
 checks a token against Slack, and the scopes it was granted against the role,
 before storing it. An installer that prompted as well would be free to disagree
 with the commands about where a credential lives.
-
-Manual alternative:
-
-```sh
-go build -o dist/hear ./cmd/hear
-go build -o dist/sez ./cmd/sez
-go build -o dist/tap ./cmd/tap
-go build -o dist/hersaid-setup ./cmd/hersaid-setup
-install -m 0755 dist/hear dist/sez dist/tap dist/hersaid-setup ~/bin/
-```
 
 ## Editing and deleting
 
@@ -1281,6 +1320,13 @@ action, never the wording.
   taken of it stays in range.
 - Uploads follow no redirect. Slack has not been observed to redirect one, and
   a hop is not something to discover by taking it.
-- Windows is not supported: XDG paths, `0600`, Unix signals and symlink
-  installation throughout. WSL is a Linux environment and uses the Linux paths
+- Windows is not supported: XDG paths, `0600` file modes and Unix signals
+  throughout. WSL is a Linux environment and uses the Linux paths
   and the file credential fallback.
+
+## Contributing, security and licence
+
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to build, test and send a change.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- Apache License 2.0, see [LICENSE](LICENSE). The notices for the bundled
+  dependencies are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
