@@ -1,0 +1,17 @@
+---
+extends: default
+
+# Build output (goreleaser writes YAML into dist/) and nested agent checkouts
+# are not this repo's source; a local run must lint what CI lints.
+ignore-from-file: .gitignore
+
+rules:
+  # SHA-pinned actions, goreleaser's ldflags and workflow shell lines run past
+  # 80 columns with no clean place to break; 120 still catches a runaway line.
+  line-length:
+    max: 120
+  # .golangci.yml keeps its sequences flush with the parent key, as the Go
+  # service template it is adapted from does; the other files indent them.
+  # Each file is consistent with itself, which is what this checks.
+  indentation:
+    indent-sequences: consistent

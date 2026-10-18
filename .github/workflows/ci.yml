@@ -1,3 +1,4 @@
+---
 name: CI
 'on':
   push:
@@ -11,12 +12,13 @@ jobs:
     name: Go
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
+          persist-credentials: false
           # The build stamps the version from git; a shallow clone with no tags
           # would report every build as untagged.
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -72,14 +74,19 @@ jobs:
     name: Installer
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Syntax-check and lint the installer
+      - name: Syntax-check and lint the shell scripts
         run: |
           bash -n install.sh
           shellcheck --shell=bash install.sh
           echo "ok - install.sh"
+          bash -n scripts/govulncheck.sh
+          shellcheck scripts/govulncheck.sh
+          echo "ok - scripts/govulncheck.sh"
       # The branch a release-binary user takes: no Go, dist/ already populated.
       # Nothing else exercises it — the Go job has a toolchain, so install.sh
       # always builds there and this half never runs.
@@ -161,7 +168,8 @@ jobs:
           # On a terminal the warning is coloured, even with stdout redirected,
           # since the warning goes to stderr; NO_COLOR turns that off.
           tty_out="$(script -qec "cd '$arch' && PREFIX='$prefix' ./install.sh >/dev/null" /dev/null)"
-          grep -q $'\033\\[33m.*is not on your PATH.*\033\\[0m' <<<"$tty_out" || { echo "warning not coloured and reset on a terminal: $tty_out"; exit 1; }
+          grep -q $'\033\\[33m.*is not on your PATH.*\033\\[0m' <<<"$tty_out" ||
+            { echo "warning not coloured and reset on a terminal: $tty_out"; exit 1; }
           tty_out="$(NO_COLOR=1 script -qec "cd '$arch' && PREFIX='$prefix' ./install.sh" /dev/null)"
           grep -q "is not on your PATH" <<<"$tty_out" || { echo "no PATH warning under NO_COLOR: $tty_out"; exit 1; }
           if grep -q $'\033' <<<"$tty_out"; then echo "NO_COLOR ignored: $tty_out"; exit 1; fi
@@ -176,22 +184,53 @@ jobs:
           if tty_out="$(script -qec "cd '$arch' && PREFIX='$prefix' ./install.sh" /dev/null)"; then
             echo "an incomplete archive must fail the install on a terminal"; exit 1
           fi
-          grep -q $'\033\\[31m.*missing from this release archive' <<<"$tty_out" || { echo "error not red on a terminal: $tty_out"; exit 1; }
+          grep -q $'\033\\[31m.*missing from this release archive' <<<"$tty_out" ||
+            { echo "error not red on a terminal: $tty_out"; exit 1; }
           echo "ok - an extracted archive installs itself with Go on PATH"
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
       # 2.14.0 is the first release that type-checks Go 1.27 code.
       # Formatters (gofumpt, goimports) run as part of this step.
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9  # v8.0.0
         with:
           version: v2.14.0
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The pin, the targets and why a red run is not always a code change
+      # are in the script.
+      - name: Scan dependencies for known vulnerabilities
+        run: ./scripts/govulncheck.sh
+  yamllint:
+    name: yamllint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          persist-credentials: false
+      # pipx ships on the hosted runner, so a pinned yamllint needs no
+      # third-party action. Its dependencies are pinned too: pathspec applies
+      # the .gitignore exclusions. Dependabot does not read run: lines; bump
+      # these by hand. --strict fails on warnings too.
+      - name: Lint YAML
+        run: pipx run --spec yamllint==1.37.1 --pip-args='pathspec==1.1.1 pyyaml==6.0.3' yamllint --strict .
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -199,11 +238,14 @@ jobs:
       - go
       - shell
       - lint
+      - govulncheck
+      - yamllint
     if: always()
     steps:
       - name: Check that every required job passed
         run: |
-          for r in "${{ needs.go.result }}" "${{ needs.shell.result }}" "${{ needs.lint.result }}"; do
+          for r in "${{ needs.go.result }}" "${{ needs.shell.result }}" "${{ needs.lint.result }}" \
+            "${{ needs.govulncheck.result }}" "${{ needs.yamllint.result }}"; do
             if [ "$r" != "success" ]; then
               echo "a required job did not succeed: $r"
               exit 1

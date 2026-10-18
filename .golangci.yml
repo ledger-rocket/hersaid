@@ -1,3 +1,4 @@
+---
 # golangci-lint config for hersaid.
 # Adapted from a Go service template: its base linter set plus the template's additions
 # (28 extra linters, mnd, grouper and their settings). depguard is not enabled: its rules
@@ -254,13 +255,13 @@ linters:
   # finding count on main when this file was adopted. A PR that brings one to 0 moves it
   # back to enable in the same change.
   disable:
-  - errcheck # 200
-  - wrapcheck # 54
-  - staticcheck # 10
-  - paralleltest # 558
-  - gosec # 8
-  - exhaustive # 8
-  - gosmopolitan # 5
+  - errcheck  # 200
+  - wrapcheck  # 54
+  - staticcheck  # 10
+  - paralleltest  # 558
+  - gosec  # 8
+  - exhaustive  # 8
+  - gosmopolitan  # 5
 severity:
   default: error
   rules:
