@@ -15,6 +15,7 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/render"
 	"github.com/ledger-rocket/hersaid/internal/resolve"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
+	"github.com/ledger-rocket/hersaid/internal/termsafe"
 )
 
 var (
@@ -40,7 +41,7 @@ func (h *hear) whoami() int {
 		})
 	}
 	// Two spaces before the id: the column is part of the format people read.
-	fmt.Fprintf(h.stdout, "%s @ %s  (%s)\n", resp.User, resp.Team, resp.UserID)
+	fmt.Fprintf(h.stdout, "%s @ %s  (%s)\n", termsafe.Label(resp.User), termsafe.Label(resp.Team), termsafe.Text(resp.UserID))
 	return cli.ExitOK
 }
 
@@ -82,11 +83,12 @@ func (h *hear) channels(filter string) int {
 	// transcript form cannot, so only the structured output lists both.
 	seen := ""
 	for i, r := range refs {
-		if i > 0 && r.Name == seen {
+		line := listAddress("#", r.Name, r.ID)
+		if i > 0 && line == seen {
 			continue
 		}
-		seen = r.Name
-		fmt.Fprintln(h.stdout, "#"+r.Name)
+		seen = line
+		fmt.Fprintln(h.stdout, line)
 	}
 	return cli.ExitOK
 }
@@ -114,11 +116,12 @@ func (h *hear) dms(filter string) int {
 	}
 	seen := ""
 	for i, d := range list {
-		if i > 0 && d.Name == seen {
+		line := listAddress("@", d.Name, d.ID)
+		if i > 0 && line == seen {
 			continue
 		}
-		seen = d.Name
-		fmt.Fprintln(h.stdout, "@"+d.Name)
+		seen = line
+		fmt.Fprintln(h.stdout, line)
 	}
 	return cli.ExitOK
 }
@@ -322,7 +325,7 @@ func (h *hear) transcript(ch render.ChannelRef, threadTS string, msgs []slackrea
 	}
 	opts := render.Options{
 		ShowTS:        h.showTS,
-		ThreadCommand: "hear thread " + address(ch),
+		ThreadCommand: "hear thread " + printableAddress(ch),
 	}
 	// The identity is a label the read already holds, never a fetch: a cold or
 	// unreadable one leaves SelfID empty and the transcript renders unchanged.
@@ -377,6 +380,27 @@ func address(ch render.ChannelRef) string {
 		return ch.Input
 	}
 	return ch.ID
+}
+
+// printableAddress is address when it prints as it is, and the id otherwise.
+// The address is what the reader typed, and the hint is a command to run: a
+// sanitised copy would print safely and then fail to resolve.
+func printableAddress(ch render.ChannelRef) string {
+	a := address(ch)
+	if termsafe.Label(a) != a {
+		return ch.ID
+	}
+	return a
+}
+
+// listAddress is one line of a channel or DM list: the name, which is what a
+// reader types back, unless printing it safely would change it. Then it is the
+// id, which still resolves where the changed name would not.
+func listAddress(prefix, name, id string) string {
+	if safe := termsafe.Label(name); safe != "" && safe == name {
+		return prefix + name
+	}
+	return termsafe.Text(id)
 }
 
 // matches is a case-insensitive substring filter, and no match is an empty

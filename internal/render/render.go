@@ -20,6 +20,7 @@ import (
 	"github.com/ledger-rocket/hersaid/internal/cache"
 	"github.com/ledger-rocket/hersaid/internal/humansize"
 	"github.com/ledger-rocket/hersaid/internal/slackread"
+	"github.com/ledger-rocket/hersaid/internal/termsafe"
 )
 
 // continuation is what a wrapped line is indented by, so the text of a
@@ -81,6 +82,37 @@ func (n Names) Author(m slackread.Message) string {
 	return "?"
 }
 
+// terminal is n with every label made safe to print. A label that is nothing
+// but stripped characters is dropped rather than kept empty, so a lookup falls
+// back as it does for an unknown id and the line still says who.
+func (n Names) terminal() Names {
+	t := make(Names, len(n))
+	for id, label := range n {
+		if safe := termsafe.Label(label); safe != "" {
+			t[id] = safe
+		}
+	}
+	return t
+}
+
+// terminalAuthor is Author for a terminal, with n already made safe by
+// terminal. Each later step is made safe before it is chosen, so a username
+// that strips to nothing gives way to the bot id, and the user id is the last
+// resort before "?", as it is for a mention.
+func (n Names) terminalAuthor(m slackread.Message) string {
+	return firstPrintable(n[m.User], termsafe.Label(m.Username), termsafe.Label(m.BotID), termsafe.Text(m.User))
+}
+
+// firstPrintable is the first of names that is not empty, or "?".
+func firstPrintable(names ...string) string {
+	for _, s := range names {
+		if s != "" {
+			return s
+		}
+	}
+	return "?"
+}
+
 // Options controls how a transcript is written.
 type Options struct {
 	// ShowTS prefixes each message with its raw Slack timestamp, which is what
@@ -112,29 +144,35 @@ func (o Options) location() *time.Location {
 // WriteTranscript writes messages oldest-first, one block per message. Ordering is
 // the caller's: conversations.history answers newest-first and must be
 // reversed, while conversations.replies is already oldest-first.
+//
+// Every name and every text is passed through termsafe on its way out, since a
+// workspace member chooses each of them. A line break in the text is kept and
+// indented to the text column, so it cannot start what looks like a message of
+// its own; one in a name is removed with the rest of its controls.
 func WriteTranscript(w io.Writer, msgs []slackread.Message, names Names, opts Options) error {
 	loc := opts.location()
+	safe := names.terminal()
 	var b strings.Builder
 	for _, m := range msgs {
 		b.Reset()
 		if opts.ShowTS {
-			b.WriteString(m.TS)
+			b.WriteString(termsafe.Text(m.TS))
 			b.WriteString("  ")
 		}
 		b.WriteString(Stamp(m.TS, loc))
 		b.WriteString("  ")
-		b.WriteString(names.Author(m))
+		b.WriteString(safe.terminalAuthor(m))
 		b.WriteString("  ")
-		b.WriteString(strings.ReplaceAll(names.Text(m.Text), "\n", "\n"+continuation))
+		b.WriteString(indented(safe.Text(m.Text), continuation))
 		if len(m.Reactions) > 0 {
-			fmt.Fprintf(&b, "\n%s%s", continuation, reactionsLine(m.Reactions, names, opts.SelfID))
+			fmt.Fprintf(&b, "\n%s%s", continuation, termsafe.Label(reactionsLine(m.Reactions, safe, opts.SelfID)))
 		}
 		if len(m.Files) > 0 {
 			fmt.Fprintf(&b, "\n%s%s", continuation, filesLine(m.Files))
 		}
 		if m.ReplyCount > 0 && opts.ThreadCommand != "" {
 			fmt.Fprintf(&b, "\n%s⤷ %d replies — %s %s",
-				continuation, m.ReplyCount, opts.ThreadCommand, m.TS)
+				continuation, m.ReplyCount, termsafe.Label(opts.ThreadCommand), termsafe.Text(m.TS))
 		}
 		_, err := fmt.Fprintln(w, b.String())
 		if err != nil {
@@ -283,20 +321,25 @@ func reactorLabel(u string, names Names, selfID string) string {
 // column. The author is the username Slack
 // returned with the hit rather than a user-list lookup, because search results
 // carry no user id to look up.
+//
+// The text's later lines are indented as a transcript's are. Every hit starts
+// "#channel  author", and an unindented line of that shape would read as a hit
+// from someone else.
 func WriteSearch(w io.Writer, matches []slackread.SearchMatch, names Names, opts Options) error {
+	safe := names.terminal()
 	var b strings.Builder
 	for _, m := range matches {
 		b.Reset()
 		if opts.ShowTS {
-			b.WriteString(m.TS)
+			b.WriteString(termsafe.Text(m.TS))
 			b.WriteString("  ")
 		}
 		b.WriteString("#")
-		b.WriteString(orQuestionMark(m.Channel.Name))
+		b.WriteString(orQuestionMark(termsafe.Label(m.Channel.Name)))
 		b.WriteString("  ")
-		b.WriteString(orQuestionMark(m.Username))
+		b.WriteString(orQuestionMark(termsafe.Label(m.Username)))
 		b.WriteString("  ")
-		b.WriteString(names.Text(m.Text))
+		b.WriteString(indented(safe.Text(m.Text), continuation))
 		_, err := fmt.Fprintln(w, b.String())
 		if err != nil {
 			return err
@@ -317,9 +360,9 @@ func WriteFiles(w io.Writer, results []FileResult) error {
 		var line string
 		switch r.Status {
 		case "written":
-			line = fmt.Sprintf("%-7s %s (%s)", "wrote", r.Path, humansize.Bytes(r.Bytes))
+			line = fmt.Sprintf("%-7s %s (%s)", "wrote", termsafe.Text(r.Path), humansize.Bytes(r.Bytes))
 		default:
-			line = fmt.Sprintf("%-7s %s — %s", r.Status, r.Name, r.Reason)
+			line = fmt.Sprintf("%-7s %s — %s", r.Status, termsafe.Text(r.Name), termsafe.Text(r.Reason))
 		}
 		_, err := fmt.Fprintln(w, line)
 		if err != nil {
@@ -327,6 +370,12 @@ func WriteFiles(w io.Writer, results []FileResult) error {
 		}
 	}
 	return nil
+}
+
+// indented makes message text safe to print and starts each of its later lines
+// with prefix, which ends at the text column.
+func indented(text, prefix string) string {
+	return strings.ReplaceAll(termsafe.TextKeepingNewlines(text), "\n", "\n"+prefix)
 }
 
 func orQuestionMark(s string) string {
@@ -338,13 +387,13 @@ func orQuestionMark(s string) string {
 
 // Stamp renders a Slack timestamp as the transcript's date column, in loc.
 //
-// A timestamp that will not parse is returned unchanged rather than dropped or
-// replaced: it is the only handle the reader has on that message, and Slack
-// has no other field that identifies one.
+// A timestamp that will not parse is returned rather than dropped or replaced,
+// made safe to print: it is the only handle the reader has on that message, and
+// Slack has no other field that identifies one.
 func Stamp(ts string, loc *time.Location) string {
 	t, ok := parseTS(ts, loc)
 	if !ok {
-		return ts
+		return termsafe.Text(ts)
 	}
 	return t.Format(stampFormat)
 }

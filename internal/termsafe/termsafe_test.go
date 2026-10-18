@@ -75,3 +75,58 @@ func TestIsHostileAgreesWithText(t *testing.T) {
 		}
 	}
 }
+
+// Message text keeps the two joiners that shape what is written: the
+// zero-width joiner builds one emoji out of several, and the zero-width
+// non-joiner keeps Persian letters apart. Neither moves the cursor or reorders
+// a line. The bidi controls and the invisible tag characters still go.
+func TestTextKeepingNewlinesKeepsTheJoiners(t *testing.T) {
+	t.Parallel()
+	const (
+		zwj  = rune(0x200d)
+		zwnj = rune(0x200c)
+		man  = rune(0x1f468)
+		girl = rune(0x1f467)
+		tagA = rune(0xe0061) // TAG LATIN SMALL LETTER A, invisible
+	)
+	family := string(man) + string(zwj) + string(girl)
+	persian := "mi" + string(zwnj) + "khaham"
+	for _, c := range []struct {
+		name, in, want string
+	}{
+		{"zero-width joiner", family + " deployed", family + " deployed"},
+		{"zero-width non-joiner", persian, persian},
+		{"bidi override still goes", "a" + string(rlo) + "b", "ab"},
+		{"tag characters still go", "ok" + string(tagA) + string(tagA), "ok"},
+		{"line breaks kept", "one\ntwo", "one\ntwo"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := TextKeepingNewlines(c.in); got != c.want {
+				t.Errorf("TextKeepingNewlines(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// A name keeps the joiners as message text does, and loses a line break, which
+// message text keeps.
+func TestLabelKeepsTheJoinersAndDropsLineBreaks(t *testing.T) {
+	t.Parallel()
+	coder := "Sam " + string(rune(0x1f469)) + string(rune(0x200d)) + string(rune(0x1f4bb))
+	for _, c := range []struct {
+		name, in, want string
+	}{
+		{"zero-width joiner kept", coder, coder},
+		{"line break removed", "ann\nboss", "annboss"},
+		{"bidi override removed", "a" + string(rlo) + "b", "ab"},
+		{"escape removed", "a" + string(esc) + "[2Jb", "a[2Jb"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := Label(c.in); got != c.want {
+				t.Errorf("Label(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}

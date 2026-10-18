@@ -169,3 +169,50 @@ func TestTSLessComparesAsNumbers(t *testing.T) {
 		}
 	}
 }
+
+// A thread's parent is one line of message text, and it keeps the joiners a
+// message keeps. Its author is a name, and falls back when it strips to
+// nothing.
+func TestInboxParentKeepsTheJoinersAndAnAuthor(t *testing.T) {
+	t.Parallel()
+	family := "\U0001F468\u200d\U0001F467"
+	parent := inboxMsg("1700050000.000100", "\x1b\u202e", family+" shipped")
+	in := Inbox{Complete: true, Conversations: []InboxConversation{{
+		Channel: ChannelRef{ID: "C0000000001", Name: "general"}, Kind: ConversationChannel, Complete: true,
+		Threads: []InboxThread{{ThreadTS: "1700050000.000100", Parent: &parent, Complete: true}},
+	}}}
+	var b bytes.Buffer
+	err := WriteInbox(&b, in, opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), family+" shipped") {
+		t.Fatalf("inbox lost the joiner: %q", b.String())
+	}
+	if !strings.Contains(b.String(), "  ?  "+family) {
+		t.Fatalf("inbox = %q, want an author that strips to nothing to read ?", b.String())
+	}
+}
+
+// An inbox author that strips to nothing falls back as a transcript's does,
+// through the bot id to the user id; a header falls back to the id.
+func TestInboxNamesThatStripToNothingFallBack(t *testing.T) {
+	t.Parallel()
+	m := inboxMsg("1700050000.000100", "\x1b\u202e", "hi")
+	m.User = "U0000000009"
+	in := Inbox{Complete: true, Conversations: []InboxConversation{{
+		Channel: ChannelRef{ID: "D0000000001"}, Kind: ConversationDM, Name: "\u202e", Complete: true,
+		Messages: []InboxMessage{m},
+	}}}
+	var b bytes.Buffer
+	err := WriteInbox(&b, in, opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "  U0000000009  hi") {
+		t.Fatalf("inbox = %q, want the author to fall back to the user id", b.String())
+	}
+	if !strings.HasPrefix(b.String(), "D0000000001  (dm)\n") {
+		t.Fatalf("inbox = %q, want the header to fall back to the id", b.String())
+	}
+}

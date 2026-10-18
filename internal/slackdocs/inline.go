@@ -123,7 +123,7 @@ func clean(s string) string {
 		}
 		return r
 	}, s)
-	s = termsafe.Text(strings.ReplaceAll(s, "\u00a0", " "))
+	s = termsafe.Label(strings.ReplaceAll(s, "\u00a0", " "))
 	return angleEscaper.Replace(s)
 }
 

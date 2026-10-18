@@ -17,6 +17,11 @@ import (
 	"unicode"
 )
 
+const (
+	zeroWidthNonJoiner = '\u200c'
+	zeroWidthJoiner    = '\u200d'
+)
+
 // Text returns s with everything that could drive or rearrange a terminal
 // removed.
 //
@@ -45,12 +50,18 @@ func IsHostile(r rune) bool {
 	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
 }
 
-// TextKeepingNewlines is Text for content where a line break is part of what is
-// being shown — the inside of a code block, where removing them would run every
-// line together. Everything else that could drive a terminal still goes.
+// TextKeepingNewlines is Text for multi-line content a person reads: a message,
+// a canvas, the inside of a code block, where removing line breaks would run
+// every line together. Everything else that could drive a terminal still goes.
+//
+// Content also keeps the zero-width joiner and non-joiner. The joiner is how
+// one emoji is built from several and the non-joiner keeps Persian letters
+// apart, and neither moves the cursor or reorders a line. The rest of the
+// format category still goes, the tag characters included: they are invisible
+// to a person, and a model reading the same transcript reads them as text.
 func TextKeepingNewlines(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r == '\n' || r == '\t' {
+		if r == '\n' || r == '\t' || isJoiner(r) {
 			return r
 		}
 		if IsHostile(r) {
@@ -58,4 +69,25 @@ func TextKeepingNewlines(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// Label is Text for a name a person reads: a display name, a username, a
+// channel. It keeps the joiners for the reason TextKeepingNewlines does, since
+// a name can hold an emoji or be written in Persian; a line break and
+// everything else hostile still goes. A filename or a path takes Text, where an
+// invisible joiner is one more way for two names to look the same.
+func Label(s string) string {
+	return strings.Map(func(r rune) rune {
+		if isJoiner(r) {
+			return r
+		}
+		if IsHostile(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func isJoiner(r rune) bool {
+	return r == zeroWidthNonJoiner || r == zeroWidthJoiner
 }

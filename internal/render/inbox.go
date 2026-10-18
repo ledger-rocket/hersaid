@@ -183,15 +183,16 @@ func entries(c InboxConversation) []entry {
 // 1:1 DM, by the name the JSON carries or else the id, the name Slack gives a
 // group DM, #name for a channel, and the id when there is nothing better.
 func ConversationLabel(c InboxConversation) string {
+	name, user, channel := termsafe.Label(c.Name), termsafe.Label(c.User), termsafe.Label(c.Channel.Name)
 	switch {
-	case c.Kind == ConversationDM && c.Name != "":
-		return "@" + termsafe.Text(c.Name)
-	case c.Kind == ConversationDM && c.User != "":
-		return "@" + termsafe.Text(c.User)
-	case c.Kind == ConversationChannel && c.Channel.Name != "":
-		return "#" + termsafe.Text(c.Channel.Name)
-	case c.Channel.Name != "":
-		return termsafe.Text(c.Channel.Name)
+	case c.Kind == ConversationDM && name != "":
+		return "@" + name
+	case c.Kind == ConversationDM && user != "":
+		return "@" + user
+	case c.Kind == ConversationChannel && channel != "":
+		return "#" + channel
+	case channel != "":
+		return channel
 	default:
 		return termsafe.Text(c.Channel.ID)
 	}
@@ -221,7 +222,7 @@ func writeThread(b *strings.Builder, c InboxConversation, t InboxThread, opts Op
 		b.WriteString(" (parent not returned)")
 	} else {
 		b.WriteString(head(*t.Parent, opts))
-		b.WriteString(termsafe.Text(oneLine(t.Parent.TextRendered, parentWidth)))
+		b.WriteString(termsafe.TextKeepingNewlines(oneLine(t.Parent.TextRendered, parentWidth)))
 	}
 	b.WriteString(hint)
 	b.WriteByte('\n')
@@ -235,12 +236,12 @@ func writeThread(b *strings.Builder, c InboxConversation, t InboxThread, opts Op
 func head(m InboxMessage, opts Options) string {
 	var b strings.Builder
 	if opts.ShowTS {
-		b.WriteString(m.TS)
+		b.WriteString(termsafe.Text(m.TS))
 		b.WriteString("  ")
 	}
 	b.WriteString(Stamp(m.TS, opts.location()))
 	b.WriteString("  ")
-	b.WriteString(termsafe.Text(m.Author))
+	b.WriteString(firstPrintable(termsafe.Label(m.Author), termsafe.Label(m.BotID), termsafe.Text(m.User)))
 	b.WriteString("  ")
 	return b.String()
 }
@@ -248,8 +249,7 @@ func head(m InboxMessage, opts Options) string {
 func writeMessage(b *strings.Builder, indent string, m InboxMessage, opts Options) {
 	b.WriteString(indent)
 	b.WriteString(head(m, opts))
-	text := termsafe.TextKeepingNewlines(m.TextRendered)
-	b.WriteString(strings.ReplaceAll(text, "\n", "\n"+indent+continuation))
+	b.WriteString(indented(m.TextRendered, indent+continuation))
 	if len(m.Files) > 0 {
 		fmt.Fprintf(b, "\n%s%s%s", indent, continuation, fileRefsLine(m.Files))
 	}

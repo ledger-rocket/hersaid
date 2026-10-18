@@ -404,6 +404,14 @@ text. Mention substitution uses a replacement function whose return value is
 used literally, so a display name containing `$1` or `${x}` is printed, not
 expanded. The Markdown conversion does the same for the same reason.
 
+The same text is printed to your terminal, so none of it reaches the terminal
+raw. `hear` removes control characters, escape sequences and bidi overrides
+from every name, message, filename and canvas it prints. A line break inside a
+message is kept and indented to the text column, so it does not start a line of
+its own. A name that would print differently is listed by its id instead, so
+what `hear channels` and `hear dms` print still resolves. `--json` carries the
+text exactly as Slack sent it.
+
 ### Parameter smuggling is impossible
 
 Every request is built from endpoint-specific typed arguments and encoded as a
