@@ -66,6 +66,8 @@ archives:
       # The top level of docs/ only: docs/superpowers holds design notes for
       # contributors, not reference for someone installing a release.
       - docs/*.md
+      # The README shows these, so they render when the archive is read offline.
+      - docs/images/*
       - install.sh
 
 checksum:

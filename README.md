@@ -194,8 +194,17 @@ The full list is in [docs/usage.md](docs/usage.md#limitations).
 
 ## Documentation
 
-The full reference is in [docs/](docs/README.md): install, credentials and
-environment, usage, the safety model and the audit log.
+The full reference is in [docs/](docs/README.md):
+
+- [Install](docs/install.md): the three install routes in full.
+- [Credentials](docs/credentials.md): the Slack apps and their scopes,
+  `hersaid-setup`, where things live, and the environment variables.
+- [Usage](docs/usage.md): every `hear`, `sez` and `tap` command and flag, with
+  examples, and the full list of limitations.
+- [Safety model](docs/safety-model.md): what each command can and cannot do,
+  and why.
+- [Audit log](docs/audit-log.md): the record `sez` and `tap` keep of every
+  attempt, field by field, and how to query it.
 
 ## Contributing, security and licence
 
