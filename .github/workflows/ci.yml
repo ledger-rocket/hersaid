@@ -3,7 +3,6 @@ name: CI
   push:
     branches:
       - main
-      - go-port
   pull_request: null
 permissions:
   contents: read
