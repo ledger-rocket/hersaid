@@ -19,7 +19,7 @@ Only the latest release gets fixes.
 
 ## Scope
 
-In scope, because the [safety model](README.md#the-safety-model) promises it:
+In scope, because the [safety model](docs/safety-model.md) promises it:
 
 - `hear` reaching a Slack write endpoint, or carrying write code in its binary
 - `sez` delivering anything without `--send`, or delivering text that differs

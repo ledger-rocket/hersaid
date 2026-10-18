@@ -202,7 +202,7 @@ func (c *Client) AuthTest(ctx context.Context) (*AuthTestResponse, error) {
 // "does not exist".
 func (c *Client) ConversationsList(ctx context.Context) ([]cache.Conversation, error) {
 	// Empty, not nil: this list is written to the cache verbatim, where a null
-	// in place of [] breaks every `jq '.channels[]'` the README documents.
+	// in place of [] breaks every `jq '.channels[]'` a cache reader runs.
 	all := []cache.Conversation{}
 	cursor := ""
 	for range maxPages {
