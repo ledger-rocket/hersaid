@@ -1,3 +1,4 @@
+---
 # Two channels: GitHub Releases and `go install`. A Homebrew tap and a
 # container wait until there is someone asking for them.
 version: 2

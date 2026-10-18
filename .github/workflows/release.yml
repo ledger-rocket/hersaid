@@ -49,6 +49,10 @@ jobs:
             exit 1
           fi
       - run: go test -race -count=1 ./...
+      # CI scans main as of its last push; an advisory published since then
+      # must still stop the release.
+      - name: Scan dependencies for known vulnerabilities
+        run: ./scripts/govulncheck.sh
 
   release:
     needs: gates

@@ -24,9 +24,11 @@ go build ./...
 go vet ./...
 go test -race -count=1 ./...
 golangci-lint run ./...           # the version CI pins is in .github/workflows/ci.yml
+./scripts/govulncheck.sh          # every release platform, with the version CI pins
+yamllint --strict .               # from the repo root; CI's version is in .github/workflows/ci.yml
 ```
 
-CI also runs `gofmt -l .` and lints `install.sh` with `shellcheck`. The tests
+CI also runs `gofmt -l .` and lints the shell scripts with `shellcheck`. The tests
 never reach Slack: `internal/slacktest` is a fake Slack API, and a test that
 needs one uses it.
 
