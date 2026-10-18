@@ -30,6 +30,10 @@ $ sez '#general' 'deploy is done' # renders it, sends nothing
 $ sez --send '#general' 'deploy is done'
 ```
 
+![A terminal. hear read #eng prints three messages from alice and bob, one with an eyes reaction and one with a hint to open its thread. Then sez #eng with a reply prints a dry run: nothing sent, the channel resolved to its id, and the message as Slack will receive it.](docs/images/terminal.png)
+
+*Example output with made-up people, channel and messages, not a capture from a real workspace.*
+
 ## Install
 
 macOS and Linux, on amd64 or arm64. Each route installs all four commands;
