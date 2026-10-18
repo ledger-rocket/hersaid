@@ -152,10 +152,20 @@ jobs:
           done
           out="$(cd "$arch" && PREFIX="$prefix" ./install.sh 2>&1)" || { echo "install failed: $out"; exit 1; }
           grep -q "installing the release commands" <<<"$out" || { echo "wrong branch: $out"; exit 1; }
+          # Captured output is not a terminal, so it must carry no colour codes.
+          grep -q "is not on your PATH" <<<"$out" || { echo "no PATH warning: $out"; exit 1; }
+          if grep -q $'\033' <<<"$out"; then echo "escape codes in captured output: $out"; exit 1; fi
           for cmd in hear sez tap hersaid-setup; do
             test -x "$prefix/$cmd" || { echo "$cmd was not installed"; exit 1; }
             "$prefix/$cmd" >/dev/null || { echo "$cmd does not run"; exit 1; }
           done
+          # On a terminal the warning is coloured, even with stdout redirected,
+          # since the warning goes to stderr; NO_COLOR turns that off.
+          tty_out="$(script -qec "cd '$arch' && PREFIX='$prefix' ./install.sh >/dev/null" /dev/null)"
+          grep -q $'\033\\[33m.*is not on your PATH.*\033\\[0m' <<<"$tty_out" || { echo "warning not coloured and reset on a terminal: $tty_out"; exit 1; }
+          tty_out="$(NO_COLOR=1 script -qec "cd '$arch' && PREFIX='$prefix' ./install.sh" /dev/null)"
+          grep -q "is not on your PATH" <<<"$tty_out" || { echo "no PATH warning under NO_COLOR: $tty_out"; exit 1; }
+          if grep -q $'\033' <<<"$tty_out"; then echo "NO_COLOR ignored: $tty_out"; exit 1; fi
           # An archive missing a command must say so, not ask for Go.
           rm "$arch/sez"
           if out="$(cd "$arch" && PREFIX="$prefix" ./install.sh 2>&1)"; then
@@ -163,6 +173,11 @@ jobs:
             exit 1
           fi
           grep -q "missing from this release archive" <<<"$out" || { echo "wrong diagnosis: $out"; exit 1; }
+          if grep -q $'\033' <<<"$out"; then echo "escape codes in captured error: $out"; exit 1; fi
+          if tty_out="$(script -qec "cd '$arch' && PREFIX='$prefix' ./install.sh" /dev/null)"; then
+            echo "an incomplete archive must fail the install on a terminal"; exit 1
+          fi
+          grep -q $'\033\\[31m.*missing from this release archive' <<<"$tty_out" || { echo "error not red on a terminal: $tty_out"; exit 1; }
           echo "ok - an extracted archive installs itself with Go on PATH"
   lint:
     name: golangci-lint

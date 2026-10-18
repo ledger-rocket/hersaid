@@ -32,9 +32,16 @@ if [[ -f "$SRC/go.mod" ]]; then
   SOURCE_CHECKOUT=true
 fi
 
+# Colour only for a person at a terminal: a log or a pipe would keep the raw
+# escape codes. NO_COLOR is the https://no-color.org convention.
+YELLOW='' RED='' RESET=''
+if [[ -t 2 && -z "${NO_COLOR:-}" ]]; then
+  YELLOW=$'\033[33m' RED=$'\033[31m' RESET=$'\033[0m'
+fi
+
 say()  { printf '%s\n' "$*"; }
-warn() { printf '\033[33m%s\033[0m\n' "$*" >&2; }
-err()  { printf '\033[31m%s\033[0m\n' "$*" >&2; }
+warn() { printf '%s%s%s\n' "$YELLOW" "$*" "$RESET" >&2; }
+err()  { printf '%s%s%s\n' "$RED" "$*" "$RESET" >&2; }
 
 usage() {
   cat <<'EOF'
@@ -146,7 +153,7 @@ for cmd in "${COMMANDS[@]}"; do
 done
 
 if ! on_path "$TARGET"; then
-  warn ""
+  printf '\n' >&2
   warn "$TARGET is not on your PATH. Add this line, then open a new shell:"
   warn "    export PATH=\"$TARGET:\$PATH\""
 fi
