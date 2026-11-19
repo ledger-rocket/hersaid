@@ -1,6 +1,6 @@
 module github.com/ledger-rocket/hersaid
 
-go 1.27.2
+go 1.27.4
 
 require (
 	github.com/zalando/go-keyring v0.2.8
