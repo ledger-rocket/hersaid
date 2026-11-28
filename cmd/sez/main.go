@@ -56,10 +56,10 @@ const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|
   Renders the message WITHOUT sending unless --send is given. Read the rendered
   text first; deliver it second.
 
-  Every option goes before the target. After it, a word that starts with "--"
-  (other than "--" itself), or is -n or -h, is refused (exit 2), not sent as
-  text. To send such a word, pipe the text on stdin, quote it inside a longer
-  argument, or put "--" before the target.
+  Every option goes before the target. After it, an argument shaped like a long
+  option (--name or --name=value), known or not, or -n or -h, is refused
+  (exit 2), not sent as text. To send such a word, pipe the text on stdin,
+  quote it inside a longer argument, or put "--" before the target.
   Text may be given as an argument, or piped on stdin (use "-" or omit it).
   With --file the text becomes the message carried alongside the files; omitting
   it means no comment, and stdin is not read. "-" still reads it.

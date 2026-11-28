@@ -38,8 +38,9 @@ const usage = `usage: tap [--remove] [--dry-run] <#chan|@person|ID> <ts> <emoji>
   review — so unlike sez it needs no render step, and it can carry a different
   permission policy from messages.
 
-  Every option goes before the target. After it, a word that starts with "--"
-  (other than "--" itself), or is -r, -n or -h, is refused (exit 2).
+  Every option goes before the target. After it, an argument shaped like a long
+  option (--name or --name=value), known or not, or -r, -n or -h, is refused
+  (exit 2).
 
   Options:
     -r, --remove      remove the reaction instead of adding it

@@ -71,14 +71,17 @@ func TestAFlagAfterTheTargetIsRefused(t *testing.T) {
 }
 
 // Text that only contains dashes, or holds an option inside a longer argument,
-// is still text: a word refused is one that starts with "--" (other than "--"
-// itself) or is one of sez's short options exactly.
+// is still text: an argument refused is one shaped like a long option, --name
+// or --name=value, or one of sez's short options exactly.
 func TestTextThatMerelyContainsDashesStillSends(t *testing.T) {
 	cases := map[string][]string{
 		"use -- to stop options":      {"--send", "#eng", "use", "--", "to", "stop", "options"},
 		"a--b -nope -5 -n=3":          {"--send", "#eng", "a--b", "-nope", "-5", "-n=3"},
 		"pass --thread before the id": {"--send", "#eng", "pass --thread before the id"},
 		"- is a dash":                 {"--send", "#eng", "- is a dash"},
+		"--thread is how to reply":    {"--send", "#eng", "--thread is how to reply"},
+		"---":                         {"--send", "#eng", "---"},
+		"-- Bob":                      {"--send", "#eng", "-- Bob"},
 	}
 	for want, args := range cases {
 		t.Run(want, func(t *testing.T) {
