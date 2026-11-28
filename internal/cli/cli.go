@@ -81,8 +81,9 @@ func Intercept(args []string, name, usage string, stdout io.Writer) (int, bool) 
 	return 0, false
 }
 
-// longOption is the shape of a long option, alone or as --name=value.
-var longOption = regexp.MustCompile(`^--[A-Za-z][A-Za-z0-9_-]*(=.*)?$`)
+// longOption is the shape of a long option, alone or as --name=value. A value
+// with a space in it is a quoted sentence, not an option.
+var longOption = regexp.MustCompile(`^--[A-Za-z][A-Za-z0-9_-]*(=\S*)?$`)
 
 // LateOption returns the first of args that reads as an option, or "" when
 // none does. A long option is refused whether or not the command knows it:

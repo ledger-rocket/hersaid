@@ -33,6 +33,7 @@ func TestAFlagAfterTheTargetIsRefused(t *testing.T) {
 		"--unschedule":        {"--send", "#eng", "--unschedule", "Q1298393284"},
 		"--thread_ts":         {"--send", "#eng", "--thread_ts", "1795765280.039559", "hi"},
 		"--reply-to":          {"--send", "#eng", "--reply-to", "1795765280.039559", "hi"},
+		"--md as ts":          {"--send", "--edit", "U0A4Z4BE3N3", "--md", "new text"},
 		"--help":              {"--send", "#eng", "hi", "--help"},
 		"-h":                  {"--send", "#eng", "hi", "-h"},
 		"--version":           {"--send", "#eng", "hi", "--version"},
@@ -60,6 +61,7 @@ func TestAFlagAfterTheTargetIsRefused(t *testing.T) {
 			if lines := strings.Count(stderr, "\n"); lines != 1 {
 				t.Fatalf("stderr has %d lines, want 1:\n%s", lines, stderr)
 			}
+			flag := strings.TrimSuffix(flag, " as ts")
 			if !strings.Contains(stderr, "sez: "+flag+" comes after the target") {
 				t.Fatalf("stderr does not name %s as misplaced: %q", flag, stderr)
 			}
@@ -82,6 +84,7 @@ func TestTextThatMerelyContainsDashesStillSends(t *testing.T) {
 		"--thread is how to reply":    {"--send", "#eng", "--thread is how to reply"},
 		"---":                         {"--send", "#eng", "---"},
 		"-- Bob":                      {"--send", "#eng", "-- Bob"},
+		"--retries=3 fixed it":        {"--send", "#eng", "--retries=3 fixed it"},
 	}
 	for want, args := range cases {
 		t.Run(want, func(t *testing.T) {
