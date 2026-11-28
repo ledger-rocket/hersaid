@@ -100,6 +100,16 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 		return code
 	}
 	remove, dry := f.remove, f.dry
+	// Options are read only before the target, so one written after it would be
+	// taken as the ts or the emoji: `tap U0123 1785712596.256909 --remove` added
+	// a reaction named --remove. After "--" the arguments are operands by request.
+	if !f.literal {
+		if opt := misplacedFlag(f.rest); opt != "" {
+			fmt.Fprintf(stderr, "tap: %s comes after the target and would be read as the ts or emoji; "+
+				"put every option before it: tap [--remove] [--dry-run] <target> <ts> <emoji>\n", opt)
+			return cli.ExitUsage
+		}
+	}
 	channel, targetTS, emoji, code, ok := reactionArgs(f.rest, stderr)
 	if !ok {
 		return code
@@ -344,6 +354,22 @@ type flags struct {
 	dry    bool
 	// rest is everything after the options: channel, ts, emoji.
 	rest []string
+	// literal is set by "--": what follows is the operands even where an
+	// argument spells one of the options.
+	literal bool
+}
+
+// misplacedFlag returns the first argument that spells one of tap's options,
+// alone or as --opt=value, or "" when there is none.
+func misplacedFlag(args []string) string {
+	for _, a := range args {
+		opt, _, _ := strings.Cut(a, "=")
+		switch opt {
+		case "--remove", "-r", "--dry-run", "-n", "-h", "--help", "--version":
+			return a
+		}
+	}
+	return ""
 }
 
 // parseFlags reads the leading options. done reports that there is nothing left
@@ -366,7 +392,7 @@ func parseFlags(args []string, stdout, stderr io.Writer) (flags, bool, int) {
 		case "--version":
 			return f, true, cli.Version(stdout, name)
 		case "--":
-			f.rest = args[1:]
+			f.rest, f.literal = args[1:], true
 			return f, false, 0
 		default:
 			if strings.HasPrefix(args[0], "-") && args[0] != "-" {
