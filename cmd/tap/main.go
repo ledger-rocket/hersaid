@@ -38,6 +38,10 @@ const usage = `usage: tap [--remove] [--dry-run] <#chan|@person|ID> <ts> <emoji>
   review — so unlike sez it needs no render step, and it can carry a different
   permission policy from messages.
 
+  Every option goes before the target. After it, an argument shaped like a long
+  option (--name or --name=value), known or not, or -r, -n or -h, is refused
+  (exit 2).
+
   Options:
     -r, --remove      remove the reaction instead of adding it
     -n, --dry-run     resolve and validate without calling Slack
@@ -369,14 +373,30 @@ func parseFlags(args []string, stdout, stderr io.Writer) (flags, bool, int) {
 			f.rest = args[1:]
 			return f, false, 0
 		default:
-			if strings.HasPrefix(args[0], "-") && args[0] != "-" {
-				return f, true, cli.Usage(stderr, name, usage, "unknown flag: "+args[0])
-			}
-			f.rest = args
-			return f, false, 0
+			code, done := f.operands(args, stderr)
+			return f, done, code
 		}
 	}
 	return f, false, 0
+}
+
+// operands takes args, which start at the first argument that is not an
+// option, as the channel, ts and emoji, or refuses them.
+func (f *flags) operands(args []string, stderr io.Writer) (int, bool) {
+	if strings.HasPrefix(args[0], "-") && args[0] != "-" {
+		return cli.Usage(stderr, name, usage, "unknown flag: "+args[0]), true
+	}
+	// Options are read only before the target, so one written after it would be
+	// taken as the ts or the emoji: `tap U0123 <ts> --remove` added a reaction
+	// named --remove. After "--" the arguments are operands by request, so this
+	// check is only here.
+	if opt := cli.LateOption(args[1:], "-r", "-n", "-h"); opt != "" {
+		fmt.Fprintf(stderr, "tap: %s comes after the target and would be read as the ts or emoji; "+
+			"put every option first: tap [options] <target> <ts> <emoji>\n", opt)
+		return cli.ExitUsage, true
+	}
+	f.rest = args
+	return 0, false
 }
 
 func fail(stderr io.Writer, format string, a ...any) int {

@@ -56,6 +56,10 @@ const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|
   Renders the message WITHOUT sending unless --send is given. Read the rendered
   text first; deliver it second.
 
+  Every option goes before the target. After it, an argument shaped like a long
+  option (--name or --name=value), known or not, or -n or -h, is refused
+  (exit 2), not sent as text. To send such a word, pipe the text on stdin,
+  quote it inside a longer argument, or put "--" before the target.
   Text may be given as an argument, or piped on stdin (use "-" or omit it).
   With --file the text becomes the message carried alongside the files; omitting
   it means no comment, and stdin is not read. "-" still reads it.
@@ -1286,6 +1290,16 @@ func (f *flags) final(args []string, stdout, stderr io.Writer) (int, bool) {
 	}
 	if strings.HasPrefix(args[0], "-") && args[0] != "-" {
 		return cli.Usage(stderr, name, usage, "unknown flag: "+args[0]), true
+	}
+	// Options are read only before the target, so one written after it would be
+	// sent as message text. After "--" (the case above) the arguments are text by
+	// request, so this check is only here.
+	if opt := cli.LateOption(args[1:], "-n", "-h"); opt != "" {
+		fmt.Fprintf(stderr, "sez: %s comes after the target and would be sent as text; "+
+			"put every option first: sez [options] <target> [ts] [text]. "+
+			"To send it as text, pipe it on stdin, quote it inside a longer argument, "+
+			"or put \"--\" before the target.\n", opt)
+		return cli.ExitUsage, true
 	}
 	f.rest = args
 	return 0, false

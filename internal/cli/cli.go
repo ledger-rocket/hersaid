@@ -11,6 +11,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"regexp"
+	"slices"
 
 	"github.com/ledger-rocket/hersaid/internal/version"
 )
@@ -77,4 +79,25 @@ func Intercept(args []string, name, usage string, stdout io.Writer) (int, bool) 
 		return Version(stdout, name), true
 	}
 	return 0, false
+}
+
+// longOption is the shape of a long option, alone or as --name=value. A value
+// with a space in it is a quoted sentence, not an option.
+var longOption = regexp.MustCompile(`^--[A-Za-z][A-Za-z0-9_-]*(=\S*)?$`)
+
+// LateOption returns the first of args that reads as an option, or "" when
+// none does. A long option is refused whether or not the command knows it:
+// `--thread_ts` after the target is a mistake as surely as `--thread`. short
+// lists the command's own short options. Any other argument is text, "--",
+// "---", "-5" and a quoted "-- Bob" among them.
+//
+// sez and tap read options only before the target, so an option written after
+// it would otherwise become message text or an operand.
+func LateOption(args []string, short ...string) string {
+	for _, a := range args {
+		if longOption.MatchString(a) || slices.Contains(short, a) {
+			return a
+		}
+	}
+	return ""
 }

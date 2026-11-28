@@ -345,6 +345,10 @@ usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|@person|ID> [te
   Renders the message WITHOUT sending unless --send is given. Read the rendered
   text first; deliver it second.
 
+  Every option goes before the target. After it, an argument shaped like a long
+  option (--name or --name=value), known or not, or -n or -h, is refused
+  (exit 2), not sent as text. To send such a word, pipe the text on stdin,
+  quote it inside a longer argument, or put "--" before the target.
   Text may be given as an argument, or piped on stdin (use "-" or omit it).
   With --file, omitting the text means no comment and stdin is not read; "-"
   still reads it.
@@ -443,6 +447,13 @@ Details:
   resolved or the log is opened. A channel argument starting with `-` is
   refused rather than swallowed — as an unknown flag (exit 2), or, after `--`,
   as a suspicious channel (exit 1).
+- Options are read only before the target. After it, an argument shaped like
+  a long option (`--name` or `--name=value`), known to `sez` or not, or that is
+  `-n` or `-h`, exits 2 with one line that names it and shows the order;
+  nothing is read, logged or sent. Other text with dashes, such as `a -- b`,
+  `a--b`, `-5`, `---` or a quoted `-- Bob`, still sends, and so does any
+  argument after a `--` placed before the target, and anything on stdin. A `--` after the target is a word
+  of the text, so an option after it is still refused.
 - `--md` converts once, before the render, the audit record and the wire all
   see it — rendering what you typed while sending something else is precisely
   what `--send` exists to prevent.
@@ -573,6 +584,10 @@ emoji   : :eyes:
 
 - The emoji may carry surrounding colons or not; otherwise it must be
   lowercase letters, digits, `_`, `+` or `-`.
+- Options are read only before the target. After it, an argument shaped like
+  a long option (`--name` or `--name=value`), or that is `-r`, `-n` or `-h`, exits 2
+  with one line that names it, rather than becoming the ts or the emoji; after
+  a `--` placed before the target, it is an operand.
 - `already_reacted` on add and `no_reaction` on remove are **successes**: the
   state you asked for already holds. `tap` prints a note, exits 0, and the log
   records `ok:true` with the Slack code in `error`.

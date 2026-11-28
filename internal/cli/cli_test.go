@@ -97,3 +97,24 @@ func TestUsageIsADiagnostic(t *testing.T) {
 		t.Fatalf("stderr = %q, want the usage text too", stderr.String())
 	}
 }
+
+// LateOption refuses every long option, known or not, and only the short
+// options it is given; "--" itself and words with one dash are text.
+func TestLateOption(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"hi", "--thread", "1"}, "--thread"},
+		{[]string{"--thread_ts=1"}, "--thread_ts=1"},
+		{[]string{"-n"}, "-n"},
+		{[]string{"--", "a--b", "-nope", "-5", "-n=3", "-", "---", "-- Bob", "--thread is how", "--5", "--retries=3 fixed it"}, ""},
+		{[]string{"-r"}, ""}, // a short option of another command is text here
+		{nil, ""},
+	}
+	for _, c := range cases {
+		if got := LateOption(c.args, "-n", "-h"); got != c.want {
+			t.Errorf("LateOption(%q) = %q, want %q", c.args, got, c.want)
+		}
+	}
+}
