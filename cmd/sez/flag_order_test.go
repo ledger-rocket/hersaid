@@ -31,6 +31,8 @@ func TestAFlagAfterTheTargetIsRefused(t *testing.T) {
 		"--in":                {"--send", "#eng", "--in", "2h", "hi"},
 		"--scheduled":         {"--send", "#eng", "hi", "--scheduled"},
 		"--unschedule":        {"--send", "#eng", "--unschedule", "Q1298393284"},
+		"--thread_ts":         {"--send", "#eng", "--thread_ts", "1795765280.039559", "hi"},
+		"--reply-to":          {"--send", "#eng", "--reply-to", "1795765280.039559", "hi"},
 		"--help":              {"--send", "#eng", "hi", "--help"},
 		"-h":                  {"--send", "#eng", "hi", "-h"},
 		"--version":           {"--send", "#eng", "hi", "--version"},
@@ -68,12 +70,13 @@ func TestAFlagAfterTheTargetIsRefused(t *testing.T) {
 	}
 }
 
-// Text that only contains dashes, or holds a flag inside a longer argument, is
-// still text: the guard compares whole arguments to sez's own option names.
+// Text that only contains dashes, or holds an option inside a longer argument,
+// is still text: a word refused is one that starts with "--" (other than "--"
+// itself) or is one of sez's short options exactly.
 func TestTextThatMerelyContainsDashesStillSends(t *testing.T) {
 	cases := map[string][]string{
 		"use -- to stop options":      {"--send", "#eng", "use", "--", "to", "stop", "options"},
-		"a--b --threads -nope":        {"--send", "#eng", "a--b", "--threads", "-nope"},
+		"a--b -nope -5 -n=3":          {"--send", "#eng", "a--b", "-nope", "-5", "-n=3"},
 		"pass --thread before the id": {"--send", "#eng", "pass --thread before the id"},
 		"- is a dash":                 {"--send", "#eng", "- is a dash"},
 	}
@@ -128,5 +131,36 @@ func TestAFlagWordOnStdinIsText(t *testing.T) {
 	}
 	if got := sent(t, s); got != "--thread is how to reply" {
 		t.Fatalf("text on the wire = %q, want %q", got, "--thread is how to reply")
+	}
+}
+
+// "--" before the target also covers the ts and the text of an edit: the ts is
+// taken off the front and an option word in the text stays text.
+func TestDoubleDashCoversTheTextOfAnEdit(t *testing.T) {
+	isolate(t)
+	var stdout, stderr strings.Builder
+	inv, code, done := parseInvocation([]string{"--edit", "--", "#eng", "1795765280.039559", "--md", "is", "a", "flag"},
+		strings.NewReader(""), &stdout, &stderr)
+	if done {
+		t.Fatalf("parse ended with exit %d (stderr %q)", code, stderr.String())
+	}
+	if inv.ts != "1795765280.039559" || inv.text != "--md is a flag" {
+		t.Fatalf("ts = %q, text = %q; want 1795765280.039559 and %q", inv.ts, inv.text, "--md is a flag")
+	}
+}
+
+// A "--" after the target is a word of the text, not the end of the options,
+// so an option after it is still refused.
+func TestDoubleDashAfterTheTargetDoesNotExcuseAnOption(t *testing.T) {
+	isolate(t)
+	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
+	s := slacktest.New(t)
+
+	code, _, stderr := sez(t, s, "--send", "#eng", "--", "--md")
+	if code != 2 || !strings.Contains(stderr, "sez: --md comes after the target") {
+		t.Fatalf("exit code = %d, stderr %q; want 2 naming --md", code, stderr)
+	}
+	if got := s.Hits(); got != 0 {
+		t.Fatalf("Slack received %d requests, want 0", got)
 	}
 }

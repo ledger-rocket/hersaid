@@ -345,9 +345,10 @@ usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|@person|ID> [te
   Renders the message WITHOUT sending unless --send is given. Read the rendered
   text first; deliver it second.
 
-  Every option goes before the target. An option after it is refused (exit 2),
-  not sent as text; to send text that starts with an option's name, pipe it on
-  stdin or put "--" before the target.
+  Every option goes before the target. After it, a word that starts with "--"
+  (other than "--" itself), or is -n or -h, is refused (exit 2), not sent as
+  text. To send such a word, pipe the text on stdin, quote it inside a longer
+  argument, or put "--" before the target.
   Text may be given as an argument, or piped on stdin (use "-" or omit it).
   With --file, omitting the text means no comment and stdin is not read; "-"
   still reads it.
@@ -446,12 +447,13 @@ Details:
   resolved or the log is opened. A channel argument starting with `-` is
   refused rather than swallowed — as an unknown flag (exit 2), or, after `--`,
   as a suspicious channel (exit 1).
-- Options are read only before the target. An argument after the target that
-  spells one of `sez`'s options, alone or as `--opt=value`, or `--thread-id`
-  or `--thread-ts`, exits 2 with one line that names it and shows the order;
-  nothing is read, logged or sent. Text that
-  only contains dashes, such as `a -- b`, still sends, and so does any
-  argument after a `--` placed before the target, and anything on stdin.
+- Options are read only before the target. After it, an argument that starts
+  with `--` (other than `--` itself), known to `sez` or not, or that is `-n` or
+  `-h`, exits 2 with one line that names it and shows the order; nothing is
+  read, logged or sent. Text that only contains dashes, such as `a -- b`,
+  `a--b` or `-5`, still sends, and so does any argument after a `--` placed
+  before the target, and anything on stdin. A `--` after the target is a word
+  of the text, so an option after it is still refused.
 - `--md` converts once, before the render, the audit record and the wire all
   see it — rendering what you typed while sending something else is precisely
   what `--send` exists to prevent.
@@ -582,10 +584,10 @@ emoji   : :eyes:
 
 - The emoji may carry surrounding colons or not; otherwise it must be
   lowercase letters, digits, `_`, `+` or `-`.
-- Options are read only before the target. An operand that spells one of
-  `tap`'s options, alone or as `--opt=value`, exits 2 with one line that names
-  it, rather than becoming the ts or the emoji; after a `--` placed before the
-  target, it is an operand.
+- Options are read only before the target. After it, an argument that starts
+  with `--` (other than `--` itself), or that is `-r`, `-n` or `-h`, exits 2
+  with one line that names it, rather than becoming the ts or the emoji; after
+  a `--` placed before the target, it is an operand.
 - `already_reacted` on add and `no_reaction` on remove are **successes**: the
   state you asked for already holds. `tap` prints a note, exits 0, and the log
   records `ok:true` with the Slack code in `error`.

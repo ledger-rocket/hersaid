@@ -11,6 +11,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 
 	"github.com/ledger-rocket/hersaid/internal/version"
 )
@@ -77,4 +79,21 @@ func Intercept(args []string, name, usage string, stdout io.Writer) (int, bool) 
 		return Version(stdout, name), true
 	}
 	return 0, false
+}
+
+// LateOption returns the first of args that reads as an option, or "" when
+// none does. A long option is anything that starts with "--" other than "--"
+// itself, whether or not the command knows it: `--thread_ts` after the target
+// is a mistake as surely as `--thread`. short lists the command's own short
+// options; any other word that starts with one dash, such as "-5", is text.
+//
+// sez and tap read options only before the target, so an option written after
+// it would otherwise become message text or an operand.
+func LateOption(args []string, short ...string) string {
+	for _, a := range args {
+		if (strings.HasPrefix(a, "--") && a != "--") || slices.Contains(short, a) {
+			return a
+		}
+	}
+	return ""
 }

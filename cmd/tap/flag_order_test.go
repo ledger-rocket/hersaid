@@ -21,6 +21,7 @@ func TestAFlagAfterTheTargetIsRefused(t *testing.T) {
 		"-h":             {"#eng", "1785712596.256909", "-h"},
 		"--version":      {"#eng", "1785712596.256909", "--version"},
 		"--remove=yes":   {"#eng", "1785712596.256909", "--remove=yes"},
+		"--reaction":     {"#eng", "1785712596.256909", "thumbsup", "--reaction"},
 		"--remove as ts": {"#eng", "--remove", "1785712596.256909", "thumbsup"},
 	}
 	for name, args := range cases {

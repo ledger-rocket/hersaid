@@ -38,6 +38,9 @@ const usage = `usage: tap [--remove] [--dry-run] <#chan|@person|ID> <ts> <emoji>
   review — so unlike sez it needs no render step, and it can carry a different
   permission policy from messages.
 
+  Every option goes before the target. After it, a word that starts with "--"
+  (other than "--" itself), or is -r, -n or -h, is refused (exit 2).
+
   Options:
     -r, --remove      remove the reaction instead of adding it
     -n, --dry-run     resolve and validate without calling Slack
@@ -104,9 +107,9 @@ func run(args []string, stdout, stderr io.Writer, baseURL string) int {
 	// taken as the ts or the emoji: `tap U0123 1785712596.256909 --remove` added
 	// a reaction named --remove. After "--" the arguments are operands by request.
 	if !f.literal {
-		if opt := misplacedFlag(f.rest); opt != "" {
+		if opt := cli.LateOption(f.rest, "-r", "-n", "-h"); opt != "" {
 			fmt.Fprintf(stderr, "tap: %s comes after the target and would be read as the ts or emoji; "+
-				"put every option before it: tap [--remove] [--dry-run] <target> <ts> <emoji>\n", opt)
+				"put every option first: tap [options] <target> <ts> <emoji>\n", opt)
 			return cli.ExitUsage
 		}
 	}
@@ -357,19 +360,6 @@ type flags struct {
 	// literal is set by "--": what follows is the operands even where an
 	// argument spells one of the options.
 	literal bool
-}
-
-// misplacedFlag returns the first argument that spells one of tap's options,
-// alone or as --opt=value, or "" when there is none.
-func misplacedFlag(args []string) string {
-	for _, a := range args {
-		opt, _, _ := strings.Cut(a, "=")
-		switch opt {
-		case "--remove", "-r", "--dry-run", "-n", "-h", "--help", "--version":
-			return a
-		}
-	}
-	return ""
 }
 
 // parseFlags reads the leading options. done reports that there is nothing left

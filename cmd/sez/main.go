@@ -56,9 +56,10 @@ const usage = `usage: sez [--send] [--thread TS] [--md] [--file PATH]... <#chan|
   Renders the message WITHOUT sending unless --send is given. Read the rendered
   text first; deliver it second.
 
-  Every option goes before the target. An option after it is refused (exit 2),
-  not sent as text; to send text that starts with an option's name, pipe it on
-  stdin or put "--" before the target.
+  Every option goes before the target. After it, a word that starts with "--"
+  (other than "--" itself), or is -n or -h, is refused (exit 2), not sent as
+  text. To send such a word, pipe the text on stdin, quote it inside a longer
+  argument, or put "--" before the target.
   Text may be given as an argument, or piped on stdin (use "-" or omit it).
   With --file the text becomes the message carried alongside the files; omitting
   it means no comment, and stdin is not read. "-" still reads it.
@@ -210,9 +211,10 @@ func parseInvocation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	}
 	// Options are read only before the target, so one written after it would be
 	// sent as message text. After "--" the arguments are text by request.
-	if flag := misplacedFlag(rest[1:]); flag != "" && !f.literal {
+	if flag := cli.LateOption(rest[1:], "-n", "-h"); flag != "" && !f.literal {
 		fmt.Fprintf(stderr, "sez: %s comes after the target and would be sent as text; "+
-			"put every option before it: sez [--send] [--md] [--thread TS] [--file PATH]... <target> [text]\n", flag)
+			"put every option first: sez [options] <target> [ts] [text]. "+
+			"To send it as text, pipe it on stdin or put \"--\" before the target.\n", flag)
 		return invocation{}, cli.ExitUsage, true
 	}
 	ts, rest, refusal := messageRef(verb, rest[1:])
@@ -1187,25 +1189,6 @@ type flags struct {
 	// literal is set by "--": what follows is the target and text even where an
 	// argument spells one of the options.
 	literal bool
-}
-
-// misplacedFlag returns the first argument that spells one of sez's options,
-// alone or as --opt=value, or a near miss of --thread; "" when there is none.
-// Only whole arguments count: text that merely contains a dash, such as
-// "a -- b", is not an option.
-func misplacedFlag(args []string) string {
-	for _, a := range args {
-		opt, _, _ := strings.Cut(a, "=")
-		var probe flags
-		if _, valued := valueNeeds[opt]; valued || probe.setFlag(opt) {
-			return a
-		}
-		switch opt {
-		case "-h", "--help", "--version", "--thread-id", "--thread-ts":
-			return a
-		}
-	}
-	return ""
 }
 
 // parseFlags reads the leading options. done reports that there is nothing left
