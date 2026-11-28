@@ -209,14 +209,6 @@ func parseInvocation(args []string, stdin io.Reader, stdout, stderr io.Writer) (
 	if strings.HasPrefix(channel, "-") {
 		return invocation{}, fail(stderr, "refusing a channel that looks like a flag: %s", channel), true
 	}
-	// Options are read only before the target, so one written after it would be
-	// sent as message text. After "--" the arguments are text by request.
-	if flag := cli.LateOption(rest[1:], "-n", "-h"); flag != "" && !f.literal {
-		fmt.Fprintf(stderr, "sez: %s comes after the target and would be sent as text; "+
-			"put every option first: sez [options] <target> [ts] [text]. "+
-			"To send it as text, pipe it on stdin or put \"--\" before the target.\n", flag)
-		return invocation{}, cli.ExitUsage, true
-	}
 	ts, rest, refusal := messageRef(verb, rest[1:])
 	if refusal != "" {
 		return invocation{}, cli.Usage(stderr, name, usage, refusal), true
@@ -1186,9 +1178,6 @@ type flags struct {
 	files []string
 	// rest is everything after the options: the target, then the text.
 	rest []string
-	// literal is set by "--": what follows is the target and text even where an
-	// argument spells one of the options.
-	literal bool
 }
 
 // parseFlags reads the leading options. done reports that there is nothing left
@@ -1296,11 +1285,21 @@ func (f *flags) final(args []string, stdout, stderr io.Writer) (int, bool) {
 	case "--version":
 		return cli.Version(stdout, name), true
 	case "--":
-		f.rest, f.literal = args[1:], true
+		f.rest = args[1:]
 		return 0, false
 	}
 	if strings.HasPrefix(args[0], "-") && args[0] != "-" {
 		return cli.Usage(stderr, name, usage, "unknown flag: "+args[0]), true
+	}
+	// Options are read only before the target, so one written after it would be
+	// sent as message text. After "--" (the case above) the arguments are text by
+	// request, so this check is only here.
+	if opt := cli.LateOption(args[1:], "-n", "-h"); opt != "" {
+		fmt.Fprintf(stderr, "sez: %s comes after the target and would be sent as text; "+
+			"put every option first: sez [options] <target> [ts] [text]. "+
+			"To send it as text, pipe it on stdin, quote it inside a longer argument, "+
+			"or put \"--\" before the target.\n", opt)
+		return cli.ExitUsage, true
 	}
 	f.rest = args
 	return 0, false

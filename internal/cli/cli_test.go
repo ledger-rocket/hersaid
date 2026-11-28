@@ -109,6 +109,7 @@ func TestLateOption(t *testing.T) {
 		{[]string{"--thread_ts=1"}, "--thread_ts=1"},
 		{[]string{"-n"}, "-n"},
 		{[]string{"--", "a--b", "-nope", "-5", "-n=3", "-", "---", "-- Bob", "--thread is how", "--5", "--retries=3 fixed it"}, ""},
+		{[]string{"-r"}, ""}, // a short option of another command is text here
 		{nil, ""},
 	}
 	for _, c := range cases {

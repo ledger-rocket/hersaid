@@ -58,19 +58,22 @@ func TestAFlagAfterTheTargetIsRefused(t *testing.T) {
 	}
 }
 
-// An emoji name that only contains a dash is still an emoji.
+// An emoji name with a dash in it is still an emoji, and so is -1, which starts
+// with one: tap has no -1 option.
 func TestAnEmojiWithADashIsNotAFlag(t *testing.T) {
 	isolate(t)
 	warmCache(t)
 	t.Setenv("SLACK_WRITE_TOKEN", "xoxp-fake-write-token")
 	s := slacktest.New(t)
 
-	code, stdout, stderr := tap(t, s, "--dry-run", "#eng", "1785712596.256909", "white-check-mark")
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (stderr %q)", code, stderr)
-	}
-	if !strings.Contains(stdout, ":white-check-mark:") {
-		t.Fatalf("stdout = %q, want the emoji shown", stdout)
+	for _, emoji := range []string{"white-check-mark", "-1"} {
+		code, stdout, stderr := tap(t, s, "--dry-run", "#eng", "1785712596.256909", emoji)
+		if code != 0 {
+			t.Fatalf("%s: exit code = %d, want 0 (stderr %q)", emoji, code, stderr)
+		}
+		if !strings.Contains(stdout, ":"+emoji+":") {
+			t.Fatalf("stdout = %q, want :%s: shown", stdout, emoji)
+		}
 	}
 }
 
